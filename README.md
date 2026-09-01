@@ -1,6 +1,6 @@
 # Cursor 额度面板
 
-查多个 Cursor 账号的订阅套餐、Auto/高级模型剩余额度、额度刷新时间。
+按部门查看多个 Cursor 账号的订阅套餐、Auto/高级模型剩余额度、额度刷新时间。
 Web 面板和命令行共用同一份账号库和同一套取数逻辑。
 服务端不碰浏览器，可跑在无桌面的服务器上。
 
@@ -73,7 +73,8 @@ cursor_dashboard/
 
 ## 添加账号
 
-面板点「+ 添加账号」，填姓名 + 粘贴 cookie，保存前服务端会先验活。
+面板点「+ 添加账号」，填写姓名、所属部门并粘贴 cookie，保存前服务端会先验活。
+所属部门支持直接输入新名称，也会提示已有部门，避免重复创建近似分组。
 
 cookie 取法：浏览器登录 cursor.com → F12 → Application → Cookies →
 `https://cursor.com` → 找到 `WorkosCursorSessionToken` → 复制 Value。
@@ -82,10 +83,20 @@ cookie 取法：浏览器登录 cursor.com → F12 → Application → Cookies �
 httpOnly 连 cursor.com 自己的页面 JS 都读不到，iframe 嵌 cursor.com 会被
 `frame-ancestors` 挡掉。浏览器安全模型就是要禁止「A 站页面读 B 站登录态」。
 
-鼠标移到卡片上，右上角出现三个图标按钮（悬停有中文说明）：
+## 部门分组
+
+账号卡片上方按部门提供标签页，可查看全部账号或只看一个部门；标签后的数字是该部门
+账号数。浏览器会记住最后选择的部门，下次打开默认回到相同部门。选择“全部”即可
+跨部门查看，旧账号在数据库升级后会先归入“未分组”。
+
+新增账号时默认带入当前正在查看的部门。已有账号可点卡片右上角的楼宇图标单独调整
+分组，不需要重新粘贴 cookie。
+
+鼠标移到卡片上，右上角出现四个图标按钮（悬停有中文说明）：
 
 | 图标 | 作用 |
 |---|---|
+| 楼宇 | 调整账号所属部门，不改变 cookie |
 | 🔑 钥匙 | 重新授权——粘贴新的 cookie。按 email 去重，等于续期，不会多出一张卡片 |
 | ↻ 刷新 | 只刷这一个账号（`POST /api/accounts/{id}/refresh`，强制回源） |
 | 🗑 垃圾桶 | 从服务端账号库删除，不影响 Cursor 账号本身 |
@@ -141,10 +152,11 @@ uv run cursor-quota -c other.json
 旧 JSON 格式仍可用于迁移，也可通过 `cursor-quota -c other.json` 临时查询：
 
 ```json
-[{ "label": "主号", "cookie": "WorkosCursorSessionToken 的值" }]
+[{ "label": "主号", "department": "智慧运维", "cookie": "WorkosCursorSessionToken 的值" }]
 ```
 
-`label` / `cookie` 必需，面板另外会写 `email`、`updated_at`。数据库路径可用
+`label` / `cookie` 必需，`department` 可选，面板另外会写 `email`、`updated_at`。
+数据库 schema 会自动升级，现有账号和 cookie 不会被重写。数据库路径可用
 `DATABASE_PATH` 环境变量修改。SQLite 解决并发登记时的覆盖问题，但 cookie 目前仍是
 明文存储。
 

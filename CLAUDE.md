@@ -69,13 +69,15 @@ lifespan 里装的单个 `ThreadPoolExecutor`。**不要改成嵌套线程池**�
 
 接口：`GET /api/config`（不鉴权，页面据此决定要不要问口令）、
 `GET /api/accounts?force=1`、`POST /api/accounts`（新增/续期，同一入口）、
+`PATCH /api/accounts/{id}/department`（只改部门，不碰 cookie）、
 `POST /api/accounts/{id}/refresh`（单卡刷新）、`DELETE /api/accounts/{id}`。
 `store.AccountsError` 由 `server.handle_accounts_error` 转成 500 + `detail`，
 前端读的就是 `detail` 字段。
 
 `web/index.html` 是**单文件、无 CDN 依赖**的页面。前端持有 `accounts` 数组，单卡刷新
 只替换其中一项再整体 `render()`；`_loading` 标记让该卡渲染成骨架。渲染一律走
-`esc()` 转义。
+`esc()` 转义。部门筛选在前端完成，最后选择写入 `localStorage.selectedDepartment`；
+新增账号默认带入当前部门，“全部”使用前端 sentinel，不写入数据库。
 
 ## 必须知道的坑
 

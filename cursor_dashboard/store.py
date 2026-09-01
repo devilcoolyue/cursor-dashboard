@@ -60,23 +60,28 @@ def _import_legacy(conn: sqlite3.Connection, accounts: list[dict]) -> None:
         cookie = str(account["cookie"])
         email = str(account.get("email") or "").strip() or None
         label = str(account.get("label") or email or f"账号{index}")
+        department = str(account.get("department") or "").strip()
         updated_at = _legacy_updated_at(account, now)
         if email:
             conn.execute(
                 """
-                INSERT INTO accounts (label, cookie, email, updated_at)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO accounts (label, cookie, email, department, updated_at)
+                VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(email) DO UPDATE SET
                     label = excluded.label,
                     cookie = excluded.cookie,
+                    department = excluded.department,
                     updated_at = excluded.updated_at
                 """,
-                (label, cookie, email, updated_at),
+                (label, cookie, email, department, updated_at),
             )
         else:
             conn.execute(
-                "INSERT INTO accounts (label, cookie, email, updated_at) VALUES (?, ?, NULL, ?)",
-                (label, cookie, updated_at),
+                """
+                INSERT INTO accounts (label, cookie, email, department, updated_at)
+                VALUES (?, ?, NULL, ?, ?)
+                """,
+                (label, cookie, department, updated_at),
             )
 
 
@@ -114,6 +119,7 @@ def _ensure_database() -> None:
                     label TEXT NOT NULL,
                     cookie TEXT NOT NULL,
                     email TEXT UNIQUE,
+                    department TEXT NOT NULL DEFAULT '',
                     updated_at INTEGER NOT NULL
                 )
                 """
@@ -127,6 +133,14 @@ def _ensure_database() -> None:
                 """
             )
 
+            columns = {
+                row["name"] for row in conn.execute("PRAGMA table_info(accounts)").fetchall()
+            }
+            if "department" not in columns:
+                conn.execute(
+                    "ALTER TABLE accounts ADD COLUMN department TEXT NOT NULL DEFAULT ''"
+                )
+
             migrated = conn.execute(
                 "SELECT 1 FROM metadata WHERE key = 'legacy_json_migrated'"
             ).fetchone()
@@ -137,7 +151,10 @@ def _ensure_database() -> None:
                     (str(int(time.time())),),
                 )
             conn.execute(
-                "INSERT OR IGNORE INTO metadata (key, value) VALUES ('schema_version', '1')"
+                """
+                INSERT INTO metadata (key, value) VALUES ('schema_version', '2')
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """
             )
             conn.commit()
             _set_database_permissions()
@@ -165,6 +182,7 @@ def _row_to_account(row: sqlite3.Row) -> dict:
         "label": row["label"],
         "cookie": row["cookie"],
         "email": row["email"],
+        "department": row["department"],
         "updated_at": row["updated_at"],
     }
 
@@ -174,7 +192,7 @@ def load_accounts() -> list[dict]:
     try:
         conn = _connect()
         rows = conn.execute(
-            "SELECT label, cookie, email, updated_at FROM accounts ORDER BY id"
+            "SELECT label, cookie, email, department, updated_at FROM accounts ORDER BY id"
         ).fetchall()
         return [_row_to_account(row) for row in rows]
     except AccountsError:
@@ -186,10 +204,16 @@ def load_accounts() -> list[dict]:
             conn.close()
 
 
-def upsert_account(cookie: str, email: str | None, label: str | None) -> dict:
+def upsert_account(
+    cookie: str,
+    email: str | None,
+    label: str | None,
+    department: str | None = None,
+) -> dict:
     """按 email 原子去重：同一账号重新回填只更新已有记录。"""
     email = (email or "").strip() or None
     requested_label = (label or "").strip() or None
+    requested_department = department.strip() if department is not None else None
     now = int(time.time())
     conn: sqlite3.Connection | None = None
     try:
@@ -198,14 +222,23 @@ def upsert_account(cookie: str, email: str | None, label: str | None) -> dict:
         row = None
         if email:
             row = conn.execute(
-                "SELECT id, label FROM accounts WHERE email = ?", (email,)
+                "SELECT id, label, department FROM accounts WHERE email = ?", (email,)
             ).fetchone()
 
         if row:
             final_label = requested_label or row["label"]
+            final_department = (
+                requested_department
+                if requested_department is not None
+                else row["department"]
+            )
             conn.execute(
-                "UPDATE accounts SET label = ?, cookie = ?, updated_at = ? WHERE id = ?",
-                (final_label, cookie, now, row["id"]),
+                """
+                UPDATE accounts
+                SET label = ?, cookie = ?, department = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (final_label, cookie, final_department, now, row["id"]),
             )
             account_id_value = row["id"]
         else:
@@ -216,14 +249,21 @@ def upsert_account(cookie: str, email: str | None, label: str | None) -> dict:
             else:
                 count = conn.execute("SELECT COUNT(*) FROM accounts").fetchone()[0]
                 final_label = f"账号{count + 1}"
+            final_department = requested_department or ""
             cursor = conn.execute(
-                "INSERT INTO accounts (label, cookie, email, updated_at) VALUES (?, ?, ?, ?)",
-                (final_label, cookie, email, now),
+                """
+                INSERT INTO accounts (label, cookie, email, department, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (final_label, cookie, email, final_department, now),
             )
             account_id_value = cursor.lastrowid
 
         saved = conn.execute(
-            "SELECT label, cookie, email, updated_at FROM accounts WHERE id = ?",
+            """
+            SELECT label, cookie, email, department, updated_at
+            FROM accounts WHERE id = ?
+            """,
             (account_id_value,),
         ).fetchone()
         conn.commit()
@@ -236,6 +276,49 @@ def upsert_account(cookie: str, email: str | None, label: str | None) -> dict:
         if conn:
             conn.rollback()
         raise AccountsError(f"账号数据库 {DATABASE_PATH} 写入失败：{exc}") from exc
+    finally:
+        if conn:
+            conn.close()
+
+
+def update_account_department(account_key: str, department: str) -> dict | None:
+    """只更新账号所属部门，不要求用户重新提交 cookie。"""
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = _connect()
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            """
+            SELECT id FROM accounts
+            WHERE (email IS NOT NULL AND email != '' AND email = ?)
+               OR ((email IS NULL OR email = '') AND label = ?)
+            """,
+            (account_key, account_key),
+        ).fetchone()
+        if not row:
+            conn.rollback()
+            return None
+        conn.execute(
+            "UPDATE accounts SET department = ?, updated_at = ? WHERE id = ?",
+            (department.strip(), int(time.time()), row["id"]),
+        )
+        saved = conn.execute(
+            """
+            SELECT label, cookie, email, department, updated_at
+            FROM accounts WHERE id = ?
+            """,
+            (row["id"],),
+        ).fetchone()
+        conn.commit()
+        return _row_to_account(saved)
+    except AccountsError:
+        if conn:
+            conn.rollback()
+        raise
+    except sqlite3.Error as exc:
+        if conn:
+            conn.rollback()
+        raise AccountsError(f"账号数据库 {DATABASE_PATH} 分组更新失败：{exc}") from exc
     finally:
         if conn:
             conn.close()

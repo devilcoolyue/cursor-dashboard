@@ -1,10 +1,12 @@
 [
   {
     "label": "主号",
+    "department": "智慧运维",
     "cookie": "在此粘贴 WorkosCursorSessionToken 的 Value"
   },
   {
     "label": "备用号",
+    "department": "研发中心",
     "cookie": "在此粘贴另一个账号的 WorkosCursorSessionToken"
   }
 ]

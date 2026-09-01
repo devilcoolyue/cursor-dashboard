@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
 <title>Cursor 额度面板</title>
 <style>
   :root {
@@ -20,9 +21,28 @@
   header { display: flex; align-items: baseline; gap: 14px; }
   h1 { font-size: 20px; font-weight: 600; margin: 0; letter-spacing: .2px; }
   .sub { color: var(--dimmer); font-size: 12px; }
-  .bar-top { display: flex; gap: 10px; margin: 20px 0 26px; align-items: center; }
+  .bar-top { display: flex; gap: 10px; margin: 20px 0 12px; align-items: center; }
   .spacer { flex: 1; }
   .stamp { color: var(--dimmer); font-size: 12px; }
+
+  .department-nav {
+    display: flex; align-items: flex-end; gap: 14px; margin: 0 0 24px;
+    border-bottom: 1px solid var(--line); min-width: 0;
+  }
+  .department-caption { color: var(--dimmer); font-size: 11px; padding: 9px 0; flex: none; }
+  .department-tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+  .department-tabs::-webkit-scrollbar { display: none; }
+  button.department-tab {
+    position: relative; flex: none; border: 0; border-radius: 0; background: transparent;
+    color: var(--dim); padding: 8px 10px 9px; white-space: nowrap;
+  }
+  button.department-tab:hover:not(:disabled) { background: transparent; border-color: transparent; color: var(--fg); }
+  button.department-tab[aria-selected="true"] { color: var(--fg); }
+  button.department-tab[aria-selected="true"]::after {
+    content: ""; position: absolute; height: 2px; left: 10px; right: 10px; bottom: -1px;
+    background: var(--accent);
+  }
+  .department-count { color: var(--dimmer); font-size: 11px; margin-left: 4px; font-variant-numeric: tabular-nums; }
 
   button {
     font: inherit; color: var(--fg); background: var(--card-hi);
@@ -63,10 +83,18 @@
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 18px 14px; position: relative; }
   .card.dead { border-color: #4a2b2b; }
 
-  .card-head { padding-right: 100px; min-height: 34px; }
+  .card-head { padding-right: 124px; min-height: 40px; }
   .name-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .label { font-size: 15px; font-weight: 600; }
-  .email { color: var(--dim); font-size: 12px; word-break: break-all; margin-top: 1px; }
+  .identity-meta { display: flex; align-items: center; gap: 7px; margin-top: 2px; min-width: 0; }
+  .email {
+    color: var(--dim); font-size: 12px; min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .department-mark {
+    color: var(--dim); font-size: 10.5px; line-height: 1.45; border-left: 2px solid var(--accent);
+    padding-left: 6px; white-space: nowrap;
+  }
   .plan {
     font-size: 11px; color: var(--dim); border: 1px solid var(--line);
     border-radius: 20px; padding: 2px 9px; white-space: nowrap; line-height: 1.5;
@@ -133,6 +161,19 @@
   .status.good { color: var(--ok); }
   .status.busy { color: var(--dim); }
   a { color: var(--accent); }
+
+  @media (max-width: 620px) {
+    .wrap { padding: 22px 14px 48px; }
+    .bar-top { flex-wrap: wrap; }
+    .bar-top .stamp { width: 100%; order: 4; }
+    .department-nav { gap: 6px; }
+    .grid { grid-template-columns: minmax(0, 1fr); }
+    .card { padding-left: 15px; padding-right: 15px; }
+    .card-head { padding-right: 0; padding-top: 30px; }
+    .acts { opacity: 1; }
+    .row { flex-wrap: wrap; }
+    .row .status { width: 100%; }
+  }
 </style>
 </head>
 <body>
@@ -149,6 +190,11 @@
     <span class="stamp" id="stamp"></span>
   </div>
 
+  <nav class="department-nav" aria-label="按部门查看账号">
+    <span class="department-caption">部门</span>
+    <div class="department-tabs" id="department-tabs" role="tablist"></div>
+  </nav>
+
   <div id="view"></div>
 </div>
 
@@ -157,6 +203,11 @@
   <div class="f">
     <label for="d-label">姓名</label>
     <input type="text" id="d-label" placeholder="自己的姓名，方便统计查看" autocomplete="off">
+  </div>
+  <div class="f">
+    <label for="d-department">所属部门</label>
+    <input type="text" id="d-department" list="department-options"
+      placeholder="例如：智慧运维" autocomplete="off" maxlength="64">
   </div>
   <div class="f">
     <label for="d-cookie">Cookie</label>
@@ -173,6 +224,23 @@
     <button class="primary" id="d-save">校验并保存</button>
   </div>
 </dialog>
+
+<dialog id="department-dlg">
+  <h2>调整分组</h2>
+  <p id="department-account"></p>
+  <div class="f">
+    <label for="department-input">所属部门</label>
+    <input type="text" id="department-input" list="department-options"
+      placeholder="例如：智慧运维" autocomplete="off" maxlength="64">
+  </div>
+  <div class="row">
+    <span class="status" id="department-status" style="flex:1;text-align:left"></span>
+    <button id="department-cancel">取消</button>
+    <button class="primary" id="department-save">保存分组</button>
+  </div>
+</dialog>
+
+<datalist id="department-options"></datalist>
 
 <dialog id="auth">
   <h2>面板口令</h2>
@@ -192,6 +260,9 @@ let token = localStorage.getItem('panelToken') || '';
 const headers = () => token ? { 'X-Panel-Token': token } : {};
 const jsonHeaders = () => ({ 'Content-Type': 'application/json', ...headers() });
 
+const ALL_DEPARTMENTS = '__all_departments__';
+const storedDepartment = localStorage.getItem('selectedDepartment');
+let selectedDepartment = storedDepartment === null ? ALL_DEPARTMENTS : storedDepartment;
 let accounts = [];   // 最近一次拿到的完整数据，单卡刷新时只替换其中一项
 
 const money = (n) => '$' + Number(n || 0).toFixed(2);
@@ -204,6 +275,7 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
 const SVG = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
   stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
 const ICON = {
+  department: SVG('<path d="M6 22V4c0-.6.4-1 1-1h10c.6 0 1 .4 1 1v18"/><path d="M6 12H4c-.6 0-1 .4-1 1v9h18V8c0-.6-.4-1-1-1h-2"/><path d="M10 6h4M10 10h4M10 14h4M10 18h4"/>'),
   key: SVG('<circle cx="7.5" cy="16.5" r="5"/><path d="m11.5 13 8.5-8.5"/><path d="m17 7 2.5 2.5"/><path d="M20 4l2 2"/>'),
   refresh: SVG('<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>'),
   trash: SVG('<path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M18 6v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V6"/>'),
@@ -224,11 +296,15 @@ function bar(name, q) {
 
 function actions(a) {
   return `<div class="acts">
+    <button class="icon-btn tip below" data-dept-id="${esc(a.id)}" data-label="${esc(a.label)}"
+      data-department="${esc(a.department)}" aria-label="调整分组"
+      data-tip="调整所属部门">${ICON.department}</button>
     <button class="icon-btn tip below" data-edit="${esc(a.id)}" data-label="${esc(a.label)}"
+      data-department="${esc(a.department)}" aria-label="重新授权"
       data-tip="重新授权 · 粘贴新的 cookie">${ICON.key}</button>
-    <button class="icon-btn tip below" data-one="${esc(a.id)}"
+    <button class="icon-btn tip below" data-one="${esc(a.id)}" aria-label="刷新账号"
       data-tip="刷新这个账号的额度">${ICON.refresh}</button>
-    <button class="icon-btn tip below right danger" data-del="${esc(a.id)}"
+    <button class="icon-btn tip below right danger" data-del="${esc(a.id)}" aria-label="删除账号"
       data-tip="删除账号">${ICON.trash}</button>
   </div>`;
 }
@@ -253,7 +329,10 @@ function card(a) {
     return `<div class="card dead">${actions(a)}
       <div class="card-head">
         <div class="name-line"><span class="label">${esc(a.label)}</span></div>
-        <div class="email">${esc(a.email)}</div>
+        <div class="identity-meta">
+          <span class="department-mark">${esc(departmentName(a.department))}</span>
+          <span class="email" title="${esc(a.email)}">${esc(a.email)}</span>
+        </div>
       </div>
       <div class="err">${a.expired ? '会话已失效，点右上角钥匙图标重新粘贴 cookie' : esc(a.error)}</div>
     </div>`;
@@ -267,7 +346,10 @@ function card(a) {
         <span class="label">${esc(a.label)}</span>
         <span class="plan">${esc(p.name || p.membership_type || '未知套餐')}</span>
       </div>
-      <div class="email">${esc(d.email)}</div>
+      <div class="identity-meta">
+        <span class="department-mark">${esc(departmentName(a.department))}</span>
+        <span class="email" title="${esc(d.email)}">${esc(d.email)}</span>
+      </div>
     </div>
     <div class="quota">
       ${bar('Cursor Models', q.cursor_models)}
@@ -287,13 +369,57 @@ function card(a) {
   </div>`;
 }
 
+const departmentName = (department) => department || '未分组';
+
+function departmentStats() {
+  const counts = new Map();
+  accounts.forEach((account) => {
+    const department = account.department || '';
+    counts.set(department, (counts.get(department) || 0) + 1);
+  });
+  return [...counts.entries()].sort(([a], [b]) => {
+    if (!a) return 1;
+    if (!b) return -1;
+    return a.localeCompare(b, 'zh-CN');
+  });
+}
+
+function renderDepartmentTabs() {
+  const stats = departmentStats();
+  const available = new Set(stats.map(([department]) => department));
+  if (selectedDepartment !== ALL_DEPARTMENTS && !available.has(selectedDepartment)) {
+    selectedDepartment = ALL_DEPARTMENTS;
+    localStorage.setItem('selectedDepartment', selectedDepartment);
+  }
+  const tabs = [[ALL_DEPARTMENTS, '全部', accounts.length],
+    ...stats.map(([department, count]) => [department, departmentName(department), count])];
+  $('#department-tabs').innerHTML = tabs.map(([department, name, count]) => `
+    <button class="department-tab" type="button" role="tab"
+      data-department-filter="${esc(department)}"
+      aria-selected="${department === selectedDepartment}">
+      ${esc(name)}<span class="department-count">${count}</span>
+    </button>`).join('');
+  $('#department-options').innerHTML = stats
+    .filter(([department]) => department)
+    .map(([department]) => `<option value="${esc(department)}"></option>`).join('');
+}
+
 function render() {
+  renderDepartmentTabs();
   if (!accounts.length) {
     view.innerHTML = `<div class="empty"><p>还没有账号。</p>
       <button class="primary" onclick="document.getElementById('add').click()">+ 添加账号</button></div>`;
     return;
   }
-  view.innerHTML = `<div class="grid">${accounts.map(card).join('')}</div>`;
+  const visible = selectedDepartment === ALL_DEPARTMENTS
+    ? accounts
+    : accounts.filter((account) => (account.department || '') === selectedDepartment);
+  if (!visible.length) {
+    view.innerHTML = `<div class="empty"><p>${esc(departmentName(selectedDepartment))}暂无账号。</p>
+      <button data-show-all>查看全部</button></div>`;
+    return;
+  }
+  view.innerHTML = `<div class="grid">${visible.map(card).join('')}</div>`;
 }
 
 function showSkeletons(n) {
@@ -349,7 +475,11 @@ async function refreshOne(id) {
 view.addEventListener('click', async (e) => {
   const btn = e.target.closest('button');
   if (!btn) return;
-  const { del, one, edit, label } = btn.dataset;
+  const { del, one, edit, deptId, label, department } = btn.dataset;
+  if (btn.dataset.showAll !== undefined) {
+    selectDepartment(ALL_DEPARTMENTS);
+    return;
+  }
   if (del !== undefined) {
     if (!confirm(`删除账号 ${del}？只从服务端账号库移除，不影响 Cursor 账号本身。`)) return;
     await fetch('/api/accounts/' + encodeURIComponent(del), { method: 'DELETE', headers: headers() });
@@ -358,18 +488,32 @@ view.addEventListener('click', async (e) => {
     render();
   } else if (one !== undefined) {
     refreshOne(one);
+  } else if (deptId !== undefined) {
+    openDepartmentDialog(deptId, label, department);
   } else if (edit !== undefined) {
-    openDialog(label, true);
+    openDialog(label, department, true);
   }
+});
+
+function selectDepartment(department) {
+  selectedDepartment = department;
+  localStorage.setItem('selectedDepartment', department);
+  render();
+}
+
+$('#department-tabs').addEventListener('click', (e) => {
+  const tab = e.target.closest('[data-department-filter]');
+  if (tab) selectDepartment(tab.dataset.departmentFilter);
 });
 
 // ---------- 添加 / 重新授权 ----------
 const dlg = $('#dlg'), dstat = $('#d-status');
 const say = (text, cls = '') => { dstat.className = 'status ' + cls; dstat.textContent = text; };
 
-function openDialog(label = '', isEdit = false) {
+function openDialog(label = '', department = '', isEdit = false) {
   $('#d-title').textContent = isEdit ? '重新授权' : '添加账号';
   $('#d-label').value = label || '';
+  $('#d-department').value = department || '';
   $('#d-cookie').value = '';
   $('#d-save').disabled = false;
   say('');
@@ -385,10 +529,16 @@ $('#d-save').onclick = async () => {
   try {
     const r = await fetch('/api/accounts', {
       method: 'POST', headers: jsonHeaders(),
-      body: JSON.stringify({ cookie, label: $('#d-label').value.trim() || null })
+      body: JSON.stringify({
+        cookie,
+        label: $('#d-label').value.trim() || null,
+        department: $('#d-department').value.trim()
+      })
     });
     const d = await r.json();
     if (r.ok) {
+      selectedDepartment = d.department || '';
+      localStorage.setItem('selectedDepartment', selectedDepartment);
       say('已保存 ' + (d.email || d.label), 'good');
       setTimeout(() => { dlg.close(); load(); }, 700);
     } else {
@@ -401,9 +551,53 @@ $('#d-save').onclick = async () => {
   }
 };
 
-$('#add').onclick = () => openDialog('');
+$('#add').onclick = () => openDialog(
+  '', selectedDepartment === ALL_DEPARTMENTS ? '' : selectedDepartment
+);
 $('#refresh').onclick = () => load(true);
 $('#d-cancel').onclick = () => dlg.close();
+
+// ---------- 调整分组 ----------
+const departmentDlg = $('#department-dlg');
+let departmentAccountId = '';
+
+function openDepartmentDialog(id, label, department) {
+  departmentAccountId = id;
+  $('#department-account').textContent = label;
+  $('#department-input').value = department || '';
+  $('#department-status').textContent = '';
+  $('#department-status').className = 'status';
+  $('#department-save').disabled = false;
+  departmentDlg.showModal();
+  $('#department-input').focus();
+}
+
+$('#department-save').onclick = async () => {
+  const department = $('#department-input').value.trim();
+  const status = $('#department-status');
+  $('#department-save').disabled = true;
+  status.className = 'status busy';
+  status.textContent = '保存中…';
+  try {
+    const r = await fetch(`/api/accounts/${encodeURIComponent(departmentAccountId)}/department`, {
+      method: 'PATCH', headers: jsonHeaders(), body: JSON.stringify({ department })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || '保存失败');
+    const account = accounts.find((item) => item.id === departmentAccountId);
+    if (account) account.department = d.department || '';
+    selectedDepartment = d.department || '';
+    localStorage.setItem('selectedDepartment', selectedDepartment);
+    departmentDlg.close();
+    render();
+  } catch (e) {
+    status.className = 'status bad';
+    status.textContent = e.message;
+    $('#department-save').disabled = false;
+  }
+};
+
+$('#department-cancel').onclick = () => departmentDlg.close();
 
 // ---------- 口令 ----------
 $('#a-ok').onclick = async () => {

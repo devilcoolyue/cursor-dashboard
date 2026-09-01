@@ -21,12 +21,19 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from . import cache
 from .client import ENDPOINTS, AuthExpired, fetch_one
 from .config import CACHE_TTL, DATABASE_PATH, MAX_WORKERS, PANEL_TOKEN, WEB_INDEX
-from .store import AccountsError, account_id, delete_account, load_accounts, upsert_account
+from .store import (
+    AccountsError,
+    account_id,
+    delete_account,
+    load_accounts,
+    update_account_department,
+    upsert_account,
+)
 from .usage import assemble
 
 
@@ -41,15 +48,20 @@ async def probe(acc: dict, force: bool = False) -> dict:
     if not force:
         cached = cache.get(ident, cookie)
         if cached:
-            return cached
+            return {**cached, "department": acc.get("department") or ""}
 
     t0 = time.time()
     async with cache.lock_for(ident):
         # 等锁期间别人可能刚回源完，直接复用他的结果（强制刷新同样适用）
         fresh = cache.since(ident, cookie, t0)
         if fresh:
-            return fresh
-        base = {"id": ident, "label": label, "email": acc.get("email")}
+            return {**fresh, "department": acc.get("department") or ""}
+        base = {
+            "id": ident,
+            "label": label,
+            "email": acc.get("email"),
+            "department": acc.get("department") or "",
+        }
         try:
             raw = await asyncio.gather(
                 *(asyncio.to_thread(fetch_one, cookie, label, name) for name in ENDPOINTS)
@@ -94,6 +106,11 @@ def require_token(x_panel_token: str | None = Header(default=None)) -> None:
 class SaveReq(BaseModel):
     cookie: str
     label: str | None = None
+    department: str | None = Field(default=None, max_length=64)
+
+
+class DepartmentReq(BaseModel):
+    department: str = Field(default="", max_length=64)
 
 
 @app.get("/")
@@ -133,9 +150,16 @@ async def api_save(req: SaveReq):
         raise HTTPException(400, "这个 cookie 是失效的，请在浏览器重新登录 cursor.com 后再回填")
     except Exception as e:
         raise HTTPException(400, f"校验失败：{type(e).__name__}: {e}")
-    acc = await asyncio.to_thread(upsert_account, cookie, data.get("email"), req.label)
+    acc = await asyncio.to_thread(
+        upsert_account, cookie, data.get("email"), req.label, req.department
+    )
     cache.drop(account_id(acc))     # 换了 cookie，旧结果作废
-    return {"ok": True, "label": acc["label"], "email": acc.get("email")}
+    return {
+        "ok": True,
+        "label": acc["label"],
+        "email": acc.get("email"),
+        "department": acc.get("department") or "",
+    }
 
 
 @app.post("/api/accounts/{account_key}/refresh", dependencies=[Depends(require_token)])
@@ -145,6 +169,18 @@ async def api_refresh_one(account_key: str):
     if not acc:
         raise HTTPException(404, "账号不存在")
     return {"account": await probe(acc, force=True)}
+
+
+@app.patch(
+    "/api/accounts/{account_key}/department", dependencies=[Depends(require_token)]
+)
+async def api_update_department(account_key: str, req: DepartmentReq):
+    acc = await asyncio.to_thread(
+        update_account_department, account_key, req.department
+    )
+    if not acc:
+        raise HTTPException(404, "账号不存在")
+    return {"ok": True, "department": acc.get("department") or ""}
 
 
 @app.delete("/api/accounts/{account_key}", dependencies=[Depends(require_token)])

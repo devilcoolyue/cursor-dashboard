@@ -28,3 +28,5 @@ venv/
 .DS_Store
 .idea/
 .vscode/
+.playwright-cli/
+output/
