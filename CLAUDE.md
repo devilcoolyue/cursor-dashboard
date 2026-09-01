@@ -82,7 +82,9 @@ lifespan 里装的单个 `ThreadPoolExecutor`。**不要改成嵌套线程池**�
 `web/index.html` 是**单文件、无 CDN 依赖**的页面。前端持有 `accounts` 数组，单卡刷新
 只替换其中一项再整体 `render()`；`_loading` 标记让该卡渲染成骨架。渲染一律走
 `esc()` 转义。部门筛选在前端完成，最后选择写入 `localStorage.selectedDepartment`；
-新增账号默认带入当前部门，“全部”使用前端 sentinel，不写入数据库。
+新增账号默认带入当前部门，“全部”使用前端 sentinel，不写入数据库。新增和调整分组
+使用原生 `select`：空值代表“未分组”，已有部门动态生成，选择“新建部门…”后才显示
+自由文本输入框；不要改回浏览器表现不一致的 `datalist`。
 
 ## 必须知道的坑
 

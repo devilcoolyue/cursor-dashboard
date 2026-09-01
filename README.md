@@ -71,8 +71,9 @@ cursor.com 建立几十个连接。
 
 ## 添加账号
 
-面板点「+ 添加账号」，填写姓名、所属部门并粘贴 cookie，保存前服务端会先验活。
-所属部门支持直接输入新名称，也会提示已有部门，避免重复创建近似分组。
+面板点「+ 添加账号」，填写姓名并粘贴 cookie，保存前服务端会先验活。所属部门选填：
+可以从下拉框选择已有部门，也可以选择“新建部门…”后手动输入名称；不选择则归入
+“未分组”。
 
 cookie 取法：浏览器登录 cursor.com → F12 → Application → Cookies →
 `https://cursor.com` → 找到 `WorkosCursorSessionToken` → 复制 Value。
