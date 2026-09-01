@@ -24,6 +24,11 @@
   .bar-top { display: flex; gap: 10px; margin: 20px 0 12px; align-items: center; }
   .spacer { flex: 1; }
   .stamp { color: var(--dimmer); font-size: 12px; }
+  .load-state { display: flex; align-items: center; gap: 8px; width: 168px; }
+  .load-state[hidden] { display: none; }
+  .load-count { color: var(--dim); font-size: 11px; white-space: nowrap; }
+  .load-track { flex: 1; height: 4px; border-radius: 2px; background: #23272f; overflow: hidden; }
+  .load-fill { height: 100%; width: 0; background: var(--accent); transition: width .18s ease; }
 
   .department-nav {
     display: flex; align-items: flex-end; gap: 14px; margin: 0 0 24px;
@@ -80,16 +85,16 @@
 
   /* ---------- 卡片 ---------- */
   .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 18px 14px; position: relative; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 18px 14px; position: relative; min-height: 320px; }
   .card.dead { border-color: #4a2b2b; }
 
-  .card-head { padding-right: 124px; min-height: 40px; }
-  .name-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .card-head { min-height: 40px; }
+  .name-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-right: 124px; }
   .label { font-size: 15px; font-weight: 600; }
-  .identity-meta { display: flex; align-items: center; gap: 7px; margin-top: 2px; min-width: 0; }
+  .identity-meta { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 4px 8px; margin-top: 2px; min-width: 0; }
   .email {
-    color: var(--dim); font-size: 12px; min-width: 0;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    color: var(--dim); font-size: 12px; min-width: 0; flex: 1 1 150px;
+    overflow-wrap: anywhere;
   }
   .department-mark {
     color: var(--dim); font-size: 10.5px; line-height: 1.45; border-left: 2px solid var(--accent);
@@ -141,9 +146,17 @@
   dialog {
     background: var(--card); color: var(--fg); border: 1px solid var(--line);
     border-radius: 14px; padding: 24px; width: min(460px, calc(100vw - 40px));
+    position: relative;
   }
   dialog::backdrop { background: rgba(0,0,0,.6); }
-  dialog h2 { margin: 0 0 18px; font-size: 16px; }
+  dialog h2 { margin: 0 0 18px; padding-right: 30px; font-size: 16px; }
+  .dialog-close {
+    position: absolute; top: 12px; right: 12px; width: 30px; height: 30px; padding: 0;
+    display: grid; place-items: center; background: transparent; border-color: transparent;
+    color: var(--dim);
+  }
+  .dialog-close:hover:not(:disabled) { color: var(--fg); }
+  .dialog-close svg { width: 16px; height: 16px; }
   dialog p { color: var(--dim); font-size: 13px; margin: 0 0 16px; line-height: 1.7; }
   label { display: block; font-size: 12px; color: var(--dim); margin: 0 0 6px; }
   .optional { color: var(--dimmer); margin-left: 4px; }
@@ -169,11 +182,13 @@
   @media (max-width: 620px) {
     .wrap { padding: 22px 14px 48px; }
     .bar-top { flex-wrap: wrap; }
-    .bar-top .stamp { width: 100%; order: 4; }
+    .bar-top .load-state { width: 100%; order: 4; }
+    .bar-top .stamp { width: 100%; order: 5; }
     .department-nav { gap: 6px; }
     .grid { grid-template-columns: minmax(0, 1fr); }
     .card { padding-left: 15px; padding-right: 15px; }
-    .card-head { padding-right: 0; padding-top: 30px; }
+    .card-head { padding-top: 30px; }
+    .name-line { padding-right: 0; }
     .acts { opacity: 1; }
     .row { flex-wrap: wrap; }
     .row .status { width: 100%; }
@@ -191,6 +206,10 @@
     <button class="primary" id="add">+ 添加账号</button>
     <button id="refresh">刷新全部</button>
     <span class="spacer"></span>
+    <div class="load-state" id="load-state" aria-live="polite" hidden>
+      <span class="load-count" id="load-count"></span>
+      <div class="load-track"><div class="load-fill" id="load-fill"></div></div>
+    </div>
     <span class="stamp" id="stamp"></span>
   </div>
 
@@ -203,6 +222,10 @@
 </div>
 
 <dialog id="dlg">
+  <button class="dialog-close" data-close-dialog="dlg" aria-label="关闭弹窗" title="关闭">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+      stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+  </button>
   <h2 id="d-title">添加账号</h2>
   <div class="f">
     <label for="d-label">姓名</label>
@@ -232,6 +255,10 @@
 </dialog>
 
 <dialog id="department-dlg">
+  <button class="dialog-close" data-close-dialog="department-dlg" aria-label="关闭弹窗" title="关闭">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+      stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+  </button>
   <h2>调整分组</h2>
   <p id="department-account"></p>
   <div class="f">
@@ -249,6 +276,10 @@
 </dialog>
 
 <dialog id="auth">
+  <button class="dialog-close" data-close-dialog="auth" aria-label="关闭弹窗" title="关闭">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+      stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+  </button>
   <h2>面板口令</h2>
   <p>这个面板启用了口令保护，输入后会记在本浏览器里。</p>
   <div class="f"><input type="password" id="a-token" placeholder="PANEL_TOKEN"></div>
@@ -270,7 +301,11 @@ const ALL_DEPARTMENTS = '__all_departments__';
 const NEW_DEPARTMENT = '__new_department__';
 const storedDepartment = localStorage.getItem('selectedDepartment');
 let selectedDepartment = storedDepartment === null ? ALL_DEPARTMENTS : storedDepartment;
-let accounts = [];   // 最近一次拿到的完整数据，单卡刷新时只替换其中一项
+let accounts = [];   // 当前部门的卡片，按索引顺序逐张替换加载结果
+let departmentSummary = [];
+let totalAccountCount = 0;
+let loadGeneration = 0;
+let loadController = null;
 
 const money = (n) => '$' + Number(n || 0).toFixed(2);
 const day = (iso) => iso ? iso.slice(0, 10) + ' ' + iso.slice(11, 16) : '—';
@@ -316,10 +351,19 @@ function actions(a) {
   </div>`;
 }
 
-function skeleton() {
+function skeleton(account = null) {
+  const head = account && account.id
+    ? `<div class="card-head">
+        <div class="name-line"><span class="label">${esc(account.label)}</span></div>
+        <div class="identity-meta">
+          <span class="department-mark">${esc(departmentName(account.department))}</span>
+          <span class="email">${esc(account.email)}</span>
+        </div>
+      </div>`
+    : `<div class="skel skel-line" style="width:38%;height:14px"></div>
+       <div class="skel skel-line" style="width:58%;margin-bottom:22px"></div>`;
   return `<div class="card">
-    <div class="skel skel-line" style="width:38%;height:14px"></div>
-    <div class="skel skel-line" style="width:58%;margin-bottom:22px"></div>
+    ${head}
     <div class="skel skel-line" style="width:100%"></div>
     <div class="skel skel-line" style="width:100%"></div>
     <div class="skel skel-line" style="width:100%;margin-bottom:22px"></div>
@@ -330,7 +374,7 @@ function skeleton() {
 }
 
 function card(a) {
-  if (a._loading) return skeleton();
+  if (a._loading) return skeleton(a);
 
   if (!a.ok) {
     return `<div class="card dead">${actions(a)}
@@ -379,26 +423,17 @@ function card(a) {
 const departmentName = (department) => department || '未分组';
 
 function departmentStats() {
-  const counts = new Map();
-  accounts.forEach((account) => {
-    const department = account.department || '';
-    counts.set(department, (counts.get(department) || 0) + 1);
-  });
-  return [...counts.entries()].sort(([a], [b]) => {
-    if (!a) return 1;
-    if (!b) return -1;
-    return a.localeCompare(b, 'zh-CN');
-  });
+  return departmentSummary.map((item) => [item.department || '', item.count])
+    .sort(([a], [b]) => {
+      if (!a) return 1;
+      if (!b) return -1;
+      return a.localeCompare(b, 'zh-CN');
+    });
 }
 
 function renderDepartmentTabs() {
   const stats = departmentStats();
-  const available = new Set(stats.map(([department]) => department));
-  if (selectedDepartment !== ALL_DEPARTMENTS && !available.has(selectedDepartment)) {
-    selectedDepartment = ALL_DEPARTMENTS;
-    localStorage.setItem('selectedDepartment', selectedDepartment);
-  }
-  const tabs = [[ALL_DEPARTMENTS, '全部', accounts.length],
+  const tabs = [[ALL_DEPARTMENTS, '全部', totalAccountCount],
     ...stats.map(([department, count]) => [department, departmentName(department), count])];
   $('#department-tabs').innerHTML = tabs.map(([department, name, count]) => `
     <button class="department-tab" type="button" role="tab"
@@ -406,6 +441,7 @@ function renderDepartmentTabs() {
       aria-selected="${department === selectedDepartment}">
       ${esc(name)}<span class="department-count">${count}</span>
     </button>`).join('');
+  $('#refresh').textContent = selectedDepartment === ALL_DEPARTMENTS ? '刷新全部' : '刷新当前';
 }
 
 function populateDepartmentSelect(select, newInput, current = '') {
@@ -437,27 +473,32 @@ function readDepartment(select, newInput) {
 function render() {
   renderDepartmentTabs();
   if (!accounts.length) {
-    view.innerHTML = `<div class="empty"><p>还没有账号。</p>
+    const message = totalAccountCount
+      ? `${departmentName(selectedDepartment)}暂无账号。`
+      : '还没有账号。';
+    view.innerHTML = `<div class="empty"><p>${esc(message)}</p>
       <button class="primary" onclick="document.getElementById('add').click()">+ 添加账号</button></div>`;
     return;
   }
-  const visible = selectedDepartment === ALL_DEPARTMENTS
-    ? accounts
-    : accounts.filter((account) => (account.department || '') === selectedDepartment);
-  if (!visible.length) {
-    view.innerHTML = `<div class="empty"><p>${esc(departmentName(selectedDepartment))}暂无账号。</p>
-      <button data-show-all>查看全部</button></div>`;
-    return;
-  }
-  view.innerHTML = `<div class="grid">${visible.map(card).join('')}</div>`;
+  view.innerHTML = `<div class="grid">${accounts.map(card).join('')}</div>`;
 }
 
 function showSkeletons(n) {
-  view.innerHTML = `<div class="grid">${Array.from({ length: Math.max(1, n) }, skeleton).join('')}</div>`;
+  view.innerHTML = `<div class="grid">${Array.from(
+    { length: Math.max(1, n) }, () => skeleton()
+  ).join('')}</div>`;
+}
+
+function updateProgress(done, total) {
+  const state = $('#load-state');
+  state.hidden = total === 0 || done >= total;
+  $('#load-count').textContent = `已加载 ${done} / ${total}`;
+  $('#load-fill').style.width = total ? `${done / total * 100}%` : '0%';
 }
 
 function stamp() {
-  const age = accounts.length ? Math.max(...accounts.map(a => a.age || 0)) : 0;
+  const loaded = accounts.filter((account) => !account._loading);
+  const age = loaded.length ? Math.max(...loaded.map(a => a.age || 0)) : 0;
   $('#stamp').textContent = age >= 1
     ? `数据 ${Math.round(age)} 秒前 · 点刷新强制回源`
     : '更新于 ' + new Date().toLocaleTimeString('zh-CN');
@@ -465,21 +506,100 @@ function stamp() {
 
 // ---------- 拉数据 ----------
 async function load(force = false) {
+  const generation = ++loadGeneration;
+  if (loadController) loadController.abort();
+  loadController = new AbortController();
+  const { signal } = loadController;
   const btn = $('#refresh');
   btn.disabled = true;
-  // 先整片换成骨架，数据齐了再一次性渲染，避免半截内容闪现
-  showSkeletons(accounts.length || Number(localStorage.getItem('lastCount') || 1));
+  $('#stamp').textContent = '';
+  updateProgress(0, 0);
+  const lastCountKey = `lastCount:${selectedDepartment}`;
+  showSkeletons(accounts.length || Number(localStorage.getItem(lastCountKey) || 1));
   try {
-    const r = await fetch('/api/accounts' + (force ? '?force=1' : ''), { headers: headers() });
-    if (r.status === 401) { $('#auth').showModal(); view.innerHTML = ''; return; }
-    accounts = (await r.json()).accounts;
-    localStorage.setItem('lastCount', accounts.length);
+    let indexData = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const params = new URLSearchParams();
+      if (selectedDepartment !== ALL_DEPARTMENTS) {
+        params.set('department', selectedDepartment);
+      }
+      const suffix = params.size ? '?' + params.toString() : '';
+      const r = await fetch('/api/account-index' + suffix, { headers: headers(), signal });
+      if (r.status === 401) {
+        if (!$('#auth').open) $('#auth').showModal();
+        view.innerHTML = '';
+        return;
+      }
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || '读取账号索引失败');
+      departmentSummary = data.departments || [];
+      totalAccountCount = data.total || 0;
+      const available = new Set(departmentSummary.map((item) => item.department || ''));
+      if (selectedDepartment !== ALL_DEPARTMENTS && !available.has(selectedDepartment)) {
+        selectedDepartment = ALL_DEPARTMENTS;
+        localStorage.setItem('selectedDepartment', selectedDepartment);
+        continue;
+      }
+      indexData = data;
+      break;
+    }
+    if (!indexData || generation !== loadGeneration) return;
+
+    accounts = indexData.accounts.map((account) => ({ ...account, _loading: true }));
+    localStorage.setItem(`lastCount:${selectedDepartment}`, accounts.length);
     render();
-    stamp();
+    updateProgress(0, accounts.length);
+    if (!accounts.length) {
+      stamp();
+      return;
+    }
+
+    let next = 0;
+    let done = 0;
+    const worker = async () => {
+      while (next < accounts.length && generation === loadGeneration) {
+        const index = next++;
+        const account = accounts[index];
+        const suffix = force ? '?force=1' : '';
+        try {
+          const r = await fetch(
+            `/api/accounts/${encodeURIComponent(account.id)}${suffix}`,
+            { headers: headers(), signal }
+          );
+          if (r.status === 401) {
+            if (!$('#auth').open) $('#auth').showModal();
+            view.innerHTML = '';
+            loadController.abort();
+            return;
+          }
+          const data = await r.json();
+          if (!r.ok) throw new Error(data.detail || '额度读取失败');
+          if (generation === loadGeneration) accounts[index] = data.account;
+        } catch (e) {
+          if (e.name === 'AbortError') return;
+          if (generation === loadGeneration) {
+            accounts[index] = {
+              ...account, _loading: false, ok: false, expired: false, error: e.message
+            };
+          }
+        }
+        if (generation === loadGeneration) {
+          done += 1;
+          render();
+          updateProgress(done, accounts.length);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, accounts.length) }, worker));
+    if (generation === loadGeneration) stamp();
   } catch (e) {
+    if (e.name === 'AbortError') return;
     view.innerHTML = `<div class="empty">读取失败：${esc(e.message)}</div>`;
   } finally {
-    btn.disabled = false;
+    if (generation === loadGeneration) {
+      btn.disabled = false;
+      updateProgress(accounts.length, accounts.length);
+    }
   }
 }
 
@@ -512,10 +632,10 @@ view.addEventListener('click', async (e) => {
   }
   if (del !== undefined) {
     if (!confirm(`删除账号 ${del}？只从服务端账号库移除，不影响 Cursor 账号本身。`)) return;
-    await fetch('/api/accounts/' + encodeURIComponent(del), { method: 'DELETE', headers: headers() });
-    accounts = accounts.filter(a => a.id !== del);
-    localStorage.setItem('lastCount', accounts.length);
-    render();
+    const r = await fetch('/api/accounts/' + encodeURIComponent(del), {
+      method: 'DELETE', headers: headers()
+    });
+    if (r.ok) load();
   } else if (one !== undefined) {
     refreshOne(one);
   } else if (deptId !== undefined) {
@@ -526,9 +646,10 @@ view.addEventListener('click', async (e) => {
 });
 
 function selectDepartment(department) {
+  if (department === selectedDepartment) return;
   selectedDepartment = department;
   localStorage.setItem('selectedDepartment', department);
-  render();
+  load();
 }
 
 $('#department-tabs').addEventListener('click', (e) => {
@@ -630,7 +751,7 @@ $('#department-save').onclick = async () => {
     selectedDepartment = d.department || '';
     localStorage.setItem('selectedDepartment', selectedDepartment);
     departmentDlg.close();
-    render();
+    load();
   } catch (e) {
     status.className = 'status bad';
     status.textContent = e.message;
@@ -642,10 +763,14 @@ $('#department-cancel').onclick = () => departmentDlg.close();
 $('#department-input').onchange = () =>
   toggleNewDepartment($('#department-input'), $('#department-new'));
 
+document.querySelectorAll('[data-close-dialog]').forEach((button) => {
+  button.onclick = () => document.getElementById(button.dataset.closeDialog).close();
+});
+
 // ---------- 口令 ----------
 $('#a-ok').onclick = async () => {
   token = $('#a-token').value.trim();
-  const r = await fetch('/api/accounts', { headers: headers() });
+  const r = await fetch('/api/account-index', { headers: headers() });
   if (r.status === 401) {
     $('#a-status').className = 'status bad';
     $('#a-status').textContent = '口令不对';

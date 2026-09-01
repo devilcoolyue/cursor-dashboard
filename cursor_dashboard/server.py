@@ -20,7 +20,7 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 import requests
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
@@ -143,6 +143,36 @@ class DepartmentReq(BaseModel):
     department: str = Field(default="", max_length=64)
 
 
+def accounts_for_department(accounts: list[dict], department: str | None) -> list[dict]:
+    if department is None:
+        return accounts
+    wanted = department.strip()
+    return [acc for acc in accounts if (acc.get("department") or "") == wanted]
+
+
+def account_index(accounts: list[dict]) -> list[dict]:
+    return [
+        {
+            "id": account_id(acc),
+            "label": acc.get("label") or "unnamed",
+            "email": acc.get("email"),
+            "department": acc.get("department") or "",
+        }
+        for acc in accounts
+    ]
+
+
+def department_counts(accounts: list[dict]) -> list[dict]:
+    counts: dict[str, int] = {}
+    for acc in accounts:
+        department = acc.get("department") or ""
+        counts[department] = counts.get(department, 0) + 1
+    return [
+        {"department": department, "count": count}
+        for department, count in counts.items()
+    ]
+
+
 @app.get("/")
 def index():
     return FileResponse(WEB_INDEX)
@@ -154,10 +184,27 @@ def api_config():
     return {"needs_token": bool(PANEL_TOKEN), "cache_ttl": CACHE_TTL}
 
 
+@app.get("/api/account-index", dependencies=[Depends(require_token)])
+def api_account_index(
+    department: str | None = Query(default=None, max_length=64),
+):
+    """快速返回卡片索引和部门人数，不访问 cursor.com，也不回传 cookie。"""
+    all_accounts = load_accounts()
+    selected = accounts_for_department(all_accounts, department)
+    return {
+        "accounts": account_index(selected),
+        "departments": department_counts(all_accounts),
+        "total": len(all_accounts),
+    }
+
+
 @app.get("/api/accounts", dependencies=[Depends(require_token)])
-async def api_accounts(force: bool = False):
+async def api_accounts(
+    force: bool = False,
+    department: str | None = Query(default=None, max_length=64),
+):
     """force=1 跳过缓存强制回源；页面的「刷新」按钮走这个。"""
-    accounts = load_accounts()
+    accounts = accounts_for_department(load_accounts(), department)
     if not accounts:
         return {"accounts": []}
     results = await asyncio.gather(*(probe(a, force) for a in accounts))
@@ -199,6 +246,15 @@ async def api_refresh_one(account_key: str):
     if not acc:
         raise HTTPException(404, "账号不存在")
     return {"account": await probe(acc, force=True)}
+
+
+@app.get("/api/accounts/{account_key}", dependencies=[Depends(require_token)])
+async def api_account_one(account_key: str, force: bool = False):
+    """渐进加载单张卡片；force=1 用于刷新当前部门。"""
+    acc = next((a for a in load_accounts() if account_id(a) == account_key), None)
+    if not acc:
+        raise HTTPException(404, "账号不存在")
+    return {"account": await probe(acc, force=force)}
 
 
 @app.patch(
