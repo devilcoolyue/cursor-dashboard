@@ -24,6 +24,11 @@
   .bar-top { display: flex; gap: 10px; margin: 20px 0 12px; align-items: center; }
   .spacer { flex: 1; }
   .stamp { color: var(--dimmer); font-size: 12px; }
+  .sort-control { display: flex; align-items: center; gap: 7px; flex: none; }
+  .sort-control label { margin: 0; color: var(--dimmer); white-space: nowrap; }
+  #sort-order {
+    width: 184px; padding: 7px 30px 7px 10px; background: var(--card-hi);
+  }
   .load-state { display: flex; align-items: center; gap: 8px; width: 168px; }
   .load-state[hidden] { display: none; }
   .load-count { color: var(--dim); font-size: 11px; white-space: nowrap; }
@@ -182,6 +187,9 @@
   @media (max-width: 620px) {
     .wrap { padding: 22px 14px 48px; }
     .bar-top { flex-wrap: wrap; }
+    .bar-top .spacer { display: none; }
+    .sort-control { margin-left: auto; }
+    #sort-order { width: 168px; }
     .bar-top .load-state { width: 100%; order: 4; }
     .bar-top .stamp { width: 100%; order: 5; }
     .department-nav { gap: 6px; }
@@ -206,6 +214,14 @@
     <button class="primary" id="add">+ 添加账号</button>
     <button id="refresh">刷新全部</button>
     <span class="spacer"></span>
+    <div class="sort-control">
+      <label for="sort-order">排序</label>
+      <select id="sort-order">
+        <option value="added">添加顺序</option>
+        <option value="remaining-asc">综合剩余：低到高</option>
+        <option value="remaining-desc">综合剩余：高到低</option>
+      </select>
+    </div>
     <div class="load-state" id="load-state" aria-live="polite" hidden>
       <span class="load-count" id="load-count"></span>
       <div class="load-track"><div class="load-fill" id="load-fill"></div></div>
@@ -299,8 +315,14 @@ const jsonHeaders = () => ({ 'Content-Type': 'application/json', ...headers() })
 
 const ALL_DEPARTMENTS = '__all_departments__';
 const NEW_DEPARTMENT = '__new_department__';
+const SORT_ADDED = 'added';
+const SORT_REMAINING_ASC = 'remaining-asc';
+const SORT_REMAINING_DESC = 'remaining-desc';
+const SORT_MODES = new Set([SORT_ADDED, SORT_REMAINING_ASC, SORT_REMAINING_DESC]);
 const storedDepartment = localStorage.getItem('selectedDepartment');
 let selectedDepartment = storedDepartment === null ? ALL_DEPARTMENTS : storedDepartment;
+const storedSortMode = localStorage.getItem('accountSort');
+let sortMode = SORT_MODES.has(storedSortMode) ? storedSortMode : SORT_ADDED;
 let accounts = [];   // 当前部门的卡片，按索引顺序逐张替换加载结果
 let departmentSummary = [];
 let totalAccountCount = 0;
@@ -470,6 +492,32 @@ function readDepartment(select, newInput) {
   return select.value === NEW_DEPARTMENT ? newInput.value.trim() : select.value;
 }
 
+const accountOrder = (account) => Number.isFinite(account._order)
+  ? account._order : Number.MAX_SAFE_INTEGER;
+
+function overallRemaining(account) {
+  if (account._loading || !account.ok) return null;
+  const remaining = account.data?.quota?.overall?.remaining_pct;
+  return typeof remaining === 'number' && Number.isFinite(remaining) ? remaining : null;
+}
+
+function sortedAccounts() {
+  return [...accounts].sort((a, b) => {
+    if (sortMode === SORT_ADDED) return accountOrder(a) - accountOrder(b);
+    const aRemaining = overallRemaining(a);
+    const bRemaining = overallRemaining(b);
+    if (aRemaining === null && bRemaining === null) {
+      const loadingOrder = Number(a._loading) - Number(b._loading);
+      return loadingOrder || accountOrder(a) - accountOrder(b);
+    }
+    if (aRemaining === null) return 1;
+    if (bRemaining === null) return -1;
+    const delta = sortMode === SORT_REMAINING_ASC
+      ? aRemaining - bRemaining : bRemaining - aRemaining;
+    return delta || accountOrder(a) - accountOrder(b);
+  });
+}
+
 function render() {
   renderDepartmentTabs();
   if (!accounts.length) {
@@ -480,7 +528,7 @@ function render() {
       <button class="primary" onclick="document.getElementById('add').click()">+ 添加账号</button></div>`;
     return;
   }
-  view.innerHTML = `<div class="grid">${accounts.map(card).join('')}</div>`;
+  view.innerHTML = `<div class="grid">${sortedAccounts().map(card).join('')}</div>`;
 }
 
 function showSkeletons(n) {
@@ -545,7 +593,9 @@ async function load(force = false) {
     }
     if (!indexData || generation !== loadGeneration) return;
 
-    accounts = indexData.accounts.map((account) => ({ ...account, _loading: true }));
+    accounts = indexData.accounts.map((account, order) => ({
+      ...account, _loading: true, _order: order
+    }));
     localStorage.setItem(`lastCount:${selectedDepartment}`, accounts.length);
     render();
     updateProgress(0, accounts.length);
@@ -574,7 +624,9 @@ async function load(force = false) {
           }
           const data = await r.json();
           if (!r.ok) throw new Error(data.detail || '额度读取失败');
-          if (generation === loadGeneration) accounts[index] = data.account;
+          if (generation === loadGeneration) {
+            accounts[index] = { ...data.account, _order: account._order };
+          }
         } catch (e) {
           if (e.name === 'AbortError') return;
           if (generation === loadGeneration) {
@@ -606,6 +658,7 @@ async function load(force = false) {
 async function refreshOne(id) {
   const i = accounts.findIndex(a => a.id === id);
   if (i < 0) return;
+  const order = accounts[i]._order;
   accounts[i] = { ...accounts[i], _loading: true };
   render();
   try {
@@ -614,7 +667,7 @@ async function refreshOne(id) {
     if (r.status === 401) { $('#auth').showModal(); return; }
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || '刷新失败');
-    accounts[i] = d.account;
+    accounts[i] = { ...d.account, _order: order };
   } catch (e) {
     accounts[i] = { ...accounts[i], _loading: false, ok: false, expired: false, error: e.message };
   }
@@ -655,6 +708,13 @@ function selectDepartment(department) {
 $('#department-tabs').addEventListener('click', (e) => {
   const tab = e.target.closest('[data-department-filter]');
   if (tab) selectDepartment(tab.dataset.departmentFilter);
+});
+
+$('#sort-order').value = sortMode;
+$('#sort-order').addEventListener('change', (e) => {
+  sortMode = SORT_MODES.has(e.target.value) ? e.target.value : SORT_ADDED;
+  localStorage.setItem('accountSort', sortMode);
+  render();
 });
 
 // ---------- 添加 / 重新授权 ----------

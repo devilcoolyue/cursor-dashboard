@@ -86,7 +86,9 @@ lifespan 里装的单个 `ThreadPoolExecutor`。**不要改成嵌套线程池**�
 只替换其中一项再整体 `render()`；`_loading` 标记让该卡渲染成带姓名/部门/邮箱的骨架。
 首次和整组刷新先取安全索引，再用 4 个浏览器 worker 请求单卡，完成一张渲染一张；
 `loadGeneration` + `AbortController` 防止切组后旧响应污染新视图。渲染一律走 `esc()`
-转义。最后选择写入 `localStorage.selectedDepartment`，服务端按该部门过滤账号；
+转义。每张卡的 `_order` 保留安全索引中的添加顺序；排序只对渲染副本操作，不能原地
+改变 worker 正在使用的 `accounts` 索引。部门和排序选择分别写入
+`localStorage.selectedDepartment`、`localStorage.accountSort`，服务端按部门过滤账号；
 新增账号默认带入当前部门，“全部”使用前端 sentinel，不写入数据库。新增和调整分组
 使用原生 `select`：空值代表“未分组”，已有部门动态生成，选择“新建部门…”后才显示
 自由文本输入框；不要改回浏览器表现不一致的 `datalist`。
