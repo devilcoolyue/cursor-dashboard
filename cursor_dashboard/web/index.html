@@ -131,7 +131,8 @@
 
   .meta { border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; }
   .meta > div { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--dim); }
-  .meta b { color: var(--fg); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .meta > div > span:first-child { flex: none; }
+  .meta b { color: var(--fg); font-weight: 500; font-variant-numeric: tabular-nums; min-width: 0; text-align: right; }
   .meta .tip { border-bottom: 1px dotted var(--dimmer); cursor: help; }
   .notice { margin-top: 8px; font-size: 12px; color: var(--warn); }
   .err { color: var(--bad); font-size: 13px; margin: 14px 0 12px; }
@@ -200,6 +201,9 @@
     .acts { opacity: 1; }
     .row { flex-wrap: wrap; }
     .row .status { width: 100%; }
+  }
+  @media (max-width: 360px) {
+    .meta > div { gap: 6px; font-size: 11px; }
   }
 </style>
 </head>
@@ -330,8 +334,36 @@ let loadGeneration = 0;
 let loadController = null;
 
 const money = (n) => '$' + Number(n || 0).toFixed(2);
-const day = (iso) => iso ? iso.slice(0, 10) + ' ' + iso.slice(11, 16) : '—';
-const date = (iso) => iso ? iso.slice(0, 10) : '—';
+const pad2 = (n) => String(n).padStart(2, '0');
+const parseDate = (iso) => {
+  const value = iso ? new Date(iso) : null;
+  return value && !Number.isNaN(value.getTime()) ? value : null;
+};
+const localDate = (iso) => {
+  const value = parseDate(iso);
+  return value
+    ? `${value.getFullYear()}-${pad2(value.getMonth() + 1)}-${pad2(value.getDate())}`
+    : '—';
+};
+const localDateTime = (iso) => {
+  const value = parseDate(iso);
+  return value
+    ? `${localDate(iso)} ${pad2(value.getHours())}:${pad2(value.getMinutes())}`
+    : '—';
+};
+
+function remainingUntil(iso, now = Date.now()) {
+  const reset = parseDate(iso);
+  if (!reset) return '';
+  const remainingMs = reset.getTime() - now;
+  if (remainingMs <= 0) return '已到刷新时间';
+  const hours = Math.floor(remainingMs / 3600000);
+  if (hours < 1) return '剩不足1小时';
+  if (hours < 24) return `剩${hours}小时`;
+  if (hours < 48) return `剩1天${hours - 24}小时`;
+  return `剩${Math.floor(hours / 24)}天`;
+}
+
 const color = (r) => r <= 10 ? 'var(--bad)' : r <= 30 ? 'var(--warn)' : 'var(--ok)';
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -413,6 +445,7 @@ function card(a) {
 
   const d = a.data, q = d.quota, c = d.cycle, p = d.plan, s = d.spend_usd, od = d.on_demand;
   const grok = d.grok_weekly;
+  const cycleRemaining = remainingUntil(c.reset_at);
   return `<div class="card">${actions(a)}
     <div class="card-head">
       <div class="name-line">
@@ -430,12 +463,12 @@ function card(a) {
       ${bar('综合', q.overall)}
     </div>
     <div class="meta">
-      <div><span>额度刷新</span><b>${day(c.reset_at)}${c.days_left !== null ? ` · 剩 ${c.days_left} 天` : ''}</b></div>
+      <div><span>额度刷新</span><b>${localDateTime(c.reset_at)}${cycleRemaining ? ` · ${cycleRemaining}` : ''}</b></div>
       <div><span>本周期消费</span><b>${money(s.total)} / ${money(p.included_usd)}</b></div>
       <div><span>按量付费</span><b>${od.enabled ? '开启 · 已用 ' + money(od.used_usd) : '关闭'}</b></div>
       ${grok ? `<div>
         <span class="tip left" data-tip="${esc(GROK_TIP)}">Grok Bot 周额度</span>
-        <b style="color:${color(grok.remaining_pct)}">剩 ${grok.remaining_pct.toFixed(1)}%<span style="color:var(--dimmer);font-weight:400"> · ${date(grok.reset_at)} 重置</span></b>
+        <b style="color:${color(grok.remaining_pct)}">剩 ${grok.remaining_pct.toFixed(1)}%<span style="color:var(--dimmer);font-weight:400"> · ${localDate(grok.reset_at)} 重置</span></b>
       </div>` : ''}
     </div>
     ${d.notice ? `<div class="notice">⚠ ${esc(d.notice)}</div>` : ''}
