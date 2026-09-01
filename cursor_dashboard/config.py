@@ -22,8 +22,13 @@ DATABASE_PATH = Path(
 PANEL_TOKEN = os.environ.get("PANEL_TOKEN", "").strip()
 
 # 取数全是网络等待，线程开大不占 CPU。默认线程池只有 min(32, cpu+4)，
-# 小机器上是 6~12，账号一多就排队，所以显式放大。
+# 小机器上是 6~12，所以保留较大的通用线程池；Cursor 出站连接另有限流。
 MAX_WORKERS = int(os.environ.get("MAX_WORKERS", "48"))
+
+# 账号多时不能把 N×5 个请求同时压向 cursor.com，连接洪峰会导致 Connection refused。
+REQUEST_CONCURRENCY = max(1, int(os.environ.get("REQUEST_CONCURRENCY", "10")))
+REQUEST_RETRIES = max(0, int(os.environ.get("REQUEST_RETRIES", "2")))
+RETRY_BASE_DELAY = max(0.0, float(os.environ.get("RETRY_BASE_DELAY", "0.25")))
 
 # 每次刷新都要打 cursor.com 5×N 次，容易触发限流；缓存内的结果直接复用。
 CACHE_TTL = int(os.environ.get("CACHE_TTL", "60"))

@@ -12,7 +12,7 @@ import time
 
 from .config import CACHE_TTL
 
-# ident -> {"at": 时间戳, "cookie": 当时用的 cookie, "result": {...}}
+# ident -> {"at": 时间戳, "cookie": 当时用的 cookie, "result": {...}, "ttl": 秒数}
 _cache: dict[str, dict] = {}
 _lock = threading.Lock()
 
@@ -31,7 +31,7 @@ def get(ident: str, cookie: str) -> dict | None:
     if not hit or hit["cookie"] != cookie:      # cookie 换了就作废
         return None
     age = time.time() - hit["at"]
-    if age > CACHE_TTL:
+    if age > hit.get("ttl", CACHE_TTL):
         return None
     return {**hit["result"], "age": round(age, 1)}
 
@@ -49,9 +49,14 @@ def since(ident: str, cookie: str, t0: float) -> dict | None:
     return {**hit["result"], "age": round(time.time() - hit["at"], 1)}
 
 
-def put(ident: str, cookie: str, result: dict) -> None:
+def put(ident: str, cookie: str, result: dict, ttl: int | None = None) -> None:
     with _lock:
-        _cache[ident] = {"at": time.time(), "cookie": cookie, "result": result}
+        _cache[ident] = {
+            "at": time.time(),
+            "cookie": cookie,
+            "result": result,
+            "ttl": CACHE_TTL if ttl is None else ttl,
+        }
 
 
 def drop(ident: str) -> None:

@@ -37,7 +37,9 @@ python3 -c "import re,pathlib;print(re.search(r'<script>(.*)</script>',pathlib.P
 
 环境变量集中在 `config.py`：`PANEL_TOKEN`（非空则 `/api/*` 要 `X-Panel-Token`）、
 `DATABASE_PATH`（SQLite 账号库）、`ACCOUNTS_PATH`（仅用于首次导入旧 JSON）、
-`MAX_WORKERS`（默认 48）、`CACHE_TTL`（默认 60 秒）。相对路径都基于启动时的工作目录。
+`MAX_WORKERS`（通用线程池，默认 48）、`REQUEST_CONCURRENCY`（Cursor 出站上限，默认
+10）、`REQUEST_RETRIES`（默认 2）、`RETRY_BASE_DELAY`（默认 0.25 秒）、`CACHE_TTL`
+（默认 60 秒）。相对路径都基于启动时的工作目录。
 
 ## 架构
 
@@ -59,13 +61,16 @@ cursor_dashboard/
 服务端 `probe()` 用 `asyncio.gather` 把 **N 账号 × 5 接口打平成一个任务集**，共用
 lifespan 里装的单个 `ThreadPoolExecutor`。**不要改成嵌套线程池**（每账号一个池、
 池内再并发）——线程数会乘起来。默认 executor 只有 `min(32, cpu+4)`，所以显式设了
-`MAX_WORKERS`。
+`MAX_WORKERS`。实际访问 cursor.com 前必须经过 `fetch_cursor()` 的全局 semaphore，
+并发上限由 `REQUEST_CONCURRENCY` 控制；不要删掉这个限制，27 个账号的 135 个突发
+请求会产生 `Connection refused`。
 
 缓存按账号 ident（`store.account_id`：email，回退 label）存，带 single-flight：
 - `cache.get` 看 TTL；`cache.since(ident, cookie, t0)` 不看 TTL，只看"是不是 t0
   之后写入的"。后者是为了让**并发强制刷新**复用先到者的结果——若只用前者，
   `force=1` 会绕过缓存检查，那把锁就把并发请求串成了排队，比不加锁更慢。
 - cookie 变更（`api_save`）和删号都会 `cache.drop`。
+- 非认证类错误只缓存 5 秒，正常结果和认证失效仍走 `CACHE_TTL`。
 
 接口：`GET /api/config`（不鉴权，页面据此决定要不要问口令）、
 `GET /api/accounts?force=1`、`POST /api/accounts`（新增/续期，同一入口）、
@@ -86,7 +91,8 @@ lifespan 里装的单个 `ThreadPoolExecutor`。**不要改成嵌套线程池**�
 auth/login/workos 的 3xx 判为 `AuthExpired`。**不要把它改回默认跟跳转。**
 
 **`fetch_one` 每次新建 `Session` 是刻意的**——`requests.Session` 跨线程共享不安全
-（响应会改写 cookie jar），而这 5 个请求本来就要并发发出。
+（响应会改写 cookie jar），而这 5 个请求本来就要并发发出。Session 用完必须关闭。
+连接错误、超时、429/5xx 可短退避重试；`AuthExpired` 和普通 4xx 不能重试。
 
 **额度百分比是官方给的**：`autoPercentUsed` / `apiPercentUsed` / `totalPercentUsed`
 直接来自 `period_usage`，代码只做 `100 - x`。**不要拿美元金额去算百分比**——

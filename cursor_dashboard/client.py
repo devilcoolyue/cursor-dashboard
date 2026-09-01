@@ -6,7 +6,12 @@
 
 from __future__ import annotations
 
+import random
+import time
+
 import requests
+
+from .config import REQUEST_RETRIES, RETRY_BASE_DELAY
 
 BASE = "https://cursor.com"
 COOKIE_NAME = "WorkosCursorSessionToken"
@@ -16,6 +21,7 @@ UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
 
 # 一个账号要打的 5 个接口。服务端按这个粒度并发，CLI 仍按顺序串行。
 ENDPOINTS = ("me", "plan_info", "usage_summary", "period_usage", "grok_status")
+RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
 
 class AuthExpired(RuntimeError):
@@ -65,5 +71,22 @@ class CursorClient:
 
 def fetch_one(cookie: str, label: str, name: str):
     """取单个接口。刻意每次新建 Session —— requests.Session 跨线程共享不安全，
-    而 5 个请求本来就要并发发出去。"""
-    return getattr(CursorClient(cookie, label), name)()
+    而 5 个请求本来就要并发发出去。连接类瞬时错误会短退避重试。"""
+    for attempt in range(REQUEST_RETRIES + 1):
+        client = CursorClient(cookie, label)
+        try:
+            return getattr(client, name)()
+        except AuthExpired:
+            raise
+        except requests.RequestException as exc:
+            status = exc.response.status_code if exc.response is not None else None
+            retryable = isinstance(exc, (requests.ConnectionError, requests.Timeout))
+            retryable = retryable or status in RETRYABLE_STATUS
+            if not retryable or attempt >= REQUEST_RETRIES:
+                raise
+            delay = RETRY_BASE_DELAY * (2 ** attempt)
+            time.sleep(delay + random.uniform(0, RETRY_BASE_DELAY))
+        finally:
+            client.s.close()
+
+    raise RuntimeError("unreachable")

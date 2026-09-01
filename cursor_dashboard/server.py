@@ -19,13 +19,21 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 
 import uvicorn
+import requests
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from . import cache
 from .client import ENDPOINTS, AuthExpired, fetch_one
-from .config import CACHE_TTL, DATABASE_PATH, MAX_WORKERS, PANEL_TOKEN, WEB_INDEX
+from .config import (
+    CACHE_TTL,
+    DATABASE_PATH,
+    MAX_WORKERS,
+    PANEL_TOKEN,
+    REQUEST_CONCURRENCY,
+    WEB_INDEX,
+)
 from .store import (
     AccountsError,
     account_id,
@@ -38,6 +46,17 @@ from .usage import assemble
 
 
 # ---------- 取数 ----------
+
+_request_slots: asyncio.Semaphore | None = None
+
+
+async def fetch_cursor(cookie: str, label: str, name: str):
+    """限制整个进程访问 cursor.com 的并发连接数。"""
+    if _request_slots is None:
+        return await asyncio.to_thread(fetch_one, cookie, label, name)
+    async with _request_slots:
+        return await asyncio.to_thread(fetch_one, cookie, label, name)
+
 
 async def probe(acc: dict, force: bool = False) -> dict:
     """拉一个账号的额度。5 个接口并发发出，绝不回传 cookie。"""
@@ -64,16 +83,24 @@ async def probe(acc: dict, force: bool = False) -> dict:
         }
         try:
             raw = await asyncio.gather(
-                *(asyncio.to_thread(fetch_one, cookie, label, name) for name in ENDPOINTS)
+                *(fetch_cursor(cookie, label, name) for name in ENDPOINTS)
             )
             data = assemble(label, *raw)
             result = {**base, "email": data.get("email"), "ok": True, "data": data}
         except AuthExpired as e:
             result = {**base, "ok": False, "expired": True, "error": str(e)}
+        except requests.Timeout:
+            result = {**base, "ok": False, "expired": False,
+                      "error": "连接 Cursor 超时，请稍后刷新重试"}
+        except requests.ConnectionError:
+            result = {**base, "ok": False, "expired": False,
+                      "error": "暂时无法连接 Cursor，请稍后刷新重试"}
         except Exception as e:
             result = {**base, "ok": False, "expired": False,
                       "error": f"{type(e).__name__}: {e}"}
-        cache.put(ident, cookie, result)
+        # 连接类错误只短缓存，既让并发访客复用结果，又能很快自动恢复。
+        result_ttl = None if result["ok"] or result.get("expired") else 5
+        cache.put(ident, cookie, result, ttl=result_ttl)
         return {**result, "age": 0.0}
 
 
@@ -81,10 +108,13 @@ async def probe(acc: dict, force: bool = False) -> dict:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    global _request_slots
     # N 账号 × 5 接口打平成一个任务集，共用这一个池。不要改成嵌套线程池——线程数会乘起来。
     pool = ThreadPoolExecutor(max_workers=MAX_WORKERS, thread_name_prefix="probe")
     asyncio.get_running_loop().set_default_executor(pool)
+    _request_slots = asyncio.Semaphore(REQUEST_CONCURRENCY)
     yield
+    _request_slots = None
     pool.shutdown(wait=False, cancel_futures=True)
 
 
@@ -143,7 +173,7 @@ async def api_save(req: SaveReq):
     label = req.label or ""
     try:
         raw = await asyncio.gather(
-            *(asyncio.to_thread(fetch_one, cookie, label, name) for name in ENDPOINTS)
+            *(fetch_cursor(cookie, label, name) for name in ENDPOINTS)
         )
         data = assemble(label, *raw)
     except AuthExpired:
@@ -208,7 +238,8 @@ def main():
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     print(f"面板: {url}   账号库: {DATABASE_PATH}   "
           f"口令: {'已启用' if PANEL_TOKEN else '未启用'}   "
-          f"线程池: {MAX_WORKERS}   缓存: {CACHE_TTL}s", flush=True)
+          f"线程池: {MAX_WORKERS}   Cursor 并发: {REQUEST_CONCURRENCY}   "
+          f"缓存: {CACHE_TTL}s", flush=True)
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 
 
