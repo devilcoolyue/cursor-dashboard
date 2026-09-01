@@ -1,0 +1,30 @@
+# 真实账号配置：内含 WorkosCursorSessionToken，等同登录态，绝不入库
+accounts.json*
+*.accounts.json*
+!accounts.example.json
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# 查询结果输出
+*.out.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.python-version
+
+# 环境 / 编辑器
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea/
+.vscode/

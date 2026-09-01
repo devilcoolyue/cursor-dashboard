@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cursor 额度面板</title>
+<style>
+  :root {
+    --bg: #0e1013; --card: #171a1f; --card-hi: #1d2128; --line: #272c34;
+    --fg: #e6e9ef; --dim: #8b93a1; --dimmer: #5e6674;
+    --accent: #5b9cff; --ok: #3fbf7f; --warn: #e8b339; --bad: #ef5f5f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 14px/1.55 -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 32px 24px 64px; }
+  header { display: flex; align-items: baseline; gap: 14px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0; letter-spacing: .2px; }
+  .sub { color: var(--dimmer); font-size: 12px; }
+  .bar-top { display: flex; gap: 10px; margin: 20px 0 26px; align-items: center; }
+  .spacer { flex: 1; }
+  .stamp { color: var(--dimmer); font-size: 12px; }
+
+  button {
+    font: inherit; color: var(--fg); background: var(--card-hi);
+    border: 1px solid var(--line); border-radius: 8px; padding: 7px 14px;
+    cursor: pointer; transition: background .12s, border-color .12s, color .12s;
+  }
+  button:hover:not(:disabled) { background: #242932; border-color: #39414d; }
+  button:disabled { opacity: .5; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #08131f; font-weight: 600; }
+  button.primary:hover:not(:disabled) { background: #74acff; border-color: #74acff; }
+
+  /* ---------- 悬停提示 ---------- */
+  .tip { position: relative; }
+  .tip::after {
+    content: attr(data-tip);
+    position: absolute; left: 50%; transform: translateX(-50%);
+    bottom: calc(100% + 8px);
+    background: #0b0d10; color: var(--fg); border: 1px solid var(--line);
+    padding: 7px 10px; border-radius: 8px;
+    font-size: 11.5px; font-weight: 400; line-height: 1.6; text-align: left;
+    width: max-content; max-width: 230px;
+    opacity: 0; visibility: hidden;
+    transition: opacity .14s, visibility 0s .14s;
+    pointer-events: none; z-index: 20;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .5);
+  }
+  .tip:hover::after {
+    opacity: 1; visibility: visible;
+    transition: opacity .14s .25s, visibility 0s .25s;
+  }
+  /* 卡片右上角的按钮把提示放到下方，免得顶出卡片外 */
+  .tip.below::after { bottom: auto; top: calc(100% + 8px); }
+  .tip.right::after { left: auto; right: 0; transform: none; }
+  .tip.left::after { left: 0; transform: none; }
+
+  /* ---------- 卡片 ---------- */
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 18px 14px; position: relative; }
+  .card.dead { border-color: #4a2b2b; }
+
+  .card-head { padding-right: 100px; min-height: 34px; }
+  .name-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .label { font-size: 15px; font-weight: 600; }
+  .email { color: var(--dim); font-size: 12px; word-break: break-all; margin-top: 1px; }
+  .plan {
+    font-size: 11px; color: var(--dim); border: 1px solid var(--line);
+    border-radius: 20px; padding: 2px 9px; white-space: nowrap; line-height: 1.5;
+  }
+
+  .acts { position: absolute; top: 13px; right: 12px; display: flex; gap: 2px; opacity: 0; transition: opacity .12s; }
+  .card:hover .acts, .card:focus-within .acts { opacity: 1; }
+  .icon-btn {
+    width: 28px; height: 28px; padding: 0;
+    display: grid; place-items: center;
+    background: transparent; border: 1px solid transparent; border-radius: 7px;
+    color: var(--dim);
+  }
+  .icon-btn:hover:not(:disabled) { background: var(--card-hi); border-color: var(--line); color: var(--fg); }
+  .icon-btn.danger:hover:not(:disabled) { color: var(--bad); border-color: #4a2b2b; }
+  .icon-btn svg { width: 15px; height: 15px; display: block; }
+
+  .quota { margin: 16px 0 12px; display: flex; flex-direction: column; gap: 9px; }
+  .q-row { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: baseline; }
+  .q-name { color: var(--dim); font-size: 12px; }
+  .q-val { font-variant-numeric: tabular-nums; font-size: 12px; font-weight: 600; }
+  .track { grid-column: 1 / -1; height: 5px; border-radius: 3px; background: #23272f; overflow: hidden; }
+  .fill { height: 100%; border-radius: 3px; transition: width .35s ease; }
+
+  .meta { border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+  .meta > div { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--dim); }
+  .meta b { color: var(--fg); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .meta .tip { border-bottom: 1px dotted var(--dimmer); cursor: help; }
+  .notice { margin-top: 8px; font-size: 12px; color: var(--warn); }
+  .err { color: var(--bad); font-size: 13px; margin: 14px 0 12px; }
+
+  /* ---------- 加载骨架 ---------- */
+  @keyframes shimmer { from { background-position: 180% 0; } to { background-position: -180% 0; } }
+  .skel {
+    background: linear-gradient(90deg, #1b1f26 20%, #262c37 40%, #1b1f26 60%);
+    background-size: 220% 100%; animation: shimmer 1.5s linear infinite;
+    border-radius: 5px; height: 10px;
+  }
+  .skel-line { margin-bottom: 9px; }
+
+  .empty { border: 1px dashed var(--line); border-radius: 12px; padding: 48px 24px; text-align: center; color: var(--dim); }
+  .empty p { margin: 0 0 18px; }
+
+  dialog {
+    background: var(--card); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 14px; padding: 24px; width: min(460px, calc(100vw - 40px));
+  }
+  dialog::backdrop { background: rgba(0,0,0,.6); }
+  dialog h2 { margin: 0 0 18px; font-size: 16px; }
+  dialog p { color: var(--dim); font-size: 13px; margin: 0 0 16px; line-height: 1.7; }
+  label { display: block; font-size: 12px; color: var(--dim); margin: 0 0 6px; }
+  .f { margin-bottom: 14px; }
+  input[type=text], input[type=password], textarea {
+    width: 100%; font: inherit; color: var(--fg); background: #0f1216;
+    border: 1px solid var(--line); border-radius: 8px; padding: 8px 11px;
+  }
+  textarea { min-height: 92px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  .hint-text { color: var(--dimmer); font-size: 11.5px; line-height: 1.75; margin: 7px 0 0; }
+  .hint-text code { background: #0f1216; border-radius: 4px; padding: 1px 5px; }
+  .row { display: flex; gap: 8px; justify-content: flex-end; align-items: center; margin-top: 20px; }
+  .status { font-size: 13px; min-height: 20px; white-space: pre-wrap; }
+  .status.bad { color: var(--bad); }
+  .status.good { color: var(--ok); }
+  .status.busy { color: var(--dim); }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Cursor 额度面板</h1>
+    <span class="sub">cookie 只存服务端</span>
+  </header>
+
+  <div class="bar-top">
+    <button class="primary" id="add">+ 添加账号</button>
+    <button id="refresh">刷新全部</button>
+    <span class="spacer"></span>
+    <span class="stamp" id="stamp"></span>
+  </div>
+
+  <div id="view"></div>
+</div>
+
+<dialog id="dlg">
+  <h2 id="d-title">添加账号</h2>
+  <div class="f">
+    <label for="d-label">姓名</label>
+    <input type="text" id="d-label" placeholder="自己的姓名，方便统计查看" autocomplete="off">
+  </div>
+  <div class="f">
+    <label for="d-cookie">Cookie</label>
+    <textarea id="d-cookie" placeholder="粘贴 WorkosCursorSessionToken 的 Value…"></textarea>
+    <p class="hint-text">
+      浏览器登录 <a href="https://cursor.com/dashboard" target="_blank" rel="noopener">cursor.com</a>
+      → F12 → Application → Cookies → <code>https://cursor.com</code>
+      → 找到 <code>WorkosCursorSessionToken</code> → 复制 Value。
+    </p>
+  </div>
+  <div class="row">
+    <span class="status" id="d-status" style="flex:1;text-align:left"></span>
+    <button id="d-cancel">取消</button>
+    <button class="primary" id="d-save">校验并保存</button>
+  </div>
+</dialog>
+
+<dialog id="auth">
+  <h2>面板口令</h2>
+  <p>这个面板启用了口令保护，输入后会记在本浏览器里。</p>
+  <div class="f"><input type="password" id="a-token" placeholder="PANEL_TOKEN"></div>
+  <div class="row">
+    <span class="status" id="a-status" style="flex:1;text-align:left"></span>
+    <button class="primary" id="a-ok">进入</button>
+  </div>
+</dialog>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const view = $('#view');
+
+let token = localStorage.getItem('panelToken') || '';
+const headers = () => token ? { 'X-Panel-Token': token } : {};
+const jsonHeaders = () => ({ 'Content-Type': 'application/json', ...headers() });
+
+let accounts = [];   // 最近一次拿到的完整数据，单卡刷新时只替换其中一项
+
+const money = (n) => '$' + Number(n || 0).toFixed(2);
+const day = (iso) => iso ? iso.slice(0, 10) + ' ' + iso.slice(11, 16) : '—';
+const date = (iso) => iso ? iso.slice(0, 10) : '—';
+const color = (r) => r <= 10 ? 'var(--bad)' : r <= 30 ? 'var(--warn)' : 'var(--ok)';
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+const SVG = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const ICON = {
+  key: SVG('<circle cx="7.5" cy="16.5" r="5"/><path d="m11.5 13 8.5-8.5"/><path d="m17 7 2.5 2.5"/><path d="M20 4l2 2"/>'),
+  refresh: SVG('<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>'),
+  trash: SVG('<path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M18 6v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V6"/>'),
+};
+
+const GROK_TIP = 'Grok Bot 是 Cursor 内置的 Grok 助手，额度单独结算：'
+  + '不占用上面的 Cursor Models / Other Models，按周重置。'
+  + '没用过 Grok Bot 的话，这行会一直是 100%。';
+
+function bar(name, q) {
+  const r = q.remaining_pct;
+  return `<div class="q-row">
+    <span class="q-name">${name}</span>
+    <span class="q-val" style="color:${color(r)}">剩 ${r.toFixed(1)}%</span>
+    <div class="track"><div class="fill" style="width:${Math.min(100, q.used_pct)}%;background:${color(r)}"></div></div>
+  </div>`;
+}
+
+function actions(a) {
+  return `<div class="acts">
+    <button class="icon-btn tip below" data-edit="${esc(a.id)}" data-label="${esc(a.label)}"
+      data-tip="重新授权 · 粘贴新的 cookie">${ICON.key}</button>
+    <button class="icon-btn tip below" data-one="${esc(a.id)}"
+      data-tip="刷新这个账号的额度">${ICON.refresh}</button>
+    <button class="icon-btn tip below right danger" data-del="${esc(a.id)}"
+      data-tip="删除账号">${ICON.trash}</button>
+  </div>`;
+}
+
+function skeleton() {
+  return `<div class="card">
+    <div class="skel skel-line" style="width:38%;height:14px"></div>
+    <div class="skel skel-line" style="width:58%;margin-bottom:22px"></div>
+    <div class="skel skel-line" style="width:100%"></div>
+    <div class="skel skel-line" style="width:100%"></div>
+    <div class="skel skel-line" style="width:100%;margin-bottom:22px"></div>
+    <div class="skel skel-line" style="width:72%"></div>
+    <div class="skel skel-line" style="width:64%"></div>
+    <div class="skel" style="width:80%"></div>
+  </div>`;
+}
+
+function card(a) {
+  if (a._loading) return skeleton();
+
+  if (!a.ok) {
+    return `<div class="card dead">${actions(a)}
+      <div class="card-head">
+        <div class="name-line"><span class="label">${esc(a.label)}</span></div>
+        <div class="email">${esc(a.email)}</div>
+      </div>
+      <div class="err">${a.expired ? '会话已失效，点右上角钥匙图标重新粘贴 cookie' : esc(a.error)}</div>
+    </div>`;
+  }
+
+  const d = a.data, q = d.quota, c = d.cycle, p = d.plan, s = d.spend_usd, od = d.on_demand;
+  const grok = d.grok_weekly;
+  return `<div class="card">${actions(a)}
+    <div class="card-head">
+      <div class="name-line">
+        <span class="label">${esc(a.label)}</span>
+        <span class="plan">${esc(p.name || p.membership_type || '未知套餐')}</span>
+      </div>
+      <div class="email">${esc(d.email)}</div>
+    </div>
+    <div class="quota">
+      ${bar('Cursor Models', q.cursor_models)}
+      ${bar('Other Models', q.other_models)}
+      ${bar('综合', q.overall)}
+    </div>
+    <div class="meta">
+      <div><span>额度刷新</span><b>${day(c.reset_at)}${c.days_left !== null ? ` · 剩 ${c.days_left} 天` : ''}</b></div>
+      <div><span>本周期消费</span><b>${money(s.total)} / ${money(p.included_usd)}</b></div>
+      <div><span>按量付费</span><b>${od.enabled ? '开启 · 已用 ' + money(od.used_usd) : '关闭'}</b></div>
+      ${grok ? `<div>
+        <span class="tip left" data-tip="${esc(GROK_TIP)}">Grok Bot 周额度</span>
+        <b style="color:${color(grok.remaining_pct)}">剩 ${grok.remaining_pct.toFixed(1)}%<span style="color:var(--dimmer);font-weight:400"> · ${date(grok.reset_at)} 重置</span></b>
+      </div>` : ''}
+    </div>
+    ${d.notice ? `<div class="notice">⚠ ${esc(d.notice)}</div>` : ''}
+  </div>`;
+}
+
+function render() {
+  if (!accounts.length) {
+    view.innerHTML = `<div class="empty"><p>还没有账号。</p>
+      <button class="primary" onclick="document.getElementById('add').click()">+ 添加账号</button></div>`;
+    return;
+  }
+  view.innerHTML = `<div class="grid">${accounts.map(card).join('')}</div>`;
+}
+
+function showSkeletons(n) {
+  view.innerHTML = `<div class="grid">${Array.from({ length: Math.max(1, n) }, skeleton).join('')}</div>`;
+}
+
+function stamp() {
+  const age = accounts.length ? Math.max(...accounts.map(a => a.age || 0)) : 0;
+  $('#stamp').textContent = age >= 1
+    ? `数据 ${Math.round(age)} 秒前 · 点刷新强制回源`
+    : '更新于 ' + new Date().toLocaleTimeString('zh-CN');
+}
+
+// ---------- 拉数据 ----------
+async function load(force = false) {
+  const btn = $('#refresh');
+  btn.disabled = true;
+  // 先整片换成骨架，数据齐了再一次性渲染，避免半截内容闪现
+  showSkeletons(accounts.length || Number(localStorage.getItem('lastCount') || 1));
+  try {
+    const r = await fetch('/api/accounts' + (force ? '?force=1' : ''), { headers: headers() });
+    if (r.status === 401) { $('#auth').showModal(); view.innerHTML = ''; return; }
+    accounts = (await r.json()).accounts;
+    localStorage.setItem('lastCount', accounts.length);
+    render();
+    stamp();
+  } catch (e) {
+    view.innerHTML = `<div class="empty">读取失败：${esc(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function refreshOne(id) {
+  const i = accounts.findIndex(a => a.id === id);
+  if (i < 0) return;
+  accounts[i] = { ...accounts[i], _loading: true };
+  render();
+  try {
+    const r = await fetch(`/api/accounts/${encodeURIComponent(id)}/refresh`,
+                          { method: 'POST', headers: headers() });
+    if (r.status === 401) { $('#auth').showModal(); return; }
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || '刷新失败');
+    accounts[i] = d.account;
+  } catch (e) {
+    accounts[i] = { ...accounts[i], _loading: false, ok: false, expired: false, error: e.message };
+  }
+  render();
+  stamp();
+}
+
+view.addEventListener('click', async (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  const { del, one, edit, label } = btn.dataset;
+  if (del !== undefined) {
+    if (!confirm(`删除账号 ${del}？只从服务端账号库移除，不影响 Cursor 账号本身。`)) return;
+    await fetch('/api/accounts/' + encodeURIComponent(del), { method: 'DELETE', headers: headers() });
+    accounts = accounts.filter(a => a.id !== del);
+    localStorage.setItem('lastCount', accounts.length);
+    render();
+  } else if (one !== undefined) {
+    refreshOne(one);
+  } else if (edit !== undefined) {
+    openDialog(label, true);
+  }
+});
+
+// ---------- 添加 / 重新授权 ----------
+const dlg = $('#dlg'), dstat = $('#d-status');
+const say = (text, cls = '') => { dstat.className = 'status ' + cls; dstat.textContent = text; };
+
+function openDialog(label = '', isEdit = false) {
+  $('#d-title').textContent = isEdit ? '重新授权' : '添加账号';
+  $('#d-label').value = label || '';
+  $('#d-cookie').value = '';
+  $('#d-save').disabled = false;
+  say('');
+  dlg.showModal();
+  (isEdit ? $('#d-cookie') : $('#d-label')).focus();
+}
+
+$('#d-save').onclick = async () => {
+  const cookie = $('#d-cookie').value.trim();
+  if (!cookie) return say('cookie 不能为空', 'bad');
+  $('#d-save').disabled = true;
+  say('校验中…', 'busy');
+  try {
+    const r = await fetch('/api/accounts', {
+      method: 'POST', headers: jsonHeaders(),
+      body: JSON.stringify({ cookie, label: $('#d-label').value.trim() || null })
+    });
+    const d = await r.json();
+    if (r.ok) {
+      say('已保存 ' + (d.email || d.label), 'good');
+      setTimeout(() => { dlg.close(); load(); }, 700);
+    } else {
+      say(d.detail || '保存失败', 'bad');
+      $('#d-save').disabled = false;
+    }
+  } catch (e) {
+    say('请求失败：' + e.message, 'bad');
+    $('#d-save').disabled = false;
+  }
+};
+
+$('#add').onclick = () => openDialog('');
+$('#refresh').onclick = () => load(true);
+$('#d-cancel').onclick = () => dlg.close();
+
+// ---------- 口令 ----------
+$('#a-ok').onclick = async () => {
+  token = $('#a-token').value.trim();
+  const r = await fetch('/api/accounts', { headers: headers() });
+  if (r.status === 401) {
+    $('#a-status').className = 'status bad';
+    $('#a-status').textContent = '口令不对';
+    return;
+  }
+  localStorage.setItem('panelToken', token);
+  $('#auth').close();
+  load();
+};
+
+fetch('/api/config').then(r => r.json()).then(c => {
+  if (c.needs_token && !token) $('#auth').showModal(); else load();
+}).catch(() => load());
+</script>
+</body>
+</html>
