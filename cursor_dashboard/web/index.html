@@ -87,6 +87,31 @@
   .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 18px 14px; position: relative; min-height: 320px; }
   .card.dead { border-color: #4a2b2b; }
+  .card.exhausted { background: #1d171a; border-color: #4a2d34; }
+  .burnout-watermark {
+    position: absolute; inset: 0;
+    color: rgba(239, 82, 88, .34);
+    font-family: "Kaiti SC", STKaiti, KaiTi, "PingFang SC", sans-serif;
+    font-style: italic; font-weight: 700; line-height: 1;
+    pointer-events: none; user-select: none;
+  }
+  .burnout-watermark span {
+    position: absolute; display: block; width: 1em; text-align: center;
+    transform-origin: center;
+  }
+  .burnout-watermark span:nth-child(1) {
+    left: 5%; top: 58%; font-size: 88px; transform: rotate(-18deg) skewX(-10deg);
+  }
+  .burnout-watermark span:nth-child(2) {
+    left: 35%; top: 35%; font-size: 96px; transform: rotate(-11deg) skewX(-9deg);
+  }
+  .burnout-watermark span:nth-child(3) {
+    left: 67%; top: 13%; font-size: 82px; transform: rotate(-5deg) skewX(-8deg);
+  }
+  .card.exhausted .card-head,
+  .card.exhausted .quota,
+  .card.exhausted .meta,
+  .card.exhausted .stale { position: relative; z-index: 1; }
 
   .card-head { min-height: 40px; }
   .name-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-right: 124px; }
@@ -105,7 +130,7 @@
     border-radius: 20px; padding: 2px 9px; white-space: nowrap; line-height: 1.5;
   }
 
-  .acts { position: absolute; top: 13px; right: 12px; display: flex; gap: 2px; opacity: 0; transition: opacity .12s; }
+  .acts { position: absolute; top: 13px; right: 12px; z-index: 2; display: flex; gap: 2px; opacity: 0; transition: opacity .12s; }
   .card:hover .acts, .card:focus-within .acts { opacity: 1; }
   .icon-btn {
     width: 28px; height: 28px; padding: 0;
@@ -475,6 +500,8 @@ function remainingUntil(iso, now = Date.now()) {
 }
 
 const color = (r) => r <= 10 ? 'var(--bad)' : r <= 30 ? 'var(--warn)' : 'var(--ok)';
+const quotaExhausted = (quota) =>
+  quota?.overall?.remaining_pct != null && Number(quota.overall.remaining_pct) <= 0;
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -595,7 +622,10 @@ function card(a) {
 
   const d = a.data, q = d.quota, c = d.cycle, p = d.plan, s = d.spend_usd, od = d.on_demand;
   const cycleRemaining = remainingUntil(c.reset_at);
-  return `<div class="card">${actions(a)}
+  const exhausted = quotaExhausted(q);
+  return `<div class="card${exhausted ? ' exhausted' : ''}">
+    ${exhausted ? '<span class="burnout-watermark" aria-hidden="true"><span>燃</span><span>尽</span><span>了</span></span>' : ''}
+    ${actions(a)}
     <div class="card-head">
       <div class="name-line">
         <span class="label">${esc(a.label)}</span>
