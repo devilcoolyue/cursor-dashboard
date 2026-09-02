@@ -29,7 +29,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from . import snapshot
+from . import pools, snapshot
 from .client import ENDPOINTS, AuthExpired, RateLimited, fetch_one
 from .config import (
     DATABASE_PATH,
@@ -308,7 +308,9 @@ def api_config():
 @app.get("/api/status", dependencies=[Depends(require_token)])
 def api_status():
     """后台刷新的运行状况，排查限流时看这个。"""
-    return _scheduler.status() if _scheduler else {"enabled": False}
+    status = _scheduler.status() if _scheduler else {"enabled": False}
+    # 每个套餐有几个账号在支撑额度池表——用满的卡片显示不出上限时先看这里
+    return {**status, "plan_pools": pools.snapshot_state()}
 
 
 @app.get("/api/account-index", dependencies=[Depends(require_token)])

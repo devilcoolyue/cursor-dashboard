@@ -51,6 +51,7 @@ python3 -c "import re,pathlib;print(re.search(r'<script>(.*)</script>',pathlib.P
 cursor_dashboard/
 ├── client.py     接口封装、AuthExpired、RateLimited、ENDPOINTS、fetch_one
 ├── usage.py      assemble/collect/pool_limits/assemble_detail，纯计算
+├── pools.py      同套餐额度池登记表：用满的账号自己解不出上限，从同套餐抄
 ├── snapshot.py   每个账号最后已知状态 + single-flight 锁 + 给前端的 view()
 ├── scheduler.py  后台错峰刷新循环，自适应退避
 ├── store.py      SQLite 事务读写、snapshots 表、旧 JSON 自动迁移、account_id
@@ -119,6 +120,9 @@ cursor_dashboard/
 重粘 cookie，而那次粘贴同样会被挡住。每张卡显示 `ok_at`（最后统计时间，后台是错开
 刷的所以每张都不同），页头显示后台轮一遍要多久。部门和排序选择分别写入
 `localStorage.selectedDepartment`、`localStorage.accountSort`，服务端按部门过滤账号；
+「本周期消费」的分母是 `quota.overall.limit_usd`，消费超过上限时金额标红
+（`overspent`，容差 0.005）——用满的账号实测停在 $495.3 上下，"剩 0.0%" 和
+"$495.32 / $495" 说的是同一件事。
 额度刷新时间由前端把 `reset_at` 转成浏览器本地时区，不使用后端向下取整的 `days_left`；
 不足 48 小时时显示到整小时。
 三条额度都是按钮：hover 出提示，点开弹窗看本周期按模型的 token 和花费（`openDetail`
@@ -165,7 +169,12 @@ $231.24 / $495 正好对上「综合 剩 53.3%」；$20 挪进了悬停提示。
 就是假数据：42 个账号的实测里，张琛 `auto=98.03 / api=100.00` 解出 $402 / $93
 （真值 450 / 45），全用满的账号解出的"总池"其实是消费额、还会随消费一直变大。
 所以 `PCT_CEILING` 一票否决：某一档触顶只丢分池（总池仍解得对），综合触顶就全丢。
-**别为了"让每张卡都显示金额"把这道闸去掉。****这跟「不要拿美元金额去算百分比」
+**别为了"让每张卡都显示金额"把这道闸去掉**——要让用满的卡片也显示，正确做法是
+`pools.py`：池子是套餐的常量，从**同套餐里解得出的账号**那儿抄一份（`snapshot.view`
+里 `pools.fill`），抄来的标 `limit_inferred`。这跟猜不一样，表里每个数都是某个真实
+账号当场解出来的，套餐涨价或换 Pro+ 会自动跟着变；一个账号都没解出来过就老实留空。
+**不要改成在代码里写死 450/45/495。** 按 (套餐, 账号) 存最近一次观测，所以表不会
+随刷新次数增长，取值时逐档取中位数，个别脏数据盖不过大多数。**这跟「不要拿美元金额去算百分比」
 不冲突**：那条禁的是拿 `totalSpend` 除 `includedAmountCents`（$20），两者不是一个尺度；
 这里是反过来用官方百分比标定池子大小，百分比仍是唯一事实来源。
 

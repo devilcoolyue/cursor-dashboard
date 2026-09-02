@@ -15,6 +15,7 @@ import threading
 import time
 from datetime import datetime, timezone
 
+from . import pools
 from .store import (
     AccountsError,
     delete_snapshot,
@@ -48,6 +49,9 @@ def load() -> int:
         loaded = {}
     with _lock:
         _snapshots = loaded
+    # 重启后立刻把套餐池表建起来，否则用满的账号要等到同套餐里有人刷新成功才显示上限
+    for ident, snap in loaded.items():
+        pools.observe(ident, snap.get("data"))
     return len(loaded)
 
 
@@ -78,6 +82,7 @@ def _store(ident: str, snap: dict) -> dict:
 
 def record_success(ident: str, cookie: str, data: dict) -> dict:
     now = int(time.time())
+    pools.observe(ident, data)
     return _store(ident, {
         "fingerprint": fingerprint(cookie),
         "data": data,
@@ -132,7 +137,8 @@ def _iso(ts: int) -> str | None:
 def view(acc: dict, ident: str, snap: dict | None = None) -> dict:
     """把账号信息和快照拼成卡片要的结构。永远不回传 cookie。"""
     snap = snap if snap is not None else get(ident, acc["cookie"])
-    data = snap["data"]
+    # 用满的账号自己解不出上限（百分比被截在 100），从同套餐里抄一份，见 pools 模块
+    data = pools.fill(snap["data"])
     error = snap["error"]
     expired = bool(
         error

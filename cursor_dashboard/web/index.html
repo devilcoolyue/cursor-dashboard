@@ -503,12 +503,27 @@ function bar(name, q, id, group) {
   </button>`;
 }
 
+const overspent = (overall, spend) =>
+  overall.limit_usd != null && spend.total > overall.limit_usd + 0.005;
+
+// 超出上限的部分标红。Cursor 允许小幅超一点（实测用满的账号停在 $495.3 上下），
+// 这时"剩 0.0%"和"$495.32 / $495"说的是同一件事，红字把超出说清楚
+function spendValue(overall, spend) {
+  const amount = overspent(overall, spend)
+    ? `<span style="color:var(--bad)">${money(spend.total)}</span>`
+    : money(spend.total);
+  return overall.limit_usd == null ? amount
+    : `${amount} / ${esc(shortMoney(overall.limit_usd))}`;
+}
+
 // 分母用综合额度池，跟上面那条「综合 剩 x%」同口径。订阅价 $20 是另一回事——
 // 它只是"包含额度"，超出部分走 Cursor 赠送额度，摆在分母上会让人以为超支了 10 倍
-function spendTip(overall, plan) {
+function spendTip(overall, plan, spend) {
   const included = `订阅本身含额度 ${money(plan.included_usd)}`;
-  return overall.limit_usd == null ? included
-    : `${included}，超出的走 Cursor 赠送额度。分母 ${shortMoney(overall.limit_usd)} 是本周期两类模型额度的合计上限。`;
+  if (overall.limit_usd == null) return included;
+  const over = overspent(overall, spend)
+    ? `已超出上限 ${money(spend.total - overall.limit_usd)}。` : '';
+  return `${over}${included}，超出的走 Cursor 赠送额度。分母 ${shortMoney(overall.limit_usd)} 是本周期两类模型额度的合计上限。`;
 }
 
 function actions(a) {
@@ -599,9 +614,8 @@ function card(a) {
     <div class="meta">
       <div><span>最后统计</span><b>${esc(statTime(a.ok_at))}</b></div>
       <div><span>额度刷新</span><b>${localDateTime(c.reset_at)}${cycleRemaining ? ` · ${cycleRemaining}` : ''}</b></div>
-      <div><span class="tip left" data-tip="${esc(spendTip(q.overall, p))}">本周期消费</span>
-        <b>${money(s.total)}${q.overall.limit_usd == null ? ''
-          : ' / ' + esc(shortMoney(q.overall.limit_usd))}</b></div>
+      <div><span class="tip left" data-tip="${esc(spendTip(q.overall, p, s))}">本周期消费</span>
+        <b>${spendValue(q.overall, s)}</b></div>
       <div><span>按量付费</span><b>${od.enabled ? '开启 · 已用 ' + money(od.used_usd) : '关闭'}</b></div>
     </div>
     ${a.stale ? `<div class="stale">⚠ ${esc(staleText(a))}</div>` : ''}
