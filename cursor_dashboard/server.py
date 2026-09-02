@@ -5,12 +5,16 @@
 
 账号怎么进来：用户在页面粘贴 WorkosCursorSessionToken，服务端验活后落盘。
 服务端本身不碰浏览器，可以跑在无桌面的服务器上，且从不把 cookie 回传给前端。
+
+**页面读的是快照，不是实时回源。** 回源由 scheduler 在后台一个一个账号慢慢做，
+页面只负责把最后一次统计结果显示出来。原因见 scheduler 的模块注释。
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import random
 import secrets
 import threading
 import time
@@ -24,16 +28,20 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from . import cache
-from .client import ENDPOINTS, AuthExpired, fetch_one
+from . import snapshot
+from .client import ENDPOINTS, AuthExpired, RateLimited, fetch_one
 from .config import (
-    CACHE_TTL,
     DATABASE_PATH,
+    MANUAL_BURST,
+    MANUAL_COOLDOWN,
     MAX_WORKERS,
     PANEL_TOKEN,
+    REFRESH_ENABLED,
     REQUEST_CONCURRENCY,
+    REQUEST_MIN_INTERVAL,
     WEB_INDEX,
 )
+from .scheduler import Scheduler
 from .store import (
     AccountsError,
     account_id,
@@ -45,75 +53,140 @@ from .store import (
 from .usage import assemble
 
 
-# ---------- 取数 ----------
+# ---------- 出站节流 ----------
 
 _request_slots: asyncio.Semaphore | None = None
+_pace_lock: asyncio.Lock | None = None
+_next_slot = 0.0
+
+
+async def _pace() -> None:
+    """给每个出站请求分配一个时槽，保证任意两次之间至少隔 REQUEST_MIN_INTERVAL。
+
+    信号量限的是并发，不是速率——接口够快时 3 个并发照样能打出几十 QPS，而边缘
+    防护看的就是速率。所以真正的闸门在这里。锁内只算时槽、锁外再睡，避免把等待
+    时间叠加到锁的持有上。
+    """
+    global _next_slot
+    if REQUEST_MIN_INTERVAL <= 0:
+        return
+    async with _pacer_lock():
+        now = time.monotonic()
+        slot = max(now, _next_slot)
+        _next_slot = slot + REQUEST_MIN_INTERVAL + random.uniform(
+            0, REQUEST_MIN_INTERVAL * 0.2
+        )
+    delay = slot - time.monotonic()
+    if delay > 0:
+        await asyncio.sleep(delay)
+
+
+def _pacer_lock() -> asyncio.Lock:
+    global _pace_lock
+    if _pace_lock is None:
+        _pace_lock = asyncio.Lock()
+    return _pace_lock
 
 
 async def fetch_cursor(cookie: str, label: str, name: str):
-    """限制整个进程访问 cursor.com 的并发连接数。"""
+    """所有访问 cursor.com 的路径都过这里：先排队拿时槽，再占并发名额。"""
+    await _pace()
     if _request_slots is None:
         return await asyncio.to_thread(fetch_one, cookie, label, name)
     async with _request_slots:
         return await asyncio.to_thread(fetch_one, cookie, label, name)
 
 
-async def probe(acc: dict, force: bool = False) -> dict:
-    """拉一个账号的额度。5 个接口并发发出，绝不回传 cookie。"""
+# ---------- 回源 ----------
+
+def _classify(errors: list[BaseException]) -> tuple[str, str]:
+    """把一组接口异常归成一种卡片状态。
+
+    **限流优先于失效**：5 个接口里混着 401 和 403 拦截页时按限流处理。宁可多等
+    一轮，也不能误报"cookie 失效"——那会让用户去重新粘贴 cookie，而那次粘贴同样
+    会被挡住，看起来就像新 cookie 也不管用。
+    """
+    if any(isinstance(e, RateLimited) for e in errors):
+        return "rate_limited", "Cursor 暂时限制了请求，稍后会自动重试"
+    if any(isinstance(e, AuthExpired) for e in errors):
+        return "expired", "会话已失效，请重新粘贴 cookie"
+    if any(isinstance(e, requests.Timeout) for e in errors):
+        return "network", "连接 Cursor 超时，稍后会自动重试"
+    if any(isinstance(e, requests.ConnectionError) for e in errors):
+        return "network", "暂时无法连接 Cursor，稍后会自动重试"
+    first = errors[0]
+    return "error", f"{type(first).__name__}: {first}"
+
+
+async def refresh_account(acc: dict) -> str | None:
+    """回源刷一个账号并写入快照。返回失败类型，成功返回 None（调度器据此调节节奏）。"""
     label = acc.get("label") or "unnamed"
     ident = account_id(acc)
     cookie = acc["cookie"]
 
-    if not force:
-        cached = cache.get(ident, cookie)
-        if cached:
-            return {**cached, "department": acc.get("department") or ""}
+    async with snapshot.lock_for(ident):
+        # return_exceptions：让 5 个接口都跑完再判定，否则先抛出的那个说了算，
+        # 混合错误时容易把限流认成失效
+        raw = await asyncio.gather(
+            *(fetch_cursor(cookie, label, name) for name in ENDPOINTS),
+            return_exceptions=True,
+        )
+        errors = [item for item in raw if isinstance(item, BaseException)]
+        if errors:
+            kind, message = _classify(errors)
+            snapshot.record_failure(ident, cookie, kind, message)
+            return kind
+        snapshot.record_success(ident, cookie, assemble(label, *raw))
+        return None
 
-    t0 = time.time()
-    async with cache.lock_for(ident):
-        # 等锁期间别人可能刚回源完，直接复用他的结果（强制刷新同样适用）
-        fresh = cache.since(ident, cookie, t0)
-        if fresh:
-            return {**fresh, "department": acc.get("department") or ""}
-        base = {
-            "id": ident,
-            "label": label,
-            "email": acc.get("email"),
-            "department": acc.get("department") or "",
-        }
-        try:
-            raw = await asyncio.gather(
-                *(fetch_cursor(cookie, label, name) for name in ENDPOINTS)
-            )
-            data = assemble(label, *raw)
-            result = {**base, "email": data.get("email"), "ok": True, "data": data}
-        except AuthExpired as e:
-            result = {**base, "ok": False, "expired": True, "error": str(e)}
-        except requests.Timeout:
-            result = {**base, "ok": False, "expired": False,
-                      "error": "连接 Cursor 超时，请稍后刷新重试"}
-        except requests.ConnectionError:
-            result = {**base, "ok": False, "expired": False,
-                      "error": "暂时无法连接 Cursor，请稍后刷新重试"}
-        except Exception as e:
-            result = {**base, "ok": False, "expired": False,
-                      "error": f"{type(e).__name__}: {e}"}
-        # 连接类错误只短缓存，既让并发访客复用结果，又能很快自动恢复。
-        result_ttl = None if result["ok"] or result.get("expired") else 5
-        cache.put(ident, cookie, result, ttl=result_ttl)
-        return {**result, "age": 0.0}
+
+# ---------- 手动刷新的闸门 ----------
+
+_manual_tokens = float(MANUAL_BURST)
+_manual_refilled = time.monotonic()
+_manual_lock = threading.Lock()
+
+
+def take_manual_token() -> bool:
+    """单卡刷新的令牌桶。保留单卡刷新，但拦住"挨个点一整屏卡片"这种新洪峰。"""
+    global _manual_tokens, _manual_refilled
+    rate = MANUAL_BURST / MANUAL_COOLDOWN if MANUAL_COOLDOWN > 0 else float("inf")
+    with _manual_lock:
+        now = time.monotonic()
+        _manual_tokens = min(MANUAL_BURST, _manual_tokens + (now - _manual_refilled) * rate)
+        _manual_refilled = now
+        if _manual_tokens < 1:
+            return False
+        _manual_tokens -= 1
+        return True
 
 
 # ---------- HTTP ----------
 
+_scheduler: Scheduler | None = None
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    global _request_slots
+    global _request_slots, _pace_lock, _next_slot, _scheduler
     # N 账号 × 5 接口打平成一个任务集，共用这一个池。不要改成嵌套线程池——线程数会乘起来。
     pool = ThreadPoolExecutor(max_workers=MAX_WORKERS, thread_name_prefix="probe")
     asyncio.get_running_loop().set_default_executor(pool)
     _request_slots = asyncio.Semaphore(REQUEST_CONCURRENCY)
+    _pace_lock = None
+    _next_slot = 0.0
+
+    restored = snapshot.load()
+    _scheduler = Scheduler(refresh_account)
+    if REFRESH_ENABLED:
+        _scheduler.start()
+    print(f"已载入 {restored} 份快照   "
+          f"后台刷新: {'开启' if REFRESH_ENABLED else '关闭'}", flush=True)
+
     yield
+
+    await _scheduler.stop()
+    _scheduler = None
     _request_slots = None
     pool.shutdown(wait=False, cancel_futures=True)
 
@@ -121,6 +194,14 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="Cursor 额度面板", lifespan=lifespan)
 
 # 页面全是同源调用，不开 CORS
+
+
+@app.middleware("http")
+async def mark_active(request: Request, call_next):
+    """有人在看面板就告诉调度器，别掉进降速档。"""
+    if _scheduler is not None and request.url.path.startswith("/api/"):
+        _scheduler.touch()
+    return await call_next(request)
 
 
 @app.exception_handler(AccountsError)
@@ -173,6 +254,13 @@ def department_counts(accounts: list[dict]) -> list[dict]:
     ]
 
 
+def find_account(account_key: str) -> dict:
+    acc = next((a for a in load_accounts() if account_id(a) == account_key), None)
+    if not acc:
+        raise HTTPException(404, "账号不存在")
+    return acc
+
+
 @app.get("/")
 def index():
     return FileResponse(WEB_INDEX)
@@ -181,14 +269,25 @@ def index():
 @app.get("/api/config")
 def api_config():
     """不鉴权：页面得先知道要不要问口令。"""
-    return {"needs_token": bool(PANEL_TOKEN), "cache_ttl": CACHE_TTL}
+    status = _scheduler.status() if _scheduler else {}
+    return {
+        "needs_token": bool(PANEL_TOKEN),
+        "auto_refresh": bool(status.get("enabled")),
+        "cycle_seconds": status.get("cycle_seconds", 0),
+    }
+
+
+@app.get("/api/status", dependencies=[Depends(require_token)])
+def api_status():
+    """后台刷新的运行状况，排查限流时看这个。"""
+    return _scheduler.status() if _scheduler else {"enabled": False}
 
 
 @app.get("/api/account-index", dependencies=[Depends(require_token)])
 def api_account_index(
     department: str | None = Query(default=None, max_length=64),
 ):
-    """快速返回卡片索引和部门人数，不访问 cursor.com，也不回传 cookie。"""
+    """只要卡片索引和部门人数，不带额度数据。"""
     all_accounts = load_accounts()
     selected = accounts_for_department(all_accounts, department)
     return {
@@ -199,16 +298,21 @@ def api_account_index(
 
 
 @app.get("/api/accounts", dependencies=[Depends(require_token)])
-async def api_accounts(
-    force: bool = False,
-    department: str | None = Query(default=None, max_length=64),
-):
-    """force=1 跳过缓存强制回源；页面的「刷新」按钮走这个。"""
-    accounts = accounts_for_department(load_accounts(), department)
-    if not accounts:
-        return {"accounts": []}
-    results = await asyncio.gather(*(probe(a, force) for a in accounts))
-    return {"accounts": list(results)}
+def api_accounts(department: str | None = Query(default=None, max_length=64)):
+    """一次返回整组卡片，全部读快照，不访问 cursor.com。"""
+    all_accounts = load_accounts()
+    selected = accounts_for_department(all_accounts, department)
+    return {
+        "accounts": [snapshot.view(acc, account_id(acc)) for acc in selected],
+        "departments": department_counts(all_accounts),
+        "total": len(all_accounts),
+    }
+
+
+@app.get("/api/accounts/{account_key}", dependencies=[Depends(require_token)])
+def api_account_one(account_key: str):
+    acc = find_account(account_key)
+    return {"account": snapshot.view(acc, account_key)}
 
 
 @app.post("/api/accounts", dependencies=[Depends(require_token)])
@@ -218,19 +322,26 @@ async def api_save(req: SaveReq):
     if not cookie:
         raise HTTPException(400, "cookie 为空")
     label = req.label or ""
-    try:
-        raw = await asyncio.gather(
-            *(fetch_cursor(cookie, label, name) for name in ENDPOINTS)
-        )
-        data = assemble(label, *raw)
-    except AuthExpired:
-        raise HTTPException(400, "这个 cookie 是失效的，请在浏览器重新登录 cursor.com 后再回填")
-    except Exception as e:
-        raise HTTPException(400, f"校验失败：{type(e).__name__}: {e}")
+    raw = await asyncio.gather(
+        *(fetch_cursor(cookie, label, name) for name in ENDPOINTS),
+        return_exceptions=True,
+    )
+    errors = [item for item in raw if isinstance(item, BaseException)]
+    if errors:
+        kind, message = _classify(errors)
+        if kind == "rate_limited":
+            # 这里最容易冤枉用户：过去 403 一律当失效，会让人反复重粘好 cookie
+            raise HTTPException(503, "Cursor 暂时限制了请求，等一两分钟再保存；cookie 可能是好的")
+        if kind == "expired":
+            raise HTTPException(400, "这个 cookie 是失效的，请在浏览器重新登录 cursor.com 后再回填")
+        raise HTTPException(400, f"校验失败：{message}")
+
+    data = assemble(label, *raw)
     acc = await asyncio.to_thread(
         upsert_account, cookie, data.get("email"), req.label, req.department
     )
-    cache.drop(account_id(acc))     # 换了 cookie，旧结果作废
+    # 顺手把刚拿到的数据存成快照，不用等后台轮到它
+    snapshot.record_success(account_id(acc), cookie, data)
     return {
         "ok": True,
         "label": acc["label"],
@@ -241,20 +352,20 @@ async def api_save(req: SaveReq):
 
 @app.post("/api/accounts/{account_key}/refresh", dependencies=[Depends(require_token)])
 async def api_refresh_one(account_key: str):
-    """只刷一个账号，卡片上的刷新按钮走这个。"""
-    acc = next((a for a in load_accounts() if account_id(a) == account_key), None)
-    if not acc:
-        raise HTTPException(404, "账号不存在")
-    return {"account": await probe(acc, force=True)}
+    """卡片上的刷新按钮：立刻回源一次，但要过冷却和令牌桶。"""
+    acc = find_account(account_key)
+    snap = snapshot.get(account_key, acc["cookie"])
 
+    if (snap["ok_at"] and not snap["error"]
+            and time.time() - snap["attempted_at"] < MANUAL_COOLDOWN):
+        return {"account": snapshot.view(acc, account_key, snap),
+                "notice": "刚更新过，显示的就是最新数据"}
+    if not take_manual_token():
+        return {"account": snapshot.view(acc, account_key, snap),
+                "notice": "刷新太频繁了，等几秒再点；后台本来也在自动更新"}
 
-@app.get("/api/accounts/{account_key}", dependencies=[Depends(require_token)])
-async def api_account_one(account_key: str, force: bool = False):
-    """渐进加载单张卡片；force=1 用于刷新当前部门。"""
-    acc = next((a for a in load_accounts() if account_id(a) == account_key), None)
-    if not acc:
-        raise HTTPException(404, "账号不存在")
-    return {"account": await probe(acc, force=force)}
+    await refresh_account(acc)
+    return {"account": snapshot.view(acc, account_key)}
 
 
 @app.patch(
@@ -273,7 +384,7 @@ async def api_update_department(account_key: str, req: DepartmentReq):
 def api_delete(account_key: str):
     if not delete_account(account_key):
         raise HTTPException(404, "账号不存在")
-    cache.drop(account_key)
+    snapshot.drop(account_key)
     return {"ok": True}
 
 
@@ -295,7 +406,7 @@ def main():
     print(f"面板: {url}   账号库: {DATABASE_PATH}   "
           f"口令: {'已启用' if PANEL_TOKEN else '未启用'}   "
           f"线程池: {MAX_WORKERS}   Cursor 并发: {REQUEST_CONCURRENCY}   "
-          f"缓存: {CACHE_TTL}s", flush=True)
+          f"出站间隔: {REQUEST_MIN_INTERVAL}s", flush=True)
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 
 

@@ -20,7 +20,7 @@ from pathlib import Path
 
 import requests
 
-from .client import AuthExpired, CursorClient
+from .client import AuthExpired, CursorClient, RateLimited
 from .store import AccountsError, load_accounts
 from .usage import collect
 
@@ -80,6 +80,9 @@ def main():
         try:
             results.append(collect(client))
         except AuthExpired as e:
+            failed += 1
+            results.append({"label": client.label, "error": str(e)})
+        except RateLimited as e:
             failed += 1
             results.append({"label": client.label, "error": str(e)})
         except requests.RequestException as e:

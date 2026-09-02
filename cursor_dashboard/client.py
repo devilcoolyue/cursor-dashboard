@@ -11,7 +11,12 @@ import time
 
 import requests
 
-from .config import REQUEST_RETRIES, RETRY_BASE_DELAY
+from .config import (
+    RATE_LIMIT_BASE_DELAY,
+    RATE_LIMIT_RETRIES,
+    REQUEST_RETRIES,
+    RETRY_BASE_DELAY,
+)
 
 BASE = "https://cursor.com"
 COOKIE_NAME = "WorkosCursorSessionToken"
@@ -21,11 +26,39 @@ UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
 
 # 一个账号要打的 5 个接口。服务端按这个粒度并发，CLI 仍按顺序串行。
 ENDPOINTS = ("me", "plan_info", "usage_summary", "period_usage", "grok_status")
-RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+RETRYABLE_STATUS = {500, 502, 504}
+# 被挡住时的状态码。429 是标准限流；403 只有在返回 HTML 时才算（见 _call）；
+# 503 通常是边缘节点在挡，不是接口真的挂了。
+THROTTLE_STATUS = {429, 503}
+RETRY_AFTER_CAP = 120
 
 
 class AuthExpired(RuntimeError):
     """会话 Cookie 失效，需要重新导出"""
+
+
+class RateLimited(RuntimeError):
+    """被 Cursor / Vercel 临时挡住，cookie 本身没问题，退避后重试即可。
+
+    **不要把它并进 AuthExpired**：限流返回的是 403 + HTML 安全拦截页，
+    过去一律当成失效，结果整屏卡片变红、用户重新粘贴 cookie 还是红的。
+    """
+
+    def __init__(self, message: str, retry_after: float | None = None):
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+def _retry_after(r: requests.Response) -> float | None:
+    """解析 Retry-After（只认整秒写法，HTTP-date 少见就不猜了）。"""
+    raw = (r.headers.get("Retry-After") or "").strip()
+    if not raw.isdigit():
+        return None
+    return min(float(raw), RETRY_AFTER_CAP)
+
+
+def _is_json(r: requests.Response) -> bool:
+    return "json" in (r.headers.get("Content-Type") or "").lower()
 
 
 class CursorClient:
@@ -45,8 +78,21 @@ class CursorClient:
         # 跟过去只会拿到一个和本次请求无关的 404
         r = self.s.request(method, BASE + path, json=payload, timeout=TIMEOUT,
                            allow_redirects=False)
-        if r.status_code in (401, 403):
+        if r.status_code == 401:
             raise AuthExpired(f"[{self.label}] 会话已失效，请重新登录")
+        if r.status_code == 403:
+            # 鉴权接口拒绝会带 JSON body；HTML 是边缘防护的拦截页，跟 cookie 无关
+            if _is_json(r):
+                raise AuthExpired(f"[{self.label}] 会话已失效，请重新登录")
+            raise RateLimited(
+                f"[{self.label}] Cursor 暂时限制了请求，稍后会自动重试",
+                _retry_after(r),
+            )
+        if r.status_code in THROTTLE_STATUS:
+            raise RateLimited(
+                f"[{self.label}] Cursor 暂时限制了请求，稍后会自动重试",
+                _retry_after(r),
+            )
         if r.is_redirect:
             loc = r.headers.get("Location", "")
             if any(h in loc for h in ("/api/auth/login", "workos.com", "/login")):
@@ -63,29 +109,38 @@ class CursorClient:
     def grok_status(self):
         try:
             return self._call("POST", "/api/dashboard/get-sand-usage-status", {})
-        except AuthExpired:
-            raise
+        except (AuthExpired, RateLimited):
+            raise              # 这两个要冒泡：调度器靠它们判断该退避还是该报失效
         except Exception:
-            return {}          # 非关键数据，失败就跳过
+            return {}          # 非关键数据，其它失败就跳过
+
+
+def _backoff(base: float, attempt: int) -> float:
+    return base * (2 ** attempt) + random.uniform(0, base)
 
 
 def fetch_one(cookie: str, label: str, name: str):
     """取单个接口。刻意每次新建 Session —— requests.Session 跨线程共享不安全，
-    而 5 个请求本来就要并发发出去。连接类瞬时错误会短退避重试。"""
-    for attempt in range(REQUEST_RETRIES + 1):
+    而 5 个请求本来就要并发发出去。瞬时错误和限流会退避重试，退避基数不同：
+    连接抖动几百毫秒就够，被挡住则要等几秒。"""
+    attempts = max(REQUEST_RETRIES, RATE_LIMIT_RETRIES) + 1
+    for attempt in range(attempts):
         client = CursorClient(cookie, label)
         try:
             return getattr(client, name)()
         except AuthExpired:
             raise
+        except RateLimited as exc:
+            if attempt >= RATE_LIMIT_RETRIES:
+                raise
+            time.sleep(exc.retry_after or _backoff(RATE_LIMIT_BASE_DELAY, attempt))
         except requests.RequestException as exc:
             status = exc.response.status_code if exc.response is not None else None
             retryable = isinstance(exc, (requests.ConnectionError, requests.Timeout))
             retryable = retryable or status in RETRYABLE_STATUS
             if not retryable or attempt >= REQUEST_RETRIES:
                 raise
-            delay = RETRY_BASE_DELAY * (2 ** attempt)
-            time.sleep(delay + random.uniform(0, RETRY_BASE_DELAY))
+            time.sleep(_backoff(RETRY_BASE_DELAY, attempt))
         finally:
             client.s.close()
 

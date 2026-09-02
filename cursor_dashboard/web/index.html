@@ -29,11 +29,6 @@
   #sort-order {
     width: 184px; padding: 7px 30px 7px 10px; background: var(--card-hi);
   }
-  .load-state { display: flex; align-items: center; gap: 8px; width: 168px; }
-  .load-state[hidden] { display: none; }
-  .load-count { color: var(--dim); font-size: 11px; white-space: nowrap; }
-  .load-track { flex: 1; height: 4px; border-radius: 2px; background: #23272f; overflow: hidden; }
-  .load-fill { height: 100%; width: 0; background: var(--accent); transition: width .18s ease; }
 
   .department-nav {
     display: flex; align-items: flex-end; gap: 14px; margin: 0 0 24px;
@@ -134,6 +129,8 @@
   .meta > div > span:first-child { flex: none; }
   .meta b { color: var(--fg); font-weight: 500; font-variant-numeric: tabular-nums; min-width: 0; text-align: right; }
   .meta .tip { border-bottom: 1px dotted var(--dimmer); cursor: help; }
+  .stale { margin-top: 8px; font-size: 11.5px; color: var(--warn); line-height: 1.6; }
+  .skel-note { color: var(--dimmer); font-size: 11.5px; margin-top: 14px; }
   .notice { margin-top: 8px; font-size: 12px; color: var(--warn); }
   .err { color: var(--bad); font-size: 13px; margin: 14px 0 12px; }
 
@@ -191,7 +188,6 @@
     .bar-top .spacer { display: none; }
     .sort-control { margin-left: auto; }
     #sort-order { width: 168px; }
-    .bar-top .load-state { width: 100%; order: 4; }
     .bar-top .stamp { width: 100%; order: 5; }
     .department-nav { gap: 6px; }
     .grid { grid-template-columns: minmax(0, 1fr); }
@@ -216,7 +212,6 @@
 
   <div class="bar-top">
     <button class="primary" id="add">+ 添加账号</button>
-    <button id="refresh">刷新全部</button>
     <span class="spacer"></span>
     <div class="sort-control">
       <label for="sort-order">排序</label>
@@ -225,10 +220,6 @@
         <option value="remaining-asc">综合剩余：低到高</option>
         <option value="remaining-desc">综合剩余：高到低</option>
       </select>
-    </div>
-    <div class="load-state" id="load-state" aria-live="polite" hidden>
-      <span class="load-count" id="load-count"></span>
-      <div class="load-track"><div class="load-fill" id="load-fill"></div></div>
     </div>
     <span class="stamp" id="stamp"></span>
   </div>
@@ -332,6 +323,9 @@ let departmentSummary = [];
 let totalAccountCount = 0;
 let loadGeneration = 0;
 let loadController = null;
+let inFlight = false;
+let autoRefreshCycle = 0;          // 后台轮一遍所有账号要多久，由 /api/config 给
+const POLL_INTERVAL = 60000;       // 只读服务端快照，不打 cursor.com
 
 const money = (n) => '$' + Number(n || 0).toFixed(2);
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -351,6 +345,27 @@ const localDateTime = (iso) => {
     ? `${localDate(iso)} ${pad2(value.getHours())}:${pad2(value.getMinutes())}`
     : '—';
 };
+
+function relative(ms, now = Date.now()) {
+  const diff = now - ms;
+  if (diff < 60000) return '刚刚';
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 60) return `${minutes} 分钟前`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} 小时前`;
+  return `${Math.floor(hours / 24)} 天前`;
+}
+
+// 后台是错开刷的，每张卡的统计时刻都不一样，所以时间要落在卡片上而不是页头
+function statTime(iso) {
+  const value = parseDate(iso);
+  if (!value) return '—';
+  const clock = `${pad2(value.getHours())}:${pad2(value.getMinutes())}`;
+  const sameDay = new Date().toDateString() === value.toDateString();
+  const stamp = sameDay ? clock
+    : `${pad2(value.getMonth() + 1)}-${pad2(value.getDate())} ${clock}`;
+  return `${stamp} · ${relative(value.getTime())}`;
+}
 
 function remainingUntil(iso, now = Date.now()) {
   const reset = parseDate(iso);
@@ -405,7 +420,7 @@ function actions(a) {
   </div>`;
 }
 
-function skeleton(account = null) {
+function skeleton(account = null, note = '') {
   const head = account && account.id
     ? `<div class="card-head">
         <div class="name-line"><span class="label">${esc(account.label)}</span></div>
@@ -424,11 +439,23 @@ function skeleton(account = null) {
     <div class="skel skel-line" style="width:72%"></div>
     <div class="skel skel-line" style="width:64%"></div>
     <div class="skel" style="width:80%"></div>
+    ${note ? `<div class="skel-note">${esc(note)}</div>` : ''}
   </div>`;
 }
 
+// 刷新失败但还留着上一份数据时的说明。这里刻意不说"会话失效"——被限流时
+// 说失效会把人骗去重新粘贴 cookie，而那次粘贴同样会被挡住。
+const STALE_TEXT = {
+  rate_limited: 'Cursor 暂时限制了请求，后台会自动重试',
+  expired: '刷新时被判为会话失效，正在确认',
+  network: '刷新时连不上 Cursor，后台会自动重试',
+};
+const staleText = (a) =>
+  `${STALE_TEXT[a.error_kind] || a.error || '刷新失败'}；上面仍是上一次统计的数据`;
+
 function card(a) {
   if (a._loading) return skeleton(a);
+  if (a.pending) return skeleton(a, '排队等待后台更新…');
 
   if (!a.ok) {
     return `<div class="card dead">${actions(a)}
@@ -440,6 +467,8 @@ function card(a) {
         </div>
       </div>
       <div class="err">${a.expired ? '会话已失效，点右上角钥匙图标重新粘贴 cookie' : esc(a.error)}</div>
+      ${a.ok_at ? `<div class="meta"><div><span>最后统计</span>
+        <b>${esc(statTime(a.ok_at))}</b></div></div>` : ''}
     </div>`;
   }
 
@@ -463,6 +492,7 @@ function card(a) {
       ${bar('综合', q.overall)}
     </div>
     <div class="meta">
+      <div><span>最后统计</span><b>${esc(statTime(a.ok_at))}</b></div>
       <div><span>额度刷新</span><b>${localDateTime(c.reset_at)}${cycleRemaining ? ` · ${cycleRemaining}` : ''}</b></div>
       <div><span>本周期消费</span><b>${money(s.total)} / ${money(p.included_usd)}</b></div>
       <div><span>按量付费</span><b>${od.enabled ? '开启 · 已用 ' + money(od.used_usd) : '关闭'}</b></div>
@@ -471,6 +501,7 @@ function card(a) {
         <b style="color:${color(grok.remaining_pct)}">剩 ${grok.remaining_pct.toFixed(1)}%<span style="color:var(--dimmer);font-weight:400"> · ${localDate(grok.reset_at)} 重置</span></b>
       </div>` : ''}
     </div>
+    ${a.stale ? `<div class="stale">⚠ ${esc(staleText(a))}</div>` : ''}
     ${d.notice ? `<div class="notice">⚠ ${esc(d.notice)}</div>` : ''}
   </div>`;
 }
@@ -496,7 +527,6 @@ function renderDepartmentTabs() {
       aria-selected="${department === selectedDepartment}">
       ${esc(name)}<span class="department-count">${count}</span>
     </button>`).join('');
-  $('#refresh').textContent = selectedDepartment === ALL_DEPARTMENTS ? '刷新全部' : '刷新当前';
 }
 
 function populateDepartmentSelect(select, newInput, current = '') {
@@ -529,7 +559,7 @@ const accountOrder = (account) => Number.isFinite(account._order)
   ? account._order : Number.MAX_SAFE_INTEGER;
 
 function overallRemaining(account) {
-  if (account._loading || !account.ok) return null;
+  if (account._loading || account.pending || !account.ok) return null;
   const remaining = account.data?.quota?.overall?.remaining_pct;
   return typeof remaining === 'number' && Number.isFinite(remaining) ? remaining : null;
 }
@@ -540,8 +570,9 @@ function sortedAccounts() {
     const aRemaining = overallRemaining(a);
     const bRemaining = overallRemaining(b);
     if (aRemaining === null && bRemaining === null) {
-      const loadingOrder = Number(a._loading) - Number(b._loading);
-      return loadingOrder || accountOrder(a) - accountOrder(b);
+      const pendingOrder = Number(Boolean(a._loading || a.pending))
+        - Number(Boolean(b._loading || b.pending));
+      return pendingOrder || accountOrder(a) - accountOrder(b);
     }
     if (aRemaining === null) return 1;
     if (bRemaining === null) return -1;
@@ -570,123 +601,83 @@ function showSkeletons(n) {
   ).join('')}</div>`;
 }
 
-function updateProgress(done, total) {
-  const state = $('#load-state');
-  state.hidden = total === 0 || done >= total;
-  $('#load-count').textContent = `已加载 ${done} / ${total}`;
-  $('#load-fill').style.width = total ? `${done / total * 100}%` : '0%';
-}
-
 function stamp() {
-  const loaded = accounts.filter((account) => !account._loading);
-  const age = loaded.length ? Math.max(...loaded.map(a => a.age || 0)) : 0;
-  $('#stamp').textContent = age >= 1
-    ? `数据 ${Math.round(age)} 秒前 · 点刷新强制回源`
-    : '更新于 ' + new Date().toLocaleTimeString('zh-CN');
+  const parts = [];
+  if (autoRefreshCycle > 0) {
+    parts.push(`后台每 ${Math.max(1, Math.round(autoRefreshCycle / 60))} 分钟轮一遍`);
+  }
+  const ages = accounts.map((a) => a.age).filter((v) => typeof v === 'number');
+  if (ages.length) {
+    parts.push(`最近更新 ${relative(Date.now() - Math.min(...ages) * 1000)}`);
+  }
+  $('#stamp').textContent = parts.join(' · ');
 }
 
 // ---------- 拉数据 ----------
-async function load(force = false) {
+// 页面只读服务端快照，永远不触发对 cursor.com 的回源——回源是后台调度器的事。
+// 所以这里一个请求就能把整组卡片拿回来，不再需要多个 worker 逐卡请求。
+async function load({ silent = false } = {}) {
+  if (silent && inFlight) return;
   const generation = ++loadGeneration;
   if (loadController) loadController.abort();
   loadController = new AbortController();
   const { signal } = loadController;
-  const btn = $('#refresh');
-  btn.disabled = true;
-  $('#stamp').textContent = '';
-  updateProgress(0, 0);
+  inFlight = true;
   const lastCountKey = `lastCount:${selectedDepartment}`;
-  showSkeletons(accounts.length || Number(localStorage.getItem(lastCountKey) || 1));
+  if (!silent) {
+    $('#stamp').textContent = '';
+    showSkeletons(accounts.length || Number(localStorage.getItem(lastCountKey) || 1));
+  }
   try {
-    let indexData = null;
+    let payload = null;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const params = new URLSearchParams();
       if (selectedDepartment !== ALL_DEPARTMENTS) {
         params.set('department', selectedDepartment);
       }
       const suffix = params.size ? '?' + params.toString() : '';
-      const r = await fetch('/api/account-index' + suffix, { headers: headers(), signal });
+      const r = await fetch('/api/accounts' + suffix, { headers: headers(), signal });
       if (r.status === 401) {
         if (!$('#auth').open) $('#auth').showModal();
         view.innerHTML = '';
         return;
       }
       const data = await r.json();
-      if (!r.ok) throw new Error(data.detail || '读取账号索引失败');
+      if (!r.ok) throw new Error(data.detail || '读取账号失败');
       departmentSummary = data.departments || [];
       totalAccountCount = data.total || 0;
+      // 选中的部门可能已经被删空了，退回"全部"再拉一次
       const available = new Set(departmentSummary.map((item) => item.department || ''));
       if (selectedDepartment !== ALL_DEPARTMENTS && !available.has(selectedDepartment)) {
         selectedDepartment = ALL_DEPARTMENTS;
         localStorage.setItem('selectedDepartment', selectedDepartment);
         continue;
       }
-      indexData = data;
+      payload = data;
       break;
     }
-    if (!indexData || generation !== loadGeneration) return;
+    if (!payload || generation !== loadGeneration) return;
 
-    accounts = indexData.accounts.map((account, order) => ({
-      ...account, _loading: true, _order: order
-    }));
-    localStorage.setItem(`lastCount:${selectedDepartment}`, accounts.length);
+    accounts = payload.accounts.map((account, order) => ({ ...account, _order: order }));
+    localStorage.setItem(lastCountKey, accounts.length);
     render();
-    updateProgress(0, accounts.length);
-    if (!accounts.length) {
-      stamp();
-      return;
-    }
-
-    let next = 0;
-    let done = 0;
-    const worker = async () => {
-      while (next < accounts.length && generation === loadGeneration) {
-        const index = next++;
-        const account = accounts[index];
-        const suffix = force ? '?force=1' : '';
-        try {
-          const r = await fetch(
-            `/api/accounts/${encodeURIComponent(account.id)}${suffix}`,
-            { headers: headers(), signal }
-          );
-          if (r.status === 401) {
-            if (!$('#auth').open) $('#auth').showModal();
-            view.innerHTML = '';
-            loadController.abort();
-            return;
-          }
-          const data = await r.json();
-          if (!r.ok) throw new Error(data.detail || '额度读取失败');
-          if (generation === loadGeneration) {
-            accounts[index] = { ...data.account, _order: account._order };
-          }
-        } catch (e) {
-          if (e.name === 'AbortError') return;
-          if (generation === loadGeneration) {
-            accounts[index] = {
-              ...account, _loading: false, ok: false, expired: false, error: e.message
-            };
-          }
-        }
-        if (generation === loadGeneration) {
-          done += 1;
-          render();
-          updateProgress(done, accounts.length);
-        }
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(4, accounts.length) }, worker));
-    if (generation === loadGeneration) stamp();
+    stamp();
   } catch (e) {
     if (e.name === 'AbortError') return;
+    if (silent) return;                    // 轮询失败就等下一轮，别把页面清空
     view.innerHTML = `<div class="empty">读取失败：${esc(e.message)}</div>`;
   } finally {
-    if (generation === loadGeneration) {
-      btn.disabled = false;
-      updateProgress(accounts.length, accounts.length);
-    }
+    if (generation === loadGeneration) inFlight = false;
   }
 }
+
+// 后台在错开刷新，页面开着就定期把快照捞回来，不用人去点
+setInterval(() => {
+  if (!document.hidden && accounts.length) load({ silent: true });
+}, POLL_INTERVAL);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && accounts.length) load({ silent: true });
+});
 
 async function refreshOne(id) {
   const i = accounts.findIndex(a => a.id === id);
@@ -701,11 +692,23 @@ async function refreshOne(id) {
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || '刷新失败');
     accounts[i] = { ...d.account, _order: order };
+    if (d.notice) toast(d.notice);
   } catch (e) {
-    accounts[i] = { ...accounts[i], _loading: false, ok: false, expired: false, error: e.message };
+    accounts[i] = {
+      ...accounts[i], _loading: false, ok: false, expired: false,
+      pending: false, error: e.message
+    };
   }
   render();
   stamp();
+}
+
+let toastTimer = null;
+function toast(text) {
+  const el = $('#stamp');
+  clearTimeout(toastTimer);
+  el.textContent = text;
+  toastTimer = setTimeout(stamp, 4000);
 }
 
 view.addEventListener('click', async (e) => {
@@ -802,7 +805,6 @@ $('#d-save').onclick = async () => {
 $('#add').onclick = () => openDialog(
   '', selectedDepartment === ALL_DEPARTMENTS ? '' : selectedDepartment
 );
-$('#refresh').onclick = () => load(true);
 $('#d-cancel').onclick = () => dlg.close();
 $('#d-department').onchange = () =>
   toggleNewDepartment($('#d-department'), $('#d-department-new'));
@@ -875,6 +877,7 @@ $('#a-ok').onclick = async () => {
 };
 
 fetch('/api/config').then(r => r.json()).then(c => {
+  autoRefreshCycle = c.auto_refresh ? (c.cycle_seconds || 0) : 0;
   if (c.needs_token && !token) $('#auth').showModal(); else load();
 }).catch(() => load());
 </script>

@@ -101,8 +101,12 @@ class StoreTest(unittest.TestCase):
         version = conn.execute(
             "SELECT value FROM metadata WHERE key = 'schema_version'"
         ).fetchone()[0]
+        tables = {row[0] for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )}
         conn.close()
-        self.assertEqual(version, "2")
+        self.assertEqual(version, "3")
+        self.assertIn("snapshots", tables)
 
     def test_updates_department_without_changing_cookie(self) -> None:
         store.upsert_account("keep-cookie", "one@example.com", "张三", "研发中心")

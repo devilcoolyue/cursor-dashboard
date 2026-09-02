@@ -5,13 +5,14 @@
     cursor-panel   Web 面板      -> cursor_dashboard.server
 """
 
-from .client import ENDPOINTS, AuthExpired, CursorClient, fetch_one
+from .client import ENDPOINTS, AuthExpired, CursorClient, RateLimited, fetch_one
 from .usage import assemble, collect
 
-__version__ = "1.3.1"
+__version__ = "1.4.0"
 
 __all__ = [
     "AuthExpired",
+    "RateLimited",
     "CursorClient",
     "ENDPOINTS",
     "fetch_one",
