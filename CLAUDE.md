@@ -127,7 +127,14 @@ cursor_dashboard/
 不足 48 小时时显示到整小时。
 三条额度都是按钮：hover 出提示，点开弹窗看本周期按模型的 token 和花费（`openDetail`
 → `/api/accounts/{id}/usage-detail`）。点「综合」看两组 + 合计，点分类只看那一组；
-`detailRequest` 计数防止旧响应盖掉新弹窗。名字后面那个 `$450` 读的是 `quota.*.limit_usd`，
+`detailRequest` 计数防止旧响应盖掉新弹窗。
+弹窗的三个坑都踩过一遍，别改回去：`dialog` 必须 `position: fixed`（写 `relative` 会盖
+掉 UA 给 `dialog:modal` 的 fixed，弹窗掉回文档流末尾，`showModal()` 移焦点时整页跟着
+跳）；`display: flex` 只能写在 `dialog.wide[open]` 上（写在 `dialog.wide` 上会盖掉 UA
+的 `dialog:not([open]) { display: none }`，关掉之后弹窗还赖在页面上）；背景锁滚动靠
+`body.modal-open { overflow: hidden }` + 补滚动条宽度，解锁盯的是 `dialog` 的 `open`
+属性（`MutationObserver`）而不是 `close` 事件——实测 `close` 事件并不总会派发。
+名字后面那个 `$450` 读的是 `quota.*.limit_usd`，
 为 `null` 时整个不显示——**不要拿 `plan.included_usd`（$20）顶替**，那是订阅价不是池子。
 升级前存的旧快照没有这个字段，`== null` 判断已经覆盖 `undefined`。
 新增账号默认带入当前部门，「全部」使用前端 sentinel，不写入数据库。新增和调整分组
@@ -184,6 +191,16 @@ $231.24 / $495 正好对上「综合 剩 53.3%」；$20 挪进了悬停提示。
 精确等于 `planUsage.totalSpend`。**它刻意不在 `ENDPOINTS` 里**——加进去后台轮询的出站
 量就凭空 +25%，而按 IP 限流是本项目最大的风险；当初摘掉 Grok Bot 接口就是为了 -20%。
 **不要给页面加「批量拉明细」的入口**，理由和不给「刷新全部」是同一条。
+
+每行只有 `modelIntent` / `inputTokens` / `outputTokens` / `cacheWriteTokens` /
+`cacheReadTokens` / `totalCents` / `tier` 七个字段，**没有任何单价**，金额是 Cursor
+算好的。缓存写和缓存读是分开的两个字段（为 0 时整个字段省略），页面也分两列显示——
+两者单价差一个量级，加起来会把花费的大头藏掉（实测某账号 206M tokens 里 185M 是缓存
+读，单这一项就占了某个模型 $133.60 里的 $99.23）。Cursor 自家模型（tier 2）缓存写恒
+为 0，第三方模型才有，跟官方价目表里 Cursor Models 的 Cache write 一栏是 `-` 对得上。
+**不要把价目表内嵌进代码去算成本**：自己乘一遍只会引入偏差（实测按官方单价反推，非
+fast 档分毫不差，fast 档差 0.8~2.3%），还得跟着供应商调价维护。弹窗底部挂官方价目表
+的链接就够了。
 
 分类**用返回里的 `tier` 字段**（2 = Cursor Models，1 = Other Models），
 **不要改成按模型名匹配 `period_usage.autoBucketModels`**：那个列表实测是滞后的
