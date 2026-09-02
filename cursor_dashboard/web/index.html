@@ -187,17 +187,30 @@
   .empty { border: 1px dashed var(--line); border-radius: 12px; padding: 48px 24px; text-align: center; color: var(--dim); }
   .empty p { margin: 0 0 18px; }
 
+  /* 必须 fixed：只写 position: relative 会覆盖 UA 给 dialog:modal 的 fixed，
+     弹窗就跟着回到文档流末尾，showModal() 把焦点移进来时整页会跟着滚一下 */
   dialog {
     background: var(--card); color: var(--fg); border: 1px solid var(--line);
     border-radius: 14px; padding: 24px; width: min(460px, calc(100vw - 40px));
-    position: relative;
+    position: fixed; inset: 0; margin: auto;
+    max-height: calc(100dvh - 48px); overflow-y: auto; overscroll-behavior: contain;
   }
+  /* 弹窗开着时锁住背景滚动，补上滚动条宽度免得整页横向跳一下 */
+  body.modal-open { overflow: hidden; }
   dialog::backdrop { background: rgba(0,0,0,.6); }
-  dialog.wide { width: min(740px, calc(100vw - 32px)); }
+  /* 明细弹窗内容最长：头尾钉住、只让表格滚，关闭按钮才不会被推走或挡住花费列 */
+  /* display 只能写在 [open] 上：写在 dialog.wide 上会盖掉 UA 的
+     dialog:not([open]) { display: none }，关掉之后弹窗还赖在页面上 */
+  dialog.wide { width: min(820px, calc(100vw - 32px)); overflow: hidden; }
+  dialog.wide[open] { display: flex; flex-direction: column; }
+  dialog.wide #detail-body {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  }
 
   dialog h2 { margin: 0 0 18px; padding-right: 30px; font-size: 16px; }
   .dialog-close {
-    position: absolute; top: 12px; right: 12px; width: 30px; height: 30px; padding: 0;
+    position: absolute; top: 12px; right: 12px; z-index: 2;
+    width: 30px; height: 30px; padding: 0;
     display: grid; place-items: center; background: transparent; border-color: transparent;
     color: var(--dim);
   }
@@ -248,13 +261,18 @@
   table.detail .cost { font-weight: 600; }
   table.detail .zero { color: var(--dimmer); }
   .detail-empty { color: var(--dim); font-size: 12.5px; padding: 6px 0 2px; }
+  /* 花费是 Cursor 算好的，接口不给单价，想核对只能去官方价目表 */
+  .detail-pricing {
+    border-top: 1px solid var(--line); margin-top: 18px; padding-top: 12px;
+    color: var(--dimmer); font-size: 11.5px; line-height: 1.75;
+  }
   /* 加载骨架照着真实表格的列宽排，读出来的位置和填上数据后是同一处，不会跳 */
   .detail-skel-head {
     display: flex; justify-content: space-between; align-items: center;
     gap: 12px; margin-bottom: 12px;
   }
   .detail-skel-row {
-    display: grid; grid-template-columns: 1fr 58px 58px 58px 58px;
+    display: grid; grid-template-columns: 1fr 54px 54px 54px 54px 54px;
     gap: 16px; align-items: center; padding: 9px 0; border-bottom: 1px solid #1e222a;
   }
   .detail-skel-row:last-child { border-bottom: 0; }
@@ -390,6 +408,10 @@
   <h2 id="detail-title">模型明细</h2>
   <p class="detail-note" id="detail-note"></p>
   <div id="detail-body"></div>
+  <p class="detail-pricing">花费由 Cursor 按各模型的输入 / 输出 / 缓存写 / 缓存读四档单价结算，
+    接口只回传算好的金额，不含单价 ——
+    <a href="https://cursor.com/docs/models-and-pricing" target="_blank"
+      rel="noopener noreferrer">查看官方定价表 ↗</a></p>
 </dialog>
 
 <dialog id="auth">
@@ -784,7 +806,7 @@ async function load({ silent = false } = {}) {
       const suffix = params.size ? '?' + params.toString() : '';
       const r = await fetch('/api/accounts' + suffix, { headers: headers(), signal });
       if (r.status === 401) {
-        if (!$('#auth').open) $('#auth').showModal();
+        if (!$('#auth').open) openModal($('#auth'));
         view.innerHTML = '';
         return;
       }
@@ -834,7 +856,7 @@ async function refreshOne(id) {
   try {
     const r = await fetch(`/api/accounts/${encodeURIComponent(id)}/refresh`,
                           { method: 'POST', headers: headers() });
-    if (r.status === 401) { $('#auth').showModal(); return; }
+    if (r.status === 401) { openModal($('#auth')); return; }
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || '刷新失败');
     accounts[i] = { ...d.account, _order: order };
@@ -866,12 +888,12 @@ function detailSkeletonGroup(rows) {
     </div>
     <div class="detail-skel-row head">
       <span class="skel" style="width:28px"></span>
-      <span class="skel"></span><span class="skel"></span>
+      <span class="skel"></span><span class="skel"></span><span class="skel"></span>
       <span class="skel"></span><span class="skel"></span>
     </div>
     ${SKEL_WIDTHS.slice(0, rows).map((w) => `<div class="detail-skel-row">
       <span class="skel" style="width:${w}"></span>
-      <span class="skel"></span><span class="skel"></span>
+      <span class="skel"></span><span class="skel"></span><span class="skel"></span>
       <span class="skel"></span><span class="skel"></span>
     </div>`).join('')}
   </div>`;
@@ -885,17 +907,18 @@ const detailSkeleton = (group) => group === 'overall'
 function detailRows(models) {
   if (!models.length) return '<div class="detail-empty">本周期还没有这类模型的用量。</div>';
   return `<div class="detail-scroll"><table class="detail">
-    <thead><tr><th>模型</th><th>输入</th><th>输出</th><th>缓存</th><th>花费</th></tr></thead>
-    <tbody>${models.map((m) => {
-      const cache = m.cache_write_tokens + m.cache_read_tokens;
-      return `<tr>
+    <thead><tr><th>模型</th><th>输入</th><th>输出</th>
+      <th title="写入缓存的 token，按各家自己的缓存写单价计费">缓存写</th>
+      <th title="命中缓存读回的 token，单价通常只有输入的 1/10，但量大，往往是花费大头">缓存读</th>
+      <th>花费</th></tr></thead>
+    <tbody>${models.map((m) => `<tr>
         <td class="model">${esc(m.model)}</td>
         <td title="${esc(exactTokens(m.input_tokens))}">${shortTokens(m.input_tokens)}</td>
         <td title="${esc(exactTokens(m.output_tokens))}">${shortTokens(m.output_tokens)}</td>
-        <td title="写入 ${esc(exactTokens(m.cache_write_tokens))} · 读取 ${esc(exactTokens(m.cache_read_tokens))}">${shortTokens(cache)}</td>
+        <td title="${esc(exactTokens(m.cache_write_tokens))}">${shortTokens(m.cache_write_tokens)}</td>
+        <td title="${esc(exactTokens(m.cache_read_tokens))}">${shortTokens(m.cache_read_tokens)}</td>
         <td class="cost${m.spend_usd ? '' : ' zero'}">${money(m.spend_usd)}</td>
-      </tr>`;
-    }).join('')}</tbody>
+      </tr>`).join('')}</tbody>
   </table></div>`;
 }
 
@@ -933,11 +956,11 @@ async function openDetail(id, group) {
   $('#detail-title').textContent = `${account ? account.label : id} · 本周期模型明细`;
   $('#detail-note').textContent = '正在从 Cursor 取本周期明细…';
   $('#detail-body').innerHTML = detailSkeleton(group);
-  if (!detailDlg.open) detailDlg.showModal();
+  openModal(detailDlg);
   try {
     const r = await fetch(`/api/accounts/${encodeURIComponent(id)}/usage-detail`,
                           { headers: headers() });
-    if (r.status === 401) { detailDlg.close(); $('#auth').showModal(); return; }
+    if (r.status === 401) { detailDlg.close(); openModal($('#auth')); return; }
     const d = await r.json();
     if (generation !== detailRequest) return;   // 关掉又点了别的，别让旧响应覆盖
     if (!r.ok) throw new Error(d.detail || '读取明细失败');
@@ -948,6 +971,25 @@ async function openDetail(id, group) {
     $('#detail-body').innerHTML = `<div class="detail-empty">${esc(e.message)}</div>`;
   }
 }
+
+// 背景锁滚动：showModal() 不会阻止 body 跟着滚，滚轮落在遮罩上照样能拖动底下的页面
+function openModal(dlg) {
+  const barWidth = window.innerWidth - document.documentElement.clientWidth;
+  if (barWidth > 0) document.body.style.paddingRight = barWidth + 'px';
+  document.body.classList.add('modal-open');
+  if (!dlg.open) dlg.showModal();
+}
+
+// 盯 open 属性而不是监听 close 事件：关闭路径有四条（× 按钮、取消按钮、Esc、
+// 提交后自动关），close 事件在实测的 Chrome 里并不总会派发，属性变化则一定有
+const modalLock = new MutationObserver(() => {
+  if (document.querySelector('dialog[open]')) return;     // 还有别的弹窗开着
+  document.body.classList.remove('modal-open');
+  document.body.style.paddingRight = '';
+});
+document.querySelectorAll('dialog').forEach((dlg) => {
+  modalLock.observe(dlg, { attributes: true, attributeFilter: ['open'] });
+});
 
 let toastTimer = null;
 function toast(text) {
@@ -1012,7 +1054,7 @@ function openDialog(label = '', department = '', isEdit = false) {
   $('#d-cookie').value = '';
   $('#d-save').disabled = false;
   say('');
-  dlg.showModal();
+  openModal(dlg);
   (isEdit ? $('#d-cookie') : $('#d-label')).focus();
 }
 
@@ -1068,7 +1110,7 @@ function openDepartmentDialog(id, label, department) {
   $('#department-status').textContent = '';
   $('#department-status').className = 'status';
   $('#department-save').disabled = false;
-  departmentDlg.showModal();
+  openModal(departmentDlg);
   $('#department-input').focus();
 }
 
@@ -1126,7 +1168,7 @@ $('#a-ok').onclick = async () => {
 
 fetch('/api/config').then(r => r.json()).then(c => {
   autoRefreshCycle = c.auto_refresh ? (c.cycle_seconds || 0) : 0;
-  if (c.needs_token && !token) $('#auth').showModal(); else load();
+  if (c.needs_token && !token) openModal($('#auth')); else load();
 }).catch(() => load());
 </script>
 </body>
