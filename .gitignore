@@ -7,6 +7,11 @@ accounts.json*
 *.db-shm
 *.sqlite
 *.sqlite3
+# 手工备份出来的库同样是明文 cookie，但名字不以 .db 结尾，上面几条挡不住
+*.db.bak*
+*.db-*.bak
+# 服务器上的数据目录整个不入库：库、备份、迁移剩下的旧 JSON 都在这儿
+data/
 
 # 查询结果输出
 *.out.json
