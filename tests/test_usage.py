@@ -30,6 +30,21 @@ class PoolLimitsTest(unittest.TestCase):
     def test_nothing_used(self):
         self.assertEqual(pool_limits(0, 0, 0, 0), (None, None, None))
 
+    def test_capped_percentages_are_not_trusted(self):
+        """百分比截顶在 100，代进方程就是假数据。三组都来自 42 个账号的实测。"""
+        # 某一档触顶：总池仍然对得上 $495，但分池必须放弃
+        self.assertEqual(pool_limits(48708, 98.03, 100.00, 98.40), (None, None, 495.0))
+        self.assertEqual(pool_limits(48950, 100.00, 87.58, 98.89), (None, None, 494.99))
+        # 全用满：解出来的"总池"其实是消费额，会随着继续消费一直变大，一概不要
+        self.assertEqual(pool_limits(49532, 100.0, 100.0, 100.0), (None, None, None))
+
+    def test_uncapped_result_stays_precise(self):
+        """加了触顶保护后，正常账号的解不受影响。"""
+        self.assertEqual(
+            pool_limits(22928, 45.76888888888889, 51.82222222222222, 46.31919191919192),
+            (450.0, 45.0, 495.0),
+        )
+
     def test_degenerate_keeps_total_only(self):
         """两类用量比例恰好等于池的比例时分不开，只能报总池，不许瞎猜分池。"""
         self.assertEqual(pool_limits(4950, 10.0, 10.0, 10.0), (None, None, 495.0))

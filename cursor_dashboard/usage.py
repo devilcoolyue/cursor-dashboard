@@ -61,18 +61,26 @@ def _int(v) -> int:
 # 三个百分比互相贴得太近时 k 会退化成 0/0（比如刚开始用、或者两类用量比例恰好
 # 等于池的比例），这时只报总池，不猜分池——宁可不显示，也不能显示一个瞎猜的数。
 POOL_MIN_GAP = 0.05          # 百分点
+# 百分比被服务端截顶在 100：一个真用到 110% 的账号照样报 100.00，代进方程就是假数据。
+# 42 个账号的实测里，张琛 auto=98.03 / api=100.00 解出 $402 / $93（真值 $450 / $45），
+# 全用满的账号解出的"总池"其实是消费额（$495.32），会随着继续消费一直变大。
+# 所以任何一档触顶就不用它：**别为了"这样每张卡都能显示金额"把这道闸去掉。**
+PCT_CEILING = 99.99
 
 
 def pool_limits(total_spend_cents, auto_pct, api_pct, total_pct):
     """反解 (Cursor Models 池, Other Models 池, 综合池)，单位美元。解不出的位置给 None。"""
     spend = float(total_spend_cents or 0)
     total_pct = float(total_pct or 0)
-    if spend <= 0 or total_pct <= 0:
+    if spend <= 0 or total_pct <= 0 or total_pct >= PCT_CEILING:
         return (None, None, None)
     total_pool = spend / (total_pct / 100)
 
     auto_pct = float(auto_pct or 0)
     api_pct = float(api_pct or 0)
+    # 综合没触顶但某一档触顶：总池仍然可信（实测唐永林、张琛都解出 $495），分池不可信
+    if auto_pct >= PCT_CEILING or api_pct >= PCT_CEILING:
+        return (None, None, cents(total_pool))
     # total_pct 一定落在 auto_pct 和 api_pct 之间（它是两者的加权平均）
     low, high = total_pct - auto_pct, api_pct - total_pct
     if abs(low) < POOL_MIN_GAP or abs(high) < POOL_MIN_GAP or (high / low) <= 0:
