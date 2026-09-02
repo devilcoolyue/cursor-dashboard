@@ -47,9 +47,6 @@ def render(d: dict) -> str:
         f"按量付费: {'开启' if d['on_demand']['enabled'] else '关闭'}"
         + (f"  已用 ${d['on_demand']['used_usd']}" if d["on_demand"]["enabled"] else ""),
     ]
-    if d.get("grok_weekly"):
-        g = d["grok_weekly"]
-        lines.append(f"Grok Bot 周额度: 剩余 {g['remaining_pct']:.1f}%  下次刷新 {(g['reset_at'] or '')[:19]} UTC")
     if d.get("notice"):
         lines.append(f"⚠ {d['notice']}")
     return "\n".join(lines)

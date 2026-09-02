@@ -24,8 +24,10 @@ TIMEOUT = 20
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 
-# 一个账号要打的 5 个接口。服务端按这个粒度并发，CLI 仍按顺序串行。
-ENDPOINTS = ("me", "plan_info", "usage_summary", "period_usage", "grok_status")
+# 一个账号常规要打的 4 个接口。服务端按这个粒度并发，CLI 仍按顺序串行。
+# **aggregated_usage 刻意不在这里**：它是点开卡片才拉的按需明细，加进来会让
+# 后台轮询的出站量凭空 +25%，而按 IP 限流是这个项目最大的风险。
+ENDPOINTS = ("me", "plan_info", "usage_summary", "period_usage")
 RETRYABLE_STATUS = {500, 502, 504}
 # 被挡住时的状态码。429 是标准限流；403 只有在返回 HTML 时才算（见 _call）；
 # 503 通常是边缘节点在挡，不是接口真的挂了。
@@ -106,28 +108,31 @@ class CursorClient:
     def usage_summary(self):  return self._call("GET",  "/api/usage-summary")
     def period_usage(self):   return self._call("POST", "/api/dashboard/get-current-period-usage", {})
 
-    def grok_status(self):
-        try:
-            return self._call("POST", "/api/dashboard/get-sand-usage-status", {})
-        except (AuthExpired, RateLimited):
-            raise              # 这两个要冒泡：调度器靠它们判断该退避还是该报失效
-        except Exception:
-            return {}          # 非关键数据，其它失败就跳过
+    def aggregated_usage(self, start_ms: int, end_ms: int):
+        """本周期按模型聚合的 token 与花费。窗口是任意的，传账单周期起点就是"本周期"。
+
+        teamId / userId 传 0 表示"就用这个 cookie 对应的个人账号"——实测传 0、传真实
+        id、整个字段不传，返回完全一致；但 teamId 传 -1 会被判成"缺 team id"而 401。
+        """
+        return self._call("POST", "/api/dashboard/get-aggregated-usage-events", {
+            "teamId": 0, "userId": 0,
+            "startDate": int(start_ms), "endDate": int(end_ms),
+        })
 
 
 def _backoff(base: float, attempt: int) -> float:
     return base * (2 ** attempt) + random.uniform(0, base)
 
 
-def fetch_one(cookie: str, label: str, name: str):
+def fetch_one(cookie: str, label: str, name: str, *args):
     """取单个接口。刻意每次新建 Session —— requests.Session 跨线程共享不安全，
-    而 5 个请求本来就要并发发出去。瞬时错误和限流会退避重试，退避基数不同：
+    而这几个请求本来就要并发发出去。瞬时错误和限流会退避重试，退避基数不同：
     连接抖动几百毫秒就够，被挡住则要等几秒。"""
     attempts = max(REQUEST_RETRIES, RATE_LIMIT_RETRIES) + 1
     for attempt in range(attempts):
         client = CursorClient(cookie, label)
         try:
-            return getattr(client, name)()
+            return getattr(client, name)(*args)
         except AuthExpired:
             raise
         except RateLimited as exc:

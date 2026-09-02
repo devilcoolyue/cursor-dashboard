@@ -117,10 +117,27 @@
   .icon-btn.danger:hover:not(:disabled) { color: var(--bad); border-color: #4a2b2b; }
   .icon-btn svg { width: 15px; height: 15px; display: block; }
 
-  .quota { margin: 16px 0 12px; display: flex; flex-direction: column; gap: 9px; }
-  .q-row { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: baseline; }
-  .q-name { color: var(--dim); font-size: 12px; }
+  /* 三条额度都是按钮：点开看本周期用了哪些模型。整行可点，命中面积比图标大得多 */
+  .quota { margin: 14px 0 12px; display: flex; flex-direction: column; gap: 3px; }
+  button.q-row {
+    display: grid; grid-template-columns: 1fr auto auto; gap: 4px 8px; align-items: baseline;
+    width: calc(100% + 16px); margin: 0 -8px; padding: 5px 8px 7px;
+    background: transparent; border: 1px solid transparent; border-radius: 8px;
+    text-align: left;
+  }
+  button.q-row:hover:not(:disabled), button.q-row:focus-visible {
+    background: var(--card-hi); border-color: var(--line); outline: none;
+  }
+  button.q-row:hover .q-name, button.q-row:focus-visible .q-name { color: var(--fg); }
+  .q-name { color: var(--dim); font-size: 12px; transition: color .12s; }
+  .q-limit { color: var(--dimmer); font-size: 11px; margin-left: 5px; font-variant-numeric: tabular-nums; }
   .q-val { font-variant-numeric: tabular-nums; font-size: 12px; font-weight: 600; }
+  /* 常驻的箭头才是"能点"的信号——只在 hover 时才有反馈的话，没人会想到去点 */
+  .q-go { color: var(--dimmer); align-self: center; display: flex; transition: transform .12s, color .12s; }
+  .q-go svg { width: 14px; height: 14px; display: block; }
+  button.q-row:hover .q-go, button.q-row:focus-visible .q-go {
+    color: var(--fg); transform: translateX(2px);
+  }
   .track { grid-column: 1 / -1; height: 5px; border-radius: 3px; background: #23272f; overflow: hidden; }
   .fill { height: 100%; border-radius: 3px; transition: width .35s ease; }
 
@@ -131,7 +148,6 @@
   .meta .tip { border-bottom: 1px dotted var(--dimmer); cursor: help; }
   .stale { margin-top: 8px; font-size: 11.5px; color: var(--warn); line-height: 1.6; }
   .skel-note { color: var(--dimmer); font-size: 11.5px; margin-top: 14px; }
-  .notice { margin-top: 8px; font-size: 12px; color: var(--warn); }
   .err { color: var(--bad); font-size: 13px; margin: 14px 0 12px; }
 
   /* ---------- 加载骨架 ---------- */
@@ -152,6 +168,8 @@
     position: relative;
   }
   dialog::backdrop { background: rgba(0,0,0,.6); }
+  dialog.wide { width: min(740px, calc(100vw - 32px)); }
+
   dialog h2 { margin: 0 0 18px; padding-right: 30px; font-size: 16px; }
   .dialog-close {
     position: absolute; top: 12px; right: 12px; width: 30px; height: 30px; padding: 0;
@@ -175,6 +193,55 @@
   input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
   .hint-text { color: var(--dimmer); font-size: 11.5px; line-height: 1.75; margin: 7px 0 0; }
   .hint-text code { background: #0f1216; border-radius: 4px; padding: 1px 5px; }
+  /* ---------- 模型明细 ---------- */
+  .detail-note { color: var(--dimmer); font-size: 11.5px; line-height: 1.7; margin: -8px 0 18px; }
+  .detail-group { margin-bottom: 22px; }
+  .detail-group:last-child { margin-bottom: 0; }
+  .detail-group-head {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+    flex-wrap: wrap; margin-bottom: 8px;
+  }
+  .detail-group-name { font-size: 13px; font-weight: 600; }
+  .detail-group-sum { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .detail-scroll { overflow-x: auto; }
+  table.detail { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.detail th {
+    color: var(--dimmer); font-size: 11px; font-weight: 500; text-align: right;
+    padding: 0 0 7px; border-bottom: 1px solid var(--line); white-space: nowrap;
+  }
+  table.detail td {
+    padding: 7px 0; text-align: right; white-space: nowrap;
+    border-bottom: 1px solid #1e222a; font-variant-numeric: tabular-nums;
+  }
+  table.detail th:first-child, table.detail td:first-child { text-align: left; }
+  table.detail th + th, table.detail td + td { padding-left: 16px; }
+  table.detail tbody tr:last-child td { border-bottom: 0; }
+  table.detail .model {
+    color: var(--fg); font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11.5px; white-space: normal; overflow-wrap: anywhere;
+  }
+  table.detail .cost { font-weight: 600; }
+  table.detail .zero { color: var(--dimmer); }
+  .detail-empty { color: var(--dim); font-size: 12.5px; padding: 6px 0 2px; }
+  /* 加载骨架照着真实表格的列宽排，读出来的位置和填上数据后是同一处，不会跳 */
+  .detail-skel-head {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 12px; margin-bottom: 12px;
+  }
+  .detail-skel-row {
+    display: grid; grid-template-columns: 1fr 58px 58px 58px 58px;
+    gap: 16px; align-items: center; padding: 9px 0; border-bottom: 1px solid #1e222a;
+  }
+  .detail-skel-row:last-child { border-bottom: 0; }
+  /* 表头那条线也占上，填上数据时整块不会往下错一行 */
+  .detail-skel-row.head { padding: 0 0 8px; border-bottom-color: var(--line); }
+  .detail-skel-row.head .skel { height: 7px; opacity: .7; }
+  .detail-total {
+    display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    border-top: 1px solid var(--line); margin-top: 18px; padding-top: 12px;
+    color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums;
+  }
+
   .row { display: flex; gap: 8px; justify-content: flex-end; align-items: center; margin-top: 20px; }
   .status { font-size: 13px; min-height: 20px; white-space: pre-wrap; }
   .status.bad { color: var(--bad); }
@@ -197,6 +264,10 @@
     .acts { opacity: 1; }
     .row { flex-wrap: wrap; }
     .row .status { width: 100%; }
+  }
+  @media (max-width: 620px) {
+    table.detail th + th, table.detail td + td { padding-left: 10px; }
+    .detail-group-head { margin-bottom: 6px; }
   }
   @media (max-width: 360px) {
     .meta > div { gap: 6px; font-size: 11px; }
@@ -286,6 +357,16 @@
   </div>
 </dialog>
 
+<dialog id="detail-dlg" class="wide">
+  <button class="dialog-close" data-close-dialog="detail-dlg" aria-label="关闭弹窗" title="关闭">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+      stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+  </button>
+  <h2 id="detail-title">模型明细</h2>
+  <p class="detail-note" id="detail-note"></p>
+  <div id="detail-body"></div>
+</dialog>
+
 <dialog id="auth">
   <button class="dialog-close" data-close-dialog="auth" aria-label="关闭弹窗" title="关闭">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -328,6 +409,20 @@ let autoRefreshCycle = 0;          // 后台轮一遍所有账号要多久，由
 const POLL_INTERVAL = 60000;       // 只读服务端快照，不打 cursor.com
 
 const money = (n) => '$' + Number(n || 0).toFixed(2);
+// 额度上限基本都是整美元（实测 $450 / $45 / $495），整数就别拖两位小数了
+const shortMoney = (n) => {
+  const v = Number(n || 0);
+  return '$' + (Math.abs(v - Math.round(v)) < 0.005 ? Math.round(v) : v.toFixed(2));
+};
+// token 数动辄上亿，表格里按 Cursor 自己的写法缩成 M / K，精确值挂 title
+const shortTokens = (n) => {
+  const v = Number(n || 0);
+  if (!v) return '—';
+  if (v >= 1e6) return (v / 1e6).toFixed(2) + 'M';
+  if (v >= 1e3) return (v / 1e3).toFixed(v >= 1e4 ? 0 : 1) + 'K';
+  return String(v);
+};
+const exactTokens = (n) => Number(n || 0).toLocaleString('en-US') + ' tokens';
 const pad2 = (n) => String(n).padStart(2, '0');
 const parseDate = (iso) => {
   const value = iso ? new Date(iso) : null;
@@ -389,20 +484,31 @@ const ICON = {
   department: SVG('<path d="M6 22V4c0-.6.4-1 1-1h10c.6 0 1 .4 1 1v18"/><path d="M6 12H4c-.6 0-1 .4-1 1v9h18V8c0-.6-.4-1-1-1h-2"/><path d="M10 6h4M10 10h4M10 14h4M10 18h4"/>'),
   key: SVG('<circle cx="7.5" cy="16.5" r="5"/><path d="m11.5 13 8.5-8.5"/><path d="m17 7 2.5 2.5"/><path d="M20 4l2 2"/>'),
   refresh: SVG('<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>'),
+  chevron: SVG('<path d="m9 18 6-6-6-6"/>'),
   trash: SVG('<path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M18 6v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V6"/>'),
 };
 
-const GROK_TIP = 'Grok Bot 是 Cursor 内置的 Grok 助手，额度单独结算：'
-  + '不占用上面的 Cursor Models / Other Models，按周重置。'
-  + '没用过 Grok Bot 的话，这行会一直是 100%。';
-
-function bar(name, q) {
+// 额度上限是服务端从官方百分比反解出来的（见 usage.pool_limits），解不出就不显示，
+// 绝不拿 included_usd（$20）顶替——那是订阅价，不是这条额度的池子
+function bar(name, q, id, group) {
   const r = q.remaining_pct;
-  return `<div class="q-row">
-    <span class="q-name">${name}</span>
+  const limit = q.limit_usd == null ? ''
+    : `<span class="q-limit">${esc(shortMoney(q.limit_usd))}</span>`;
+  return `<button type="button" class="q-row tip left" data-detail="${esc(id)}"
+      data-group="${esc(group)}" data-tip="查看详情 · 本周期用了哪些模型">
+    <span class="q-name">${name}${limit}</span>
     <span class="q-val" style="color:${color(r)}">剩 ${r.toFixed(1)}%</span>
+    <span class="q-go" aria-hidden="true">${ICON.chevron}</span>
     <div class="track"><div class="fill" style="width:${Math.min(100, q.used_pct)}%;background:${color(r)}"></div></div>
-  </div>`;
+  </button>`;
+}
+
+// 分母用综合额度池，跟上面那条「综合 剩 x%」同口径。订阅价 $20 是另一回事——
+// 它只是"包含额度"，超出部分走 Cursor 赠送额度，摆在分母上会让人以为超支了 10 倍
+function spendTip(overall, plan) {
+  const included = `订阅本身含额度 ${money(plan.included_usd)}`;
+  return overall.limit_usd == null ? included
+    : `${included}，超出的走 Cursor 赠送额度。分母 ${shortMoney(overall.limit_usd)} 是本周期两类模型额度的合计上限。`;
 }
 
 function actions(a) {
@@ -473,7 +579,6 @@ function card(a) {
   }
 
   const d = a.data, q = d.quota, c = d.cycle, p = d.plan, s = d.spend_usd, od = d.on_demand;
-  const grok = d.grok_weekly;
   const cycleRemaining = remainingUntil(c.reset_at);
   return `<div class="card">${actions(a)}
     <div class="card-head">
@@ -487,22 +592,19 @@ function card(a) {
       </div>
     </div>
     <div class="quota">
-      ${bar('Cursor Models', q.cursor_models)}
-      ${bar('Other Models', q.other_models)}
-      ${bar('综合', q.overall)}
+      ${bar('Cursor Models', q.cursor_models, a.id, 'cursor_models')}
+      ${bar('Other Models', q.other_models, a.id, 'other_models')}
+      ${bar('综合', q.overall, a.id, 'overall')}
     </div>
     <div class="meta">
       <div><span>最后统计</span><b>${esc(statTime(a.ok_at))}</b></div>
       <div><span>额度刷新</span><b>${localDateTime(c.reset_at)}${cycleRemaining ? ` · ${cycleRemaining}` : ''}</b></div>
-      <div><span>本周期消费</span><b>${money(s.total)} / ${money(p.included_usd)}</b></div>
+      <div><span class="tip left" data-tip="${esc(spendTip(q.overall, p))}">本周期消费</span>
+        <b>${money(s.total)}${q.overall.limit_usd == null ? ''
+          : ' / ' + esc(shortMoney(q.overall.limit_usd))}</b></div>
       <div><span>按量付费</span><b>${od.enabled ? '开启 · 已用 ' + money(od.used_usd) : '关闭'}</b></div>
-      ${grok ? `<div>
-        <span class="tip left" data-tip="${esc(GROK_TIP)}">Grok Bot 周额度</span>
-        <b style="color:${color(grok.remaining_pct)}">剩 ${grok.remaining_pct.toFixed(1)}%<span style="color:var(--dimmer);font-weight:400"> · ${localDate(grok.reset_at)} 重置</span></b>
-      </div>` : ''}
     </div>
     ${a.stale ? `<div class="stale">⚠ ${esc(staleText(a))}</div>` : ''}
-    ${d.notice ? `<div class="notice">⚠ ${esc(d.notice)}</div>` : ''}
   </div>`;
 }
 
@@ -703,6 +805,106 @@ async function refreshOne(id) {
   stamp();
 }
 
+// ---------- 模型明细 ----------
+// 点额度行才会向 cursor.com 要一次明细。**别做成打开页面就批量拉**：42 个账号
+// 一起拉就是又一次请求洪峰，而这正是本项目最大的风险（按 IP 限流）的来源。
+const detailDlg = $('#detail-dlg');
+let detailRequest = 0;
+
+// 模型名长短不一，骨架也跟着长短不一，比一排等宽方块更像正在填的表
+const SKEL_WIDTHS = ['64%', '52%', '71%', '45%', '58%', '49%'];
+
+function detailSkeletonGroup(rows) {
+  return `<div class="detail-group">
+    <div class="detail-skel-head">
+      <span class="skel" style="width:104px;height:13px"></span>
+      <span class="skel" style="width:180px"></span>
+    </div>
+    <div class="detail-skel-row head">
+      <span class="skel" style="width:28px"></span>
+      <span class="skel"></span><span class="skel"></span>
+      <span class="skel"></span><span class="skel"></span>
+    </div>
+    ${SKEL_WIDTHS.slice(0, rows).map((w) => `<div class="detail-skel-row">
+      <span class="skel" style="width:${w}"></span>
+      <span class="skel"></span><span class="skel"></span>
+      <span class="skel"></span><span class="skel"></span>
+    </div>`).join('')}
+  </div>`;
+}
+
+// 综合视图等下会出两组表，骨架就先占两组的位置，填上数据时不会整块跳一下
+const detailSkeleton = (group) => group === 'overall'
+  ? detailSkeletonGroup(5) + detailSkeletonGroup(3)
+  : detailSkeletonGroup(5);
+
+function detailRows(models) {
+  if (!models.length) return '<div class="detail-empty">本周期还没有这类模型的用量。</div>';
+  return `<div class="detail-scroll"><table class="detail">
+    <thead><tr><th>模型</th><th>输入</th><th>输出</th><th>缓存</th><th>花费</th></tr></thead>
+    <tbody>${models.map((m) => {
+      const cache = m.cache_write_tokens + m.cache_read_tokens;
+      return `<tr>
+        <td class="model">${esc(m.model)}</td>
+        <td title="${esc(exactTokens(m.input_tokens))}">${shortTokens(m.input_tokens)}</td>
+        <td title="${esc(exactTokens(m.output_tokens))}">${shortTokens(m.output_tokens)}</td>
+        <td title="写入 ${esc(exactTokens(m.cache_write_tokens))} · 读取 ${esc(exactTokens(m.cache_read_tokens))}">${shortTokens(cache)}</td>
+        <td class="cost${m.spend_usd ? '' : ' zero'}">${money(m.spend_usd)}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div>`;
+}
+
+function detailGroup(group, quota) {
+  const limit = quota && quota.limit_usd != null
+    ? ` / 上限 ${esc(shortMoney(quota.limit_usd))}` : '';
+  return `<div class="detail-group">
+    <div class="detail-group-head">
+      <span class="detail-group-name">${esc(group.name)}</span>
+      <span class="detail-group-sum">已用 ${money(group.spend_usd)}${limit}
+        · ${shortTokens(group.total_tokens)} tokens</span>
+    </div>
+    ${detailRows(group.models)}
+  </div>`;
+}
+
+function renderDetail(d, group) {
+  const groups = group === 'overall' ? d.groups : d.groups.filter((g) => g.key === group);
+  const parts = [`统计窗口 ${localDateTime(d.cycle_start)} 起`];
+  if (d.fetched_at) parts.push(`取数于 ${statTime(d.fetched_at)}`);
+  $('#detail-note').textContent = parts.join(' · ');
+  const totals = group === 'overall' && d.totals.model_count
+    ? `<div class="detail-total">
+        <span>本周期合计 ${d.totals.model_count} 个模型 ·
+          ${shortTokens(d.totals.total_tokens)} tokens</span>
+        <span>${money(d.totals.spend_usd)}</span>
+      </div>` : '';
+  $('#detail-body').innerHTML = groups.map((g) => detailGroup(g, (d.quota || {})[g.key])).join('') + totals;
+}
+
+async function openDetail(id, group) {
+  const account = accounts.find((a) => a.id === id);
+  const generation = ++detailRequest;
+  // 分类名由组头负责显示，标题只认账号，免得单组视图里同一个词写两遍
+  $('#detail-title').textContent = `${account ? account.label : id} · 本周期模型明细`;
+  $('#detail-note').textContent = '正在从 Cursor 取本周期明细…';
+  $('#detail-body').innerHTML = detailSkeleton(group);
+  if (!detailDlg.open) detailDlg.showModal();
+  try {
+    const r = await fetch(`/api/accounts/${encodeURIComponent(id)}/usage-detail`,
+                          { headers: headers() });
+    if (r.status === 401) { detailDlg.close(); $('#auth').showModal(); return; }
+    const d = await r.json();
+    if (generation !== detailRequest) return;   // 关掉又点了别的，别让旧响应覆盖
+    if (!r.ok) throw new Error(d.detail || '读取明细失败');
+    renderDetail(d, group);
+  } catch (e) {
+    if (generation !== detailRequest) return;
+    $('#detail-note').textContent = '';
+    $('#detail-body').innerHTML = `<div class="detail-empty">${esc(e.message)}</div>`;
+  }
+}
+
 let toastTimer = null;
 function toast(text) {
   const el = $('#stamp');
@@ -714,7 +916,7 @@ function toast(text) {
 view.addEventListener('click', async (e) => {
   const btn = e.target.closest('button');
   if (!btn) return;
-  const { del, one, edit, deptId, label, department } = btn.dataset;
+  const { del, one, edit, deptId, detail, group, label, department } = btn.dataset;
   if (btn.dataset.showAll !== undefined) {
     selectDepartment(ALL_DEPARTMENTS);
     return;
@@ -727,6 +929,8 @@ view.addEventListener('click', async (e) => {
     if (r.ok) load();
   } else if (one !== undefined) {
     refreshOne(one);
+  } else if (detail !== undefined) {
+    openDetail(detail, group);
   } else if (deptId !== undefined) {
     openDepartmentDialog(deptId, label, department);
   } else if (edit !== undefined) {

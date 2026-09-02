@@ -21,6 +21,7 @@ import time
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 import uvicorn
 import requests
@@ -32,6 +33,7 @@ from . import snapshot
 from .client import ENDPOINTS, AuthExpired, RateLimited, fetch_one
 from .config import (
     DATABASE_PATH,
+    DETAIL_TTL,
     MANUAL_BURST,
     MANUAL_COOLDOWN,
     MAX_WORKERS,
@@ -50,7 +52,7 @@ from .store import (
     update_account_department,
     upsert_account,
 )
-from .usage import assemble
+from .usage import assemble, assemble_detail, iso_to_dt
 
 
 # ---------- 出站节流 ----------
@@ -88,13 +90,13 @@ def _pacer_lock() -> asyncio.Lock:
     return _pace_lock
 
 
-async def fetch_cursor(cookie: str, label: str, name: str):
+async def fetch_cursor(cookie: str, label: str, name: str, *args):
     """所有访问 cursor.com 的路径都过这里：先排队拿时槽，再占并发名额。"""
     await _pace()
     if _request_slots is None:
-        return await asyncio.to_thread(fetch_one, cookie, label, name)
+        return await asyncio.to_thread(fetch_one, cookie, label, name, *args)
     async with _request_slots:
-        return await asyncio.to_thread(fetch_one, cookie, label, name)
+        return await asyncio.to_thread(fetch_one, cookie, label, name, *args)
 
 
 # ---------- 回源 ----------
@@ -102,7 +104,7 @@ async def fetch_cursor(cookie: str, label: str, name: str):
 def _classify(errors: list[BaseException]) -> tuple[str, str]:
     """把一组接口异常归成一种卡片状态。
 
-    **限流优先于失效**：5 个接口里混着 401 和 403 拦截页时按限流处理。宁可多等
+    **限流优先于失效**：几个接口里混着 401 和 403 拦截页时按限流处理。宁可多等
     一轮，也不能误报"cookie 失效"——那会让用户去重新粘贴 cookie，而那次粘贴同样
     会被挡住，看起来就像新 cookie 也不管用。
     """
@@ -125,7 +127,7 @@ async def refresh_account(acc: dict) -> str | None:
     cookie = acc["cookie"]
 
     async with snapshot.lock_for(ident):
-        # return_exceptions：让 5 个接口都跑完再判定，否则先抛出的那个说了算，
+        # return_exceptions：让 4 个接口都跑完再判定，否则先抛出的那个说了算，
         # 混合错误时容易把限流认成失效
         raw = await asyncio.gather(
             *(fetch_cursor(cookie, label, name) for name in ENDPOINTS),
@@ -161,6 +163,32 @@ def take_manual_token() -> bool:
         return True
 
 
+# ---------- 按模型明细 ----------
+# 明细是点开卡片才拉的，不进后台轮询——42 个账号全量拉一遍就是又一次 42 个请求的
+# 洪峰，正是 CLAUDE.md 里反复交代不能造的那种。这里只挡住"同一张卡连点几下"，
+# 保证每次点开拿到的都是刚从 cursor.com 取回来的数。
+_details: dict[str, tuple[float, dict]] = {}
+_details_lock = threading.Lock()
+
+
+def cached_detail(ident: str, fp: str) -> dict | None:
+    with _details_lock:
+        entry = _details.get(ident)
+    if not entry:
+        return None
+    stored_at, detail = entry
+    # cookie 换过就作废，和快照一个道理：旧会话的数据不能挂在新会话上
+    if detail.get("fingerprint") != fp or time.time() - stored_at > DETAIL_TTL:
+        return None
+    return detail
+
+
+def store_detail(ident: str, detail: dict) -> dict:
+    with _details_lock:
+        _details[ident] = (time.time(), detail)
+    return detail
+
+
 # ---------- HTTP ----------
 
 _scheduler: Scheduler | None = None
@@ -169,7 +197,7 @@ _scheduler: Scheduler | None = None
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     global _request_slots, _pace_lock, _next_slot, _scheduler
-    # N 账号 × 5 接口打平成一个任务集，共用这一个池。不要改成嵌套线程池——线程数会乘起来。
+    # N 账号 × 4 接口打平成一个任务集，共用这一个池。不要改成嵌套线程池——线程数会乘起来。
     pool = ThreadPoolExecutor(max_workers=MAX_WORKERS, thread_name_prefix="probe")
     asyncio.get_running_loop().set_default_executor(pool)
     _request_slots = asyncio.Semaphore(REQUEST_CONCURRENCY)
@@ -368,6 +396,54 @@ async def api_refresh_one(account_key: str):
     return {"account": snapshot.view(acc, account_key)}
 
 
+@app.get("/api/accounts/{account_key}/usage-detail",
+         dependencies=[Depends(require_token)])
+async def api_usage_detail(account_key: str):
+    """本账单周期内按模型的 token 与花费。点开卡片才会来这儿。
+
+    窗口起点直接用快照里已经算好的 cycle.start，所以只多打一个接口而不是两个。
+    """
+    acc = find_account(account_key)
+    ident = account_id(acc)
+    cookie = acc["cookie"]
+    snap = snapshot.get(ident, cookie)
+    data = snap["data"] or {}
+    start = iso_to_dt((data.get("cycle") or {}).get("start"))
+    if not start:
+        raise HTTPException(409, "还没拿到这个账号的账单周期，等后台刷新到它再看明细")
+
+    cached = cached_detail(ident, snap["fingerprint"])
+    if cached:
+        return cached
+    if not take_manual_token():
+        raise HTTPException(429, "查询太频繁了，等几秒再点")
+
+    now = datetime.now(timezone.utc)
+    try:
+        raw = await fetch_cursor(cookie, acc.get("label") or "unnamed",
+                                 "aggregated_usage",
+                                 int(start.timestamp() * 1000),
+                                 int(now.timestamp() * 1000))
+    except AuthExpired:
+        raise HTTPException(400, "会话已失效，点卡片右上角的钥匙图标重新粘贴 cookie")
+    except RateLimited:
+        raise HTTPException(503, "Cursor 暂时限制了请求，等一会儿再看；cookie 可能是好的")
+    except requests.RequestException as exc:
+        raise HTTPException(502, f"连接 Cursor 失败：{exc}")
+
+    detail = assemble_detail(raw)
+    detail.update({
+        "id": ident,
+        "label": acc.get("label") or "unnamed",
+        "email": data.get("email") or acc.get("email"),
+        "quota": data.get("quota") or {},
+        "cycle_start": (data.get("cycle") or {}).get("start"),
+        "fetched_at": now.isoformat(),
+        "fingerprint": snap["fingerprint"],
+    })
+    return store_detail(ident, detail)
+
+
 @app.patch(
     "/api/accounts/{account_key}/department", dependencies=[Depends(require_token)]
 )
@@ -385,6 +461,8 @@ def api_delete(account_key: str):
     if not delete_account(account_key):
         raise HTTPException(404, "账号不存在")
     snapshot.drop(account_key)
+    with _details_lock:
+        _details.pop(account_key, None)
     return {"ok": True}
 
 

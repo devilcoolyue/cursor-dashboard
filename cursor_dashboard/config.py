@@ -63,3 +63,6 @@ REFRESH_MAX_BACKOFF = max(1.0, _positive_float("REFRESH_MAX_BACKOFF", "8"))
 # 单卡刷新保留，但要拦住"狂点一片卡片"这种新的洪峰入口。
 MANUAL_COOLDOWN = _positive_float("MANUAL_COOLDOWN", "60")
 MANUAL_BURST = max(1, int(os.environ.get("MANUAL_BURST", "5")))
+# 按模型明细的缓存寿命。明细只在点开卡片时才回源，这道缓存挡的是"同一张卡连点几下"，
+# 不是为了少刷新——额度是月度数据，一分钟内的两次点击看到同一份结果没有区别。
+DETAIL_TTL = _positive_float("DETAIL_TTL", "60")

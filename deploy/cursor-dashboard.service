@@ -11,6 +11,13 @@ WorkingDirectory=/data/app/cursor-dashboard
 Environment=PYTHONUNBUFFERED=1
 Environment=DATABASE_PATH=/data/app/cursor-dashboard/data/accounts.db
 Environment=ACCOUNTS_PATH=/data/app/cursor-dashboard/data/accounts.json
+# 对外监听务必设口令，否则内网任何人都能读写等同登录态的会话 token
+#Environment=PANEL_TOKEN=<随机串>
+# 后台错峰刷新的周期（秒）。默认 900；账号数 ÷ 这个值 × 4 就是大致 QPS
+# （42 个账号 / 900 秒 ≈ 0.19 QPS）。
+# 别往下调到几分钟以内：错开只降瞬时密度，周期越短长期总量越大，同一个 IP
+# 24 小时不停打反而更容易被限流。首次部署想快点填满快照可临时设 300 跑一轮。
+#Environment=REFRESH_INTERVAL=900
 ExecStart=/data/app/cursor-dashboard/.venv/bin/cursor-panel --host 192.168.3.166 --port 8787 --no-open
 Restart=on-failure
 RestartSec=3

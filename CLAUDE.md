@@ -41,15 +41,16 @@ python3 -c "import re,pathlib;print(re.search(r'<script>(.*)</script>',pathlib.P
 3）、`REQUEST_MIN_INTERVAL`（出站最小间隔，默认 0.5 秒）、`REQUEST_RETRIES`/
 `RETRY_BASE_DELAY`、`RATE_LIMIT_RETRIES`/`RATE_LIMIT_BASE_DELAY`、`REFRESH_ENABLED`/
 `REFRESH_INTERVAL`（默认 900 秒）/`REFRESH_MIN_GAP`/`REFRESH_IDLE_AFTER`/
-`REFRESH_IDLE_FACTOR`/`REFRESH_MAX_BACKOFF`、`MANUAL_COOLDOWN`/`MANUAL_BURST`。
+`REFRESH_IDLE_FACTOR`/`REFRESH_MAX_BACKOFF`、`MANUAL_COOLDOWN`/`MANUAL_BURST`、
+`DETAIL_TTL`（按模型明细的缓存秒数，默认 60）。
 相对路径都基于启动时的工作目录。
 
 ## 架构
 
 ```
 cursor_dashboard/
-├── client.py     5 个接口的封装、AuthExpired、RateLimited、ENDPOINTS、fetch_one
-├── usage.py      assemble/collect —— 把 5 份原始返回拼成前后端共用结构，纯计算
+├── client.py     接口封装、AuthExpired、RateLimited、ENDPOINTS、fetch_one
+├── usage.py      assemble/collect/pool_limits/assemble_detail，纯计算
 ├── snapshot.py   每个账号最后已知状态 + single-flight 锁 + 给前端的 view()
 ├── scheduler.py  后台错峰刷新循环，自适应退避
 ├── store.py      SQLite 事务读写、snapshots 表、旧 JSON 自动迁移、account_id
@@ -64,7 +65,7 @@ cursor_dashboard/
 
 **页面不回源，只读快照。** 所有对 cursor.com 的常规访问都由 `scheduler.Scheduler`
 在后台发出，一次一个账号。**不要给页面加回「刷新全部」这类批量强制回源的入口**——
-那正是触发限流的洪峰源头（42 账号 × 5 接口 = 210 个请求几秒内打完）。
+那正是触发限流的洪峰源头（42 账号 × 4 接口 = 168 个请求几秒内打完）。
 
 出站有两道闸，缺一不可：
 - `fetch_cursor()` 里的 `_pace()` 按 `REQUEST_MIN_INTERVAL` 给每个请求分配时槽。
@@ -73,10 +74,10 @@ cursor_dashboard/
 - 全局 semaphore（`REQUEST_CONCURRENCY`）限连接数，防止连接洪峰。
 
 `refresh_account()` 用 `asyncio.gather(..., return_exceptions=True)` 把 **N 账号 ×
-5 接口打平成一个任务集**，共用 lifespan 里装的单个 `ThreadPoolExecutor`。
+4 接口打平成一个任务集**，共用 lifespan 里装的单个 `ThreadPoolExecutor`。
 **不要改成嵌套线程池**（每账号一个池、池内再并发）——线程数会乘起来。默认 executor
 只有 `min(32, cpu+4)`，所以显式设了 `MAX_WORKERS`。用 `return_exceptions` 是为了让
-5 个接口都跑完再由 `_classify()` 判定，否则先抛出的那个说了算，混合错误容易误判。
+4 个接口都跑完再由 `_classify()` 判定，否则先抛出的那个说了算，混合错误容易误判。
 
 `scheduler` 每轮挑 `attempted_at` 最旧的账号（`Scheduler._pick`），间隔是
 `REFRESH_INTERVAL / 账号数`。撞限流 → 间隔翻倍（上限 `REFRESH_MAX_BACKOFF`）；
@@ -99,6 +100,7 @@ cursor_dashboard/
 `GET /api/account-index?department=...`（只要索引和部门人数，不访问 Cursor）、
 `GET /api/accounts?department=...`（整组卡片，读快照，一个请求拿完）、
 `GET /api/accounts/{id}`（单卡快照）、
+`GET /api/accounts/{id}/usage-detail`（本周期按模型明细，**唯一一个页面点了才回源的读接口**）、
 `POST /api/accounts`（新增/续期，同一入口，成功后直接写快照）、
 `PATCH /api/accounts/{id}/department`（只改部门，不碰 cookie）、
 `POST /api/accounts/{id}/refresh`（单卡刷新，走冷却 + 令牌桶）、
@@ -119,6 +121,11 @@ cursor_dashboard/
 `localStorage.selectedDepartment`、`localStorage.accountSort`，服务端按部门过滤账号；
 额度刷新时间由前端把 `reset_at` 转成浏览器本地时区，不使用后端向下取整的 `days_left`；
 不足 48 小时时显示到整小时。
+三条额度都是按钮：hover 出提示，点开弹窗看本周期按模型的 token 和花费（`openDetail`
+→ `/api/accounts/{id}/usage-detail`）。点「综合」看两组 + 合计，点分类只看那一组；
+`detailRequest` 计数防止旧响应盖掉新弹窗。名字后面那个 `$450` 读的是 `quota.*.limit_usd`，
+为 `null` 时整个不显示——**不要拿 `plan.included_usd`（$20）顶替**，那是订阅价不是池子。
+升级前存的旧快照没有这个字段，`== null` 判断已经覆盖 `undefined`。
 新增账号默认带入当前部门，「全部」使用前端 sentinel，不写入数据库。新增和调整分组
 使用原生 `select`：空值代表未分组，已有部门动态生成，选择「新建部门…」后才显示
 自由文本输入框；不要改回浏览器表现不一致的 `datalist`。
@@ -134,17 +141,52 @@ cookie 本身好好的。旧代码把所有 403 都当 `AuthExpired`，结果批
 卡片变红，用户重新粘贴 cookie 也照样红。现在按 Content-Type 分：403 + JSON 才是
 失效，403 + HTML 以及 429/503 判为 `RateLimited`，可退避重试（`RATE_LIMIT_*`，
 尊重 `Retry-After`）。`_classify()` 里**限流优先于失效**，混合错误按限流处理。
-`grok_status` 吞掉了普通异常，但 `AuthExpired` / `RateLimited` 必须冒泡，否则调度器
-不知道该退避。**不要把这两类错误合并，也不要把 403 一律当失效。**
+**不要把这两类错误合并，也不要把 403 一律当失效**——调度器靠 `RateLimited` 判断
+该退避还是该报失效，混进 `AuthExpired` 就会把限流当成 cookie 过期。
 
 **`fetch_one` 每次新建 `Session` 是刻意的**——`requests.Session` 跨线程共享不安全
-（响应会改写 cookie jar），而这 5 个请求本来就要并发发出。Session 用完必须关闭。
+（响应会改写 cookie jar），而这 4 个请求本来就要并发发出。Session 用完必须关闭。
 连接错误、超时、5xx 可短退避重试，`RateLimited` 走更长的退避；`AuthExpired` 和普通 4xx 不能重试。
 
 **额度百分比是官方给的**：`autoPercentUsed` / `apiPercentUsed` / `totalPercentUsed`
 直接来自 `period_usage`，代码只做 `100 - x`。**不要拿美元金额去算百分比**——
-`totalSpend` 里含 `bonusSpend`（Cursor 赠送额度），和百分比不是一个尺度，
-$193.03 / $20.00 与"剩 61.0%"并存是正常的。
+`totalSpend` 里含 `bonusSpend`（Cursor 赠送额度），和 `includedAmountCents`（$20）
+不是一个尺度。卡片上「本周期消费」的分母因此用的是反解出来的综合池（见下条），
+$231.24 / $495 正好对上「综合 剩 53.3%」；$20 挪进了悬停提示。
+**别把分母改回 `plan.included_usd`**——那会显示成 $231.24 / $20.00，看着像超支十倍。
+
+**每条额度的美元上限是反解出来的，不是接口字段，也不许写死。** `usage.pool_limits`
+利用「`totalPercentUsed` 是两个池按容量加权的平均数」这一点解方程：
+总池 `T = totalSpend / totalPct`，池之比 `A/B = (apiPct − totalPct) / (totalPct − autoPct)`。
+某 Pro 账号在两个不同时刻都解出 A=$450、B=$45、T=$495，且和按 tier 分组的明细金额
+逐分吻合。三个百分比贴太近时方程退化（`POOL_MIN_GAP`），这时只给总池、分池留 `None`，
+前端不显示——**宁可不显示，也不要显示一个猜的数**。**这跟「不要拿美元金额去算百分比」
+不冲突**：那条禁的是拿 `totalSpend` 除 `includedAmountCents`（$20），两者不是一个尺度；
+这里是反过来用官方百分比标定池子大小，百分比仍是唯一事实来源。
+
+**按模型明细走 `get-aggregated-usage-events`，且只在点开卡片时才拉。**
+`{"teamId":0,"userId":0,"startDate":<ms>,"endDate":<ms>}`，窗口传账单周期起点就是「本
+周期」（网页 Usage 页面默认按天，所以那里看不到周期口径）。返回的 `totalCostCents`
+精确等于 `planUsage.totalSpend`。**它刻意不在 `ENDPOINTS` 里**——加进去后台轮询的出站
+量就凭空 +25%，而按 IP 限流是本项目最大的风险；当初摘掉 Grok Bot 接口就是为了 -20%。
+**不要给页面加「批量拉明细」的入口**，理由和不给「刷新全部」是同一条。
+
+分类**用返回里的 `tier` 字段**（2 = Cursor Models，1 = Other Models），
+**不要改成按模型名匹配 `period_usage.autoBucketModels`**：那个列表实测是滞后的
+（只到 `cursor-grok-4.5`，没有正在跑的 4.6），按它归类会把新模型全丢进 Other Models。
+
+**`period_usage.displayMessage` 也是金额口径，页面不显示它。** `includedSpend`
+撞到 `limit`（$20）后它就固定返回 "You've hit your usage limit"，哪怕
+`totalPercentUsed` 只有 45%——同一份返回里的 `autoModelSelectedDisplayMessage`
+说的还是"用了 45%"。挂在剩 92% 的卡片下面纯属吓人，已从 `card()` 里去掉；
+`usage.assemble` 仍然透传 `notice` 字段（CLI 还在用），**不要因为字段还在就把它
+渲染回卡片**。
+
+**Grok Bot 的额度整条都不要了**，`get-sand-usage-status` 已从 `ENDPOINTS` 摘掉，
+每账号从 5 个接口降到 4 个（出站量 -20%，这是本项目最大风险——按 IP 限流——的直接
+缓解）。Grok Bot 是 x.ai 的独立桌面/iOS App（用 Cursor 账号登录的常驻云端 agent），
+跟在编辑器里写代码是两回事，没人装这个 App 就永远是 100%。**别为了"顺手多显示一点"
+把这个接口加回来。**
 
 **`accounts.db` 存的是等同登录态的会话 token**，权限 0600，已 gitignore。首次启动会
 从旧 `accounts.json` 导入一次；`snapshots` 表只存 cookie 的 sha256 前 16 位，不存

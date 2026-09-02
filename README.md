@@ -43,13 +43,14 @@ uv run cursor-panel --host 0.0.0.0 --port 8787 --no-open
 | `REFRESH_MAX_BACKOFF` | 8 | 撞限流后周期最多放大到几倍 |
 | `MANUAL_COOLDOWN` | 60 | 单卡手动刷新的冷却秒数 |
 | `MANUAL_BURST` | 5 | 手动刷新令牌桶容量 |
+| `DETAIL_TTL` | 60 | 按模型明细的缓存秒数 |
 
 ## 项目结构
 
 ```
 cursor_dashboard/
-├── client.py     cursor.com 5 个内部接口的封装 + AuthExpired / RateLimited
-├── usage.py      把 5 份原始返回拼成前后端共用的结构（纯计算）
+├── client.py     cursor.com 内部接口的封装 + AuthExpired / RateLimited
+├── usage.py      把原始返回拼成前后端共用的结构、反解额度池（纯计算）
 ├── snapshot.py   每个账号"最后已知状态"，失败不覆盖成功
 ├── scheduler.py  后台错峰刷新，自适应退避
 ├── store.py      SQLite 读写、事务、快照表和旧 JSON 自动迁移
@@ -66,7 +67,7 @@ cursor_dashboard/
 **页面不回源。** 打开面板只是读服务端快照，所有对 cursor.com 的访问都由后台调度器
 发出，一个账号一个账号地慢慢刷。
 
-之所以这么改：过去「刷新全部」会在几秒内打出 N×5 个请求（42 个账号就是 210 个），
+之所以这么改：过去「刷新全部」会在几秒内打出 N×4 个请求（42 个账号就是 168 个），
 瞬时几十 QPS，Cursor / Vercel 的边缘防护直接回 **403 + HTML 拦截页**。而旧代码把所有
 403 都当成 cookie 失效，于是整屏卡片变红，用户去重新粘贴 cookie，那次粘贴同样被挡，
 看起来就像「新 cookie 也不管用」。
@@ -82,7 +83,7 @@ cursor_dashboard/
    连续 10 次成功再收回来一档。超过 `REFRESH_IDLE_AFTER` 没人看面板就降速，
    有人打开页面立刻恢复。
 3. **区分「被挡住」和「真失效」。** 401、跳登录页、403 + JSON 判为会话失效；
-   403 + HTML、429、503 判为临时限流，退避重试。一个账号的 5 个接口里混着两种错误时
+   403 + HTML、429、503 判为临时限流，退避重试。一个账号的 4 个接口里混着两种错误时
    **按限流处理**——宁可多等一轮，也不能冤枉用户去重粘一个好 cookie。
 
 > ⚠️ **`REFRESH_INTERVAL` 别往下调。** 错开只降低瞬时密度，周期越短长期总量越大：
@@ -101,7 +102,7 @@ cursor_dashboard/
 
 其余设计点：
 
-- `fetch_one` 每次新建 `requests.Session`——`Session` 跨线程共享不安全，而这 5 个
+- `fetch_one` 每次新建 `requests.Session`——`Session` 跨线程共享不安全，而这 4 个
   请求本来就要同时发出去。每次调用结束都会显式关闭 Session。
 - 默认线程池只有 `min(32, cpu+4)`（8 核机器是 12），所以显式设成 `MAX_WORKERS`。
   这只是通用线程池容量，不代表允许同量的 Cursor 出站连接。
@@ -157,18 +158,51 @@ cookie 确认失效后卡片才会变红，点钥匙图标重新粘贴即可。�
 
 | 字段 | 含义 |
 |---|---|
-| Cursor Models | Auto / Composer 等 Cursor 自家模型的额度用量 |
+| Cursor Models | Auto / Composer 等 Cursor 自家模型的额度用量，名字后面是这条额度的上限 |
 | Other Models | 第三方高级模型（Claude、GPT 等）的额度用量 |
 | 综合 | 两者合并口径 |
 | 额度刷新 | 订阅账单周期结束时间，按浏览器本地时区显示；不足两天时精确到小时 |
-| 本周期消费 | 已消费金额 / 套餐包含额度 |
+| 本周期消费 | 已消费金额 / 本周期额度上限，和「综合」同口径；订阅含的 $20 在悬停提示里 |
 | 按量付费 | 超出包含额度后是否继续按量计费 |
-| Grok Bot 周额度 | Cursor 里 Grok Bot 的**独立**额度，与主额度分开算、每周重置。不用 Grok Bot 就恒为 100% |
 
 百分比是官方接口直接给的（`autoPercentUsed` / `apiPercentUsed` /
-`totalPercentUsed`），代码只做 `100 - x`，没有自己按金额折算。所以「本周期消费
-$193 / 包含额度 $20」和「综合剩余 61%」并存是正常的——消费里含 Cursor 赠送额度
-（`bonusSpend`），和百分比不是一个尺度。
+`totalPercentUsed`），代码只做 `100 - x`，没有自己按金额折算。「本周期消费」的分母是
+下面反解出来的额度上限，跟「综合」同口径（$231.24 / $495 ↔ 剩 53.3%）。订阅本身包含的
+$20 是另一回事——超出部分走 Cursor 赠送额度（`bonusSpend`），拿它当分母会显示成
+$231.24 / $20.00，看着像超支十倍，所以挪进了悬停提示。
+
+同理，接口里那句 `displayMessage`（"You've hit your usage limit"）走的也是金额口径：
+包含额度 $20 一用完它就固定这么返回，哪怕额度还剩九成。挂在卡片上纯属吓人，页面不
+显示它。Grok Bot 的周额度也不再采集——那是 x.ai 的独立 App，用 Cursor 账号登录的
+常驻云端 agent，跟在编辑器里写代码是两回事，没人装就永远是 100%。
+
+### 额度上限是怎么来的
+
+「Cursor Models $450」里的 $450 不是接口里的字段，也不是写死的，是从官方百分比反解
+出来的（`usage.pool_limits`）。`totalPercentUsed` 是两个池按容量加权的平均数：
+
+```
+totalPct·(A+B) = autoPct·A + apiPct·B
+    总池  T = totalSpend / totalPct
+    池之比  A/B = (apiPct − totalPct) / (totalPct − autoPct)
+```
+
+某 Pro 账号在两个不同时刻都解出 A=$450、B=$45、T=$495，且按模型明细分类求和的金额与
+`autoPct·A`、`apiPct·B` 逐分吻合。三个百分比互相贴得太近时方程退化，这时只显示总池、
+不猜分池——宁可不显示，也不显示一个瞎猜的数。
+
+这跟上面那条「不拿金额折算百分比」不矛盾：那说的是别拿 `totalSpend` 去除 $20，两者
+不是一个尺度；这里是反过来用官方百分比标定池子有多大，百分比仍是唯一的事实来源。
+
+### 按模型明细
+
+点卡片上任意一条额度，弹窗列出**本账单周期内**用过的每个模型、输入/输出/缓存 token
+和花费，数据来自 `get-aggregated-usage-events`（cursor.com 网页 Usage 页面的同一个
+数据源，但窗口传的是账单周期起点，不是它默认的按天）。分类用返回里的 `tier` 字段，
+不是按模型名匹配 `autoBucketModels`——那个列表实测滞后，会把新模型全归到 Other。
+
+**明细只在点开时才拉，不进后台轮询。** 42 个账号全量拉一遍就是又一次请求洪峰，正是
+刷新策略那一节要避免的东西。同一张卡 `DETAIL_TTL` 秒内重复点会命中缓存。
 
 数据来自 cursor.com 的非公开内部接口（`client.py` 里有标注），字段随时可能变。
 
