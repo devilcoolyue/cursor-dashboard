@@ -123,6 +123,26 @@ class FetchOneTest(unittest.TestCase):
         self.assertEqual(me.call_count, 1)
         sleep.assert_not_called()
 
+    @patch.object(client.time, "sleep")
+    @patch.object(client.CursorClient, "_call", side_effect=client.RateLimited("blocked"))
+    def test_grok_status_lets_rate_limits_through(self, _call, _sleep) -> None:
+        """grok 是非关键接口，但限流必须冒泡，否则调度器不知道该退避。"""
+        c = client.CursorClient("fake-cookie", "测试账号")
+        try:
+            with self.assertRaises(client.RateLimited):
+                c.grok_status()
+        finally:
+            c.s.close()
+
+    @patch.object(client.CursorClient, "_call", side_effect=RuntimeError("boom"))
+    def test_grok_status_swallows_other_failures(self, _call) -> None:
+        """普通失败要吞掉：这条额度可有可无，不该把整个账号拖成失败。"""
+        c = client.CursorClient("fake-cookie", "测试账号")
+        try:
+            self.assertEqual(c.grok_status(), {})
+        finally:
+            c.s.close()
+
 
 if __name__ == "__main__":
     unittest.main()

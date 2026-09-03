@@ -24,10 +24,10 @@ TIMEOUT = 20
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 
-# 一个账号常规要打的 4 个接口。服务端按这个粒度并发，CLI 仍按顺序串行。
+# 一个账号常规要打的 5 个接口。服务端按这个粒度并发，CLI 仍按顺序串行。
 # **aggregated_usage 刻意不在这里**：它是点开卡片才拉的按需明细，加进来会让
-# 后台轮询的出站量凭空 +25%，而按 IP 限流是这个项目最大的风险。
-ENDPOINTS = ("me", "plan_info", "usage_summary", "period_usage")
+# 后台轮询的出站量再涨一档，而按 IP 限流是这个项目最大的风险。
+ENDPOINTS = ("me", "plan_info", "usage_summary", "period_usage", "grok_status")
 RETRYABLE_STATUS = {500, 502, 504}
 # 被挡住时的状态码。429 是标准限流；403 只有在返回 HTML 时才算（见 _call）；
 # 503 通常是边缘节点在挡，不是接口真的挂了。
@@ -107,6 +107,19 @@ class CursorClient:
     def plan_info(self):      return self._call("POST", "/api/dashboard/get-plan-info", {})
     def usage_summary(self):  return self._call("GET",  "/api/usage-summary")
     def period_usage(self):   return self._call("POST", "/api/dashboard/get-current-period-usage", {})
+
+    def grok_status(self):
+        """Grok Bot 的周额度。非关键数据：普通失败吞掉，别让它拖垮整个账号的刷新。
+
+        但 AuthExpired / RateLimited 必须冒泡——调度器靠这两类异常判断该退避还是
+        该报失效，吞掉就等于对限流视而不见。
+        """
+        try:
+            return self._call("POST", "/api/dashboard/get-sand-usage-status", {})
+        except (AuthExpired, RateLimited):
+            raise              # 这两个要冒泡：调度器靠它们判断该退避还是该报失效
+        except Exception:
+            return {}          # 非关键数据，其它失败就跳过
 
     def aggregated_usage(self, start_ms: int, end_ms: int):
         """本周期按模型聚合的 token 与花费。窗口是任意的，传账单周期起点就是"本周期"。

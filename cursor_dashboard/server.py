@@ -127,7 +127,7 @@ async def refresh_account(acc: dict) -> str | None:
     cookie = acc["cookie"]
 
     async with snapshot.lock_for(ident):
-        # return_exceptions：让 4 个接口都跑完再判定，否则先抛出的那个说了算，
+        # return_exceptions：让 5 个接口都跑完再判定，否则先抛出的那个说了算，
         # 混合错误时容易把限流认成失效
         raw = await asyncio.gather(
             *(fetch_cursor(cookie, label, name) for name in ENDPOINTS),

@@ -55,7 +55,7 @@ class PoolLimitsTest(unittest.TestCase):
             "autoPercentUsed": 45.76888888888889,
             "apiPercentUsed": 51.82222222222222,
             "totalPercentUsed": 46.31919191919192,
-        }})
+        }}, {})
         quota = data["quota"]
         self.assertEqual(quota["cursor_models"]["limit_usd"], 450.0)
         self.assertEqual(quota["other_models"]["limit_usd"], 45.0)
@@ -65,11 +65,33 @@ class PoolLimitsTest(unittest.TestCase):
         self.assertAlmostEqual(quota["cursor_models"]["remaining_usd"], 244.04, places=1)
 
     def test_assemble_without_usage_leaves_none(self):
-        quota = assemble("测试", {}, {}, {}, {})["quota"]
+        quota = assemble("测试", {}, {}, {}, {}, {})["quota"]
         for slot in quota.values():
             self.assertIsNone(slot["limit_usd"])
             self.assertIsNone(slot["used_usd"])
             self.assertIsNone(slot["remaining_usd"])
+
+
+class GrokWeeklyTest(unittest.TestCase):
+    """Grok Bot 的周额度是独立的池子，接口只给周期起点，重置时间要自己 +7 天。"""
+
+    def test_reset_is_seven_days_after_period_start(self):
+        grok = assemble("测试", {}, {}, {}, {}, {
+            "usagePercent": 12.5,
+            "currentPeriodStart": "2026-09-01T00:00:00Z",
+        })["grok_weekly"]
+        self.assertEqual(grok["used_pct"], 12.5)
+        self.assertEqual(grok["remaining_pct"], 87.5)
+        self.assertEqual(grok["reset_at"][:10], "2026-09-08")
+
+    def test_missing_period_start_keeps_percentages(self):
+        grok = assemble("测试", {}, {}, {}, {}, {"usagePercent": 0})["grok_weekly"]
+        self.assertEqual(grok["remaining_pct"], 100.0)
+        self.assertIsNone(grok["reset_at"])
+
+    def test_failed_endpoint_drops_the_whole_row(self):
+        """client.grok_status 失败时返回 {}，整条给 None，前端就不显示这一行。"""
+        self.assertIsNone(assemble("测试", {}, {}, {}, {}, {})["grok_weekly"])
 
 
 class AssembleDetailTest(unittest.TestCase):

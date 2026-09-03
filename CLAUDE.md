@@ -75,10 +75,10 @@ cursor_dashboard/
 - 全局 semaphore（`REQUEST_CONCURRENCY`）限连接数，防止连接洪峰。
 
 `refresh_account()` 用 `asyncio.gather(..., return_exceptions=True)` 把 **N 账号 ×
-4 接口打平成一个任务集**，共用 lifespan 里装的单个 `ThreadPoolExecutor`。
+5 接口打平成一个任务集**，共用 lifespan 里装的单个 `ThreadPoolExecutor`。
 **不要改成嵌套线程池**（每账号一个池、池内再并发）——线程数会乘起来。默认 executor
 只有 `min(32, cpu+4)`，所以显式设了 `MAX_WORKERS`。用 `return_exceptions` 是为了让
-4 个接口都跑完再由 `_classify()` 判定，否则先抛出的那个说了算，混合错误容易误判。
+5 个接口都跑完再由 `_classify()` 判定，否则先抛出的那个说了算，混合错误容易误判。
 
 `scheduler` 每轮挑 `attempted_at` 最旧的账号（`Scheduler._pick`），间隔是
 `REFRESH_INTERVAL / 账号数`。撞限流 → 间隔翻倍（上限 `REFRESH_MAX_BACKOFF`）；
@@ -189,7 +189,7 @@ $231.24 / $495 正好对上「综合 剩 53.3%」；$20 挪进了悬停提示。
 `{"teamId":0,"userId":0,"startDate":<ms>,"endDate":<ms>}`，窗口传账单周期起点就是「本
 周期」（网页 Usage 页面默认按天，所以那里看不到周期口径）。返回的 `totalCostCents`
 精确等于 `planUsage.totalSpend`。**它刻意不在 `ENDPOINTS` 里**——加进去后台轮询的出站
-量就凭空 +25%，而按 IP 限流是本项目最大的风险；当初摘掉 Grok Bot 接口就是为了 -20%。
+量就凭空 +20%，而按 IP 限流是本项目最大的风险。
 **不要给页面加「批量拉明细」的入口**，理由和不给「刷新全部」是同一条。
 
 每行只有 `modelIntent` / `inputTokens` / `outputTokens` / `cacheWriteTokens` /
@@ -213,11 +213,16 @@ fast 档分毫不差，fast 档差 0.8~2.3%），还得跟着供应商调价维�
 `usage.assemble` 仍然透传 `notice` 字段（CLI 还在用），**不要因为字段还在就把它
 渲染回卡片**。
 
-**Grok Bot 的额度整条都不要了**，`get-sand-usage-status` 已从 `ENDPOINTS` 摘掉，
-每账号从 5 个接口降到 4 个（出站量 -20%，这是本项目最大风险——按 IP 限流——的直接
-缓解）。Grok Bot 是 x.ai 的独立桌面/iOS App（用 Cursor 账号登录的常驻云端 agent），
-跟在编辑器里写代码是两回事，没人装这个 App 就永远是 100%。**别为了"顺手多显示一点"
-把这个接口加回来。**
+**Grok Bot 的周额度在 `ENDPOINTS` 里**（`get-sand-usage-status`），每账号 5 个接口。
+它一度被摘掉过（当时是为了给按 IP 限流减 20% 的出站量），2026-09-03 按用户要求加了
+回来——**这是一个明确的取舍，不要再自作主张摘掉它**；真要减出站量，先动
+`REFRESH_INTERVAL`，那条杠杆比少打一个接口大得多。
+Grok Bot 是 x.ai 的独立桌面/iOS App（用 Cursor 账号登录的常驻云端 agent），跟在编辑器
+里写代码是两回事，没装这个 App 的账号会一直显示 100%，卡片上的悬停提示已经写明。
+`client.grok_status()` 吞普通异常返回 `{}`（这条额度可有可无，不该把整个账号拖成失败），
+但 **`AuthExpired` / `RateLimited` 必须冒泡**——调度器靠这两类异常判断该退避还是该报
+失效，吞掉就等于对限流视而不见。接口只给 `currentPeriodStart`，重置时间是 `+7 天`
+算出来的；返回空时 `grok_weekly` 整条为 `None`，前端不渲染这一行。
 
 **`accounts.db` 存的是等同登录态的会话 token**，权限 0600，已 gitignore。首次启动会
 从旧 `accounts.json` 导入一次；`snapshots` 表只存 cookie 的 sha256 前 16 位，不存
