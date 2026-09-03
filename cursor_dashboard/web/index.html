@@ -108,12 +108,12 @@
   .burnout-watermark span:nth-child(3) {
     left: 67%; top: 13%; font-size: 82px; transform: rotate(-5deg) skewX(-8deg);
   }
-  .card.exhausted .card-head,
   .card.exhausted .quota,
   .card.exhausted .meta,
   .card.exhausted .stale { position: relative; z-index: 1; }
 
-  .card-head { min-height: 40px; }
+  /* 名字始终盖在丝带和燃尽水印上面——丝带是背景装饰，不该顶开卡片布局 */
+  .card-head { min-height: 40px; position: relative; z-index: 1; }
   .name-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-right: 124px; }
   .label { font-size: 15px; font-weight: 600; }
   .identity-meta { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 4px 8px; margin-top: 2px; min-width: 0; }
@@ -129,6 +129,55 @@
     font-size: 11px; color: var(--dim); border: 1px solid var(--line);
     border-radius: 20px; padding: 2px 9px; white-space: nowrap; line-height: 1.5;
   }
+
+  /* 左上角角标：整屏扫视时靠它分批，四档跟 color() 的阈值同源。
+     实心直角三角，不是斜带——带子两侧留出来的那点背景纯属多余，反而显脏。
+     裁剪交给 .ribbon 自己的 overflow: hidden，**不要图省事给 .card 加
+     overflow: hidden**，那会把额度行往上弹的 tooltip 一起裁掉 */
+  .ribbon {
+    position: absolute; top: 0; left: 0; width: 56px; height: 56px;
+    overflow: hidden; border-radius: 12px 0 0 0; pointer-events: none; z-index: 0;
+  }
+  /* 斜边落在 x+y = 38。名字第一个字的字形左上角在 x+y ≈ 42，三角形必须停在它前面：
+     卡片不加高的前提下，名字是不会给角标让位的，越过去就会糊在一起。
+     直角尖顶在 (0,0)，靠容器的 border-radius 修成和卡片一致的圆角 */
+  .ribbon::before {
+    content: ""; position: absolute; top: 0; left: 0; width: 38px; height: 38px;
+    background: var(--ok); clip-path: polygon(0 0, 100% 0, 0 100%);
+  }
+  /* 文字沿对角线摆正：cx = left + width/2 = 12，cy = top + height/2 = 12，
+     **两者必须相等**，否则文字偏向三角形的一头而不是正中。
+     x+y = 24 这条线上三角形还有 34px 宽，两个 10px 汉字占 20px，两端各留 7px；
+     位置略偏向斜边一侧——靠角那头窄，字挤过去只会贴边。
+     字距留 0——两个汉字加了字距，末字右边多出的一份空隙会让整块字看着往左偏 */
+  .ribbon b {
+    position: absolute; left: -28px; top: 7px; width: 80px;
+    transform: rotate(-45deg); text-align: center;
+    font-size: 10px; font-weight: 700; line-height: 1;
+    color: #0b0f14;
+  }
+  .ribbon.warn::before { background: var(--warn); }
+  .ribbon.bad::before { background: var(--bad); }
+  .ribbon.dry::before { background: #6b3a44; }
+  .ribbon.dry b { color: #f4d9dd; }
+
+  /* 右上角的周期环：环走过多少 = 本周期过了多少，中心是还剩多久刷新。
+     这块地方平时是空的（操作按钮只在 hover 时出现），鼠标一进卡片环就淡出让位。
+     环刻意 pointer-events: none —— 它压着删除/刷新按钮，能接鼠标就会挡住点击 */
+  .cycle-ring {
+    position: absolute; top: 12px; right: 12px; z-index: 2;
+    width: 44px; height: 44px; display: grid; place-items: center;
+    pointer-events: none; transition: opacity .12s;
+  }
+  .card:hover .cycle-ring, .card:focus-within .cycle-ring { opacity: 0; }
+  .cycle-ring svg { position: absolute; inset: 0; width: 44px; height: 44px; transform: rotate(-90deg); }
+  .cycle-ring circle { fill: none; stroke-width: 3.5; }
+  .ring-track { stroke: #2b313b; }
+  .ring-fill { stroke: var(--dim); stroke-linecap: round; transition: stroke-dashoffset .4s ease; }
+  /* 快到刷新点了：额度即将回血，是好消息，所以用蓝色而不是告警色 */
+  .cycle-ring.soon .ring-fill { stroke: var(--accent); }
+  .ring-text { font-size: 9.5px; color: var(--dim); line-height: 1; font-variant-numeric: tabular-nums; }
+  .ring-text b { font-size: 13px; color: var(--fg); font-weight: 600; margin-right: 1px; }
 
   .acts { position: absolute; top: 13px; right: 12px; z-index: 2; display: flex; gap: 2px; opacity: 0; transition: opacity .12s; }
   .card:hover .acts, .card:focus-within .acts { opacity: 1; }
@@ -305,6 +354,9 @@
     .card-head { padding-top: 30px; }
     .name-line { padding-right: 0; }
     .acts { opacity: 1; }
+    /* 按钮常驻，环挪到按钮左边并排放，别再淡出 */
+    .cycle-ring { top: 5px; right: 130px; }
+    .card:hover .cycle-ring, .card:focus-within .cycle-ring { opacity: 1; }
     .row { flex-wrap: wrap; }
     .row .status { width: 100%; }
   }
@@ -509,6 +561,27 @@ function statTime(iso) {
   return `${stamp} · ${relative(value.getTime())}`;
 }
 
+const color = (r) => r <= 10 ? 'var(--bad)' : r <= 30 ? 'var(--warn)' : 'var(--ok)';
+
+// 左上角丝带的四档，阈值跟 color() 同源——两处颜色对不上的话，卡片自己就自相矛盾了
+function quotaTier(quota) {
+  const r = quota?.overall?.remaining_pct ?? null;
+  if (r == null) return null;
+  if (r <= 0) return { cls: 'dry', text: '燃尽' };
+  if (r <= 10) return { cls: 'bad', text: '告急' };
+  if (r <= 30) return { cls: 'warn', text: '偏紧' };
+  return { cls: 'ok', text: '充足' };
+}
+
+function ribbon(tier) {
+  // 纯视觉冗余：同一件事下面三条额度条已经用百分比说过了，读屏不必再念一遍
+  return tier ? `<span class="ribbon ${tier.cls}" aria-hidden="true"><b>${tier.text}</b></span>` : '';
+}
+
+const RING_R = 19;
+const RING_C = 2 * Math.PI * RING_R;
+
+// meta 行里的剩余时间。跟环中心的字同一口径，只是这里写得开，能说完整的"剩1天20小时"
 function remainingUntil(iso, now = Date.now()) {
   const reset = parseDate(iso);
   if (!reset) return '';
@@ -521,7 +594,42 @@ function remainingUntil(iso, now = Date.now()) {
   return `剩${Math.floor(hours / 24)}天`;
 }
 
-const color = (r) => r <= 10 ? 'var(--bad)' : r <= 30 ? 'var(--warn)' : 'var(--ok)';
+// 环中心的字：剩余时间一律从 reset_at 现算（浏览器本地时区），不用后端向下取整的
+// days_left；不足 48 小时就报到小时，免得"剩 1 天"把 47 小时和 25 小时说成一回事
+function remainingParts(resetMs, now = Date.now()) {
+  const left = resetMs - now;
+  if (left <= 0) return { num: '已到', unit: '' };
+  const hours = Math.floor(left / 3600000);
+  if (hours < 1) return { num: '<1', unit: '时' };
+  if (hours < 48) return { num: String(hours), unit: '时' };
+  return { num: String(Math.floor(hours / 24)), unit: '天' };
+}
+
+// 周期环：环走过的比例 = 本周期已经过去的比例。
+// cycle.start 缺失（升级前存的旧快照就没有）时只报剩余时间、不画弧——
+// 拿 30 天猜一个周期长度画出来的弧是假的，宁可空着
+function cycleRing(cycle, now = Date.now()) {
+  const end = parseDate(cycle.reset_at);
+  if (!end) return '';
+  const start = parseDate(cycle.start);
+  const span = start ? end.getTime() - start.getTime() : 0;
+  const left = end.getTime() - now;
+  const passed = span > 0 ? Math.min(1, Math.max(0, (span - left) / span)) : 0;
+  const { num, unit } = remainingParts(end.getTime(), now);
+  const soon = left > 0 && left <= 86400000;
+  // 环和丝带都 aria-hidden：剩余时间 meta 行念得更全（"剩1天20小时"），
+  // 额度档位额度条也念过百分比，读屏没必要再听一遍
+  return `<span class="cycle-ring${soon ? ' soon' : ''}" aria-hidden="true">
+    <svg viewBox="0 0 44 44">
+      <circle class="ring-track" cx="22" cy="22" r="${RING_R}"/>
+      <circle class="ring-fill" cx="22" cy="22" r="${RING_R}"
+        stroke-dasharray="${RING_C.toFixed(1)}"
+        stroke-dashoffset="${(RING_C * (1 - passed)).toFixed(1)}"/>
+    </svg>
+    <span class="ring-text"><b>${num}</b>${unit}</span>
+  </span>`;
+}
+
 const quotaExhausted = (quota) =>
   quota?.overall?.remaining_pct != null && Number(quota.overall.remaining_pct) <= 0;
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
@@ -536,6 +644,10 @@ const ICON = {
   chevron: SVG('<path d="m9 18 6-6-6-6"/>'),
   trash: SVG('<path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M18 6v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V6"/>'),
 };
+
+const GROK_TIP = 'Grok Bot 是 x.ai 的独立 App（用 Cursor 账号登录），额度单独结算：'
+  + '不占用上面的 Cursor Models / Other Models，按周重置。'
+  + '没装这个 App 的话，这行会一直是 100%。';
 
 // 额度上限是服务端从官方百分比反解出来的（见 usage.pool_limits），解不出就不显示，
 // 绝不拿 included_usd（$20）顶替——那是订阅价，不是这条额度的池子
@@ -643,10 +755,13 @@ function card(a) {
   }
 
   const d = a.data, q = d.quota, c = d.cycle, p = d.plan, s = d.spend_usd, od = d.on_demand;
-  const cycleRemaining = remainingUntil(c.reset_at);
+  const grok = d.grok_weekly;
   const exhausted = quotaExhausted(q);
+  const cycleRemaining = remainingUntil(c.reset_at);
   return `<div class="card${exhausted ? ' exhausted' : ''}">
     ${exhausted ? '<span class="burnout-watermark" aria-hidden="true"><span>燃</span><span>尽</span><span>了</span></span>' : ''}
+    ${ribbon(quotaTier(q))}
+    ${cycleRing(c)}
     ${actions(a)}
     <div class="card-head">
       <div class="name-line">
@@ -669,6 +784,10 @@ function card(a) {
       <div><span class="tip left" data-tip="${esc(spendTip(q.overall, p, s))}">本周期消费</span>
         <b>${spendValue(q.overall, s)}</b></div>
       <div><span>按量付费</span><b>${od.enabled ? '开启 · 已用 ' + money(od.used_usd) : '关闭'}</b></div>
+      ${grok ? `<div>
+        <span class="tip left" data-tip="${esc(GROK_TIP)}">Grok Bot 周额度</span>
+        <b style="color:${color(grok.remaining_pct)}">剩 ${grok.remaining_pct.toFixed(1)}%<span style="color:var(--dimmer);font-weight:400"> · ${localDate(grok.reset_at)} 重置</span></b>
+      </div>` : ''}
     </div>
     ${a.stale ? `<div class="stale">⚠ ${esc(staleText(a))}</div>` : ''}
   </div>`;
