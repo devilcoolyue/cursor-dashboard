@@ -38,6 +38,7 @@ html[data-skin="classic"][data-theme="dark"] {
   --shadow: 0 1px 2px rgba(0, 0, 0, .28);
   --shadow-popover: 0 10px 30px rgba(0, 0, 0, .55);
   --line: #262c36;
+  --line-popover: #262c36;
   --line-subtle: rgba(255, 255, 255, .06);
   --fg: #e6e9ef;
   --dim: #8c94a4;
@@ -59,6 +60,7 @@ html[data-skin="classic"][data-theme="dark"] {
   --card-active-border: rgba(91, 156, 255, .35);
   --card-active-bg: #181d26;
   --count-bg: rgba(125, 135, 150, .12);
+  --row-hover-bg: #1d212a;
   --btn-bg: #1d212a;
   --btn-hover-bg: #262c36;
   --btn-primary-bg: linear-gradient(180deg, #5b9cff 0%, #3d7ee8 100%);
@@ -90,6 +92,7 @@ html[data-skin="classic"][data-theme="light"] {
   --shadow: 0 1px 2px rgba(0, 0, 0, .06);
   --shadow-popover: 0 10px 25px rgba(0, 0, 0, .1), 0 3px 6px rgba(0, 0, 0, .05);
   --line: #e1e4ea;
+  --line-popover: #e1e4ea;
   --line-subtle: rgba(0, 0, 0, .05);
   --fg: #14171d;
   --dim: #5c6575;
@@ -111,6 +114,7 @@ html[data-skin="classic"][data-theme="light"] {
   --card-active-border: rgba(37, 99, 235, .3);
   --card-active-bg: #f5f8ff;
   --count-bg: rgba(125, 135, 150, .12);
+  --row-hover-bg: #f4f6f8;
   --btn-bg: #f4f6f8;
   --btn-hover-bg: #e1e4ea;
   --btn-primary-bg: linear-gradient(180deg, #4b8df2 0%, #2563eb 100%);
@@ -173,6 +177,7 @@ html[data-skin="glass"][data-theme="dark"] {
   --shadow: 0 8px 32px rgba(0, 0, 0, .30), inset 0 1px 0 rgba(255, 255, 255, .16);
   --shadow-popover: 0 16px 48px rgba(0, 0, 0, .55), inset 0 1px 0 rgba(255, 255, 255, .14);
   --line: rgba(255, 255, 255, .14);
+  --line-popover: rgba(255, 255, 255, .20);
   --line-subtle: rgba(255, 255, 255, .08);
   --fg: #f4f6fb;
   --dim: #b9c1d4;
@@ -194,6 +199,7 @@ html[data-skin="glass"][data-theme="dark"] {
   --card-active-border: rgba(124, 178, 255, .45);
   --card-active-bg: rgba(124, 178, 255, .14);
   --count-bg: rgba(255, 255, 255, .12);
+  --row-hover-bg: rgba(255, 255, 255, .18);
   --btn-bg: rgba(255, 255, 255, .10);
   --btn-hover-bg: rgba(255, 255, 255, .18);
   --btn-primary-bg: linear-gradient(180deg, rgba(124, 178, 255, .95) 0%, rgba(58, 122, 240, .95) 100%);
@@ -229,10 +235,15 @@ html[data-skin="glass"][data-theme="light"] {
   --topbar-bg: rgba(255, 255, 255, .45);
   --card: rgba(255, 255, 255, .48);
   --card-hi: rgba(255, 255, 255, .70);
-  --card-popover: rgba(255, 255, 255, .88);
+  /* 气泡要压在本来就发白的玻璃卡片上，所以这三个值跟别处不是一个路数：
+     底色做到近乎不透明，描边**必须是冷灰而不是白**（见下面的 --line-popover），
+     阴影也比别的皮肤重。照抄 --line 的白色高光就是之前那个 bug——白边画在白气泡
+     上等于没画，整条提示融进卡片里。inset 的白高光也去掉，它只让顶边更白 */
+  --card-popover: rgba(255, 255, 255, .96);
   --shadow: 0 8px 30px rgba(60, 70, 120, .12), inset 0 1px 0 rgba(255, 255, 255, .75);
-  --shadow-popover: 0 16px 44px rgba(60, 70, 120, .20), inset 0 1px 0 rgba(255, 255, 255, .8);
+  --shadow-popover: 0 12px 32px rgba(40, 50, 90, .26), 0 2px 8px rgba(40, 50, 90, .14);
   --line: rgba(255, 255, 255, .70);
+  --line-popover: rgba(64, 76, 120, .24);
   --line-subtle: rgba(120, 130, 170, .16);
   --fg: #10131c;
   --dim: #4b5468;
@@ -254,6 +265,10 @@ html[data-skin="glass"][data-theme="light"] {
   --card-active-border: rgba(47, 107, 234, .40);
   --card-active-bg: rgba(47, 107, 234, .10);
   --count-bg: rgba(90, 100, 140, .14);
+  /* 唯一一个"往暗里走"的 hover 底色。卡片本身已经是 rgba(255,255,255,.48)，
+     再套 --card-hi 的 .70 就是白上加白，行高亮等于没有——经典皮肤是白卡片配
+     #f4f6f8 浅灰才看得出来，浅色玻璃必须同理往下压，而不是往上加 */
+  --row-hover-bg: rgba(58, 70, 110, .12);
   --btn-bg: rgba(255, 255, 255, .70);
   --btn-hover-bg: rgba(255, 255, 255, .92);
   --btn-primary-bg: linear-gradient(180deg, rgba(90, 140, 250, .96) 0%, rgba(37, 92, 225, .96) 100%);
