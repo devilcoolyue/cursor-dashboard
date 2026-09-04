@@ -1,0 +1,185 @@
+/* ============================================================================
+   液态玻璃 —— 皮肤专属的形态差异。
+
+   颜色、圆角、模糊强度都已经在 tokens.css 里换过一轮了，这里只写"经典皮肤
+   压根没有这个东西"的部分：镜面高光、色斑背景的动效、玻璃块的层次。
+   一条规矩：**本文件所有选择器都必须挂在 html[data-skin="glass"] 下**，
+   漏掉前缀就会漏进经典皮肤，而那正是切回去以后"怎么还有残留"的来源。
+
+   ----------------------------------------------------------------------------
+   为什么卡片没有 backdrop-filter（想加之前先读完这段）
+
+   1) 背后没有值得模糊的东西。卡片底下只有 --app-canvas 那层色斑渐变，本身就是
+      低频信号 —— 对一片平滑渐变做高斯模糊，产出和原图几乎一模一样。花的是真
+      GPU，换来的是零像素差异。侧栏、顶栏、弹窗则不同：它们背后会有卡片文字滚
+      过去，那是高频内容，模糊才有意义，所以只有那几层吃 --blur-panel。
+
+   2) 42 张卡各挂一个 backdrop-filter，滚动时每帧都要重采样每一块背景。实测这
+      是玻璃风网页掉帧的头号原因，而这个面板天生就是几十张卡平铺。
+
+   卡片的"玻璃感"改用半透明底 + 上缘高光 + 柔外阴影堆出来（见 tokens.css 里的
+   --card / --shadow），静态截图跟真模糊基本看不出区别。
+   ========================================================================= */
+
+/* ---------- 背景画布 ----------
+   色斑极缓慢地飘。60 秒一轮、位移只有百分之几，盯着看才能察觉，
+   余光里就是"这个背景是活的"。只动 transform，不碰 layout，
+   合成器自己就能跑完，主线程一帧都不用管 */
+@media (prefers-reduced-motion: no-preference) {
+  html[data-skin="glass"] body::before {
+    animation: glass-drift 60s ease-in-out infinite alternate;
+  }
+}
+@keyframes glass-drift {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(-2%, -1.5%, 0) scale(1.06); }
+}
+/* 画布放大后边缘不能留白，稍微铺出视口一圈 */
+html[data-skin="glass"] body::before {
+  inset: -6%;
+  will-change: transform;
+}
+
+/* ---------- 卡片 ---------- */
+html[data-skin="glass"] .card {
+  transition: background-color .22s ease, box-shadow .22s ease;
+}
+/* 上缘那道镜面高光是玻璃"有厚度"的关键，比加大阴影管用得多。
+   ::before / ::after 在卡片上都已名花有主（角标、水印是真实元素，
+   但 .card 自己的两个伪元素还空着），这里用 ::after 画高光。
+   必须 pointer-events: none —— 它铺在整张卡上，能接鼠标就会挡住额度行的点击 */
+html[data-skin="glass"] .card::after {
+  content: ""; position: absolute; inset: 0; z-index: 0;
+  border-radius: inherit; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .14) 0%, transparent 42%);
+}
+/* hover 只提亮、加深阴影，**不要写 transform 去做"浮起"**：transform 会让
+   .card 变成层叠上下文，额度行那个 z-index: 100 的 tooltip 就只在卡片内部有效，
+   被右边和下面的卡片压住。跟"不要给 .card 加 overflow: hidden"是同一个坑，
+   而且更隐蔽——hover 才触发，一整排卡片里只有鼠标底下那张会出问题 */
+html[data-skin="glass"] .card:hover {
+  background: var(--card-hi);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .34), inset 0 1px 0 rgba(255, 255, 255, .22);
+}
+html[data-skin="glass"][data-theme="light"] .card:hover {
+  box-shadow: 0 12px 38px rgba(60, 70, 120, .18), inset 0 1px 0 rgba(255, 255, 255, .85);
+}
+/* 卡片内容都得压在高光层上面，否则数字会蒙一层白。
+   .card-head 原本就有 z-index: 1，这里把其余几块补齐 */
+html[data-skin="glass"] .card > .quota,
+html[data-skin="glass"] .card > .meta,
+html[data-skin="glass"] .card > .stale,
+html[data-skin="glass"] .card > .err,
+html[data-skin="glass"] .card > .skel,
+html[data-skin="glass"] .card > .skel-note {
+  position: relative; z-index: 1;
+}
+
+/* 燃尽卡：暗红底在玻璃上要更透一点，否则整块糊成一片红 */
+html[data-skin="glass"] .card.exhausted::after {
+  background: linear-gradient(180deg, rgba(255, 255, 255, .10) 0%, transparent 46%);
+}
+
+/* ---------- 角标 ----------
+   圆角被 --radius-card 拉到 20px 后，三角形的直角尖会被削掉一大块。
+   算过：文字沿 x+y = 24 那条线摆，两端点离圆心 18.1px < 20px 半径，
+   仍然整个落在保留区里，不会被裁 —— 但三角形本身看着圆润得多，
+   正好是这套皮肤要的。这里只把颜色柔化一档，形状不动 */
+html[data-skin="glass"] .ribbon::before {
+  opacity: .88;
+}
+
+/* ---------- 侧栏 / 顶栏 ----------
+   半透明面板挨着的那条边，用高光白比用暗线更像玻璃的切面 */
+html[data-skin="glass"] .sidebar {
+  border-right-color: rgba(255, 255, 255, .12);
+  box-shadow: 1px 0 0 rgba(255, 255, 255, .04);
+}
+html[data-skin="glass"] .topbar {
+  border-bottom-color: rgba(255, 255, 255, .12);
+}
+html[data-skin="glass"][data-theme="light"] .sidebar {
+  border-right-color: rgba(255, 255, 255, .8);
+  box-shadow: 1px 0 0 rgba(255, 255, 255, .5);
+}
+html[data-skin="glass"][data-theme="light"] .topbar {
+  border-bottom-color: rgba(255, 255, 255, .8);
+}
+
+/* 选中的部门项做成一颗小玻璃胶囊 */
+html[data-skin="glass"] .dept-nav-item[aria-selected="true"] {
+  background: var(--card-hi);
+  border-color: rgba(255, 255, 255, .18);
+}
+html[data-skin="glass"][data-theme="light"] .dept-nav-item[aria-selected="true"] {
+  border-color: rgba(255, 255, 255, .9);
+}
+
+/* ---------- 控件 ---------- */
+html[data-skin="glass"] #search-input,
+html[data-skin="glass"] #sort-order,
+html[data-skin="glass"] input[type=text],
+html[data-skin="glass"] input[type=password],
+html[data-skin="glass"] select,
+html[data-skin="glass"] textarea {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12);
+}
+html[data-skin="glass"][data-theme="light"] #search-input,
+html[data-skin="glass"][data-theme="light"] #sort-order,
+html[data-skin="glass"][data-theme="light"] input[type=text],
+html[data-skin="glass"][data-theme="light"] input[type=password],
+html[data-skin="glass"][data-theme="light"] select,
+html[data-skin="glass"][data-theme="light"] textarea {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7);
+}
+
+/* 分段控件（明暗切换 / 风格切换）的滑块做成小玻璃片 */
+html[data-skin="glass"] .theme-btn.active,
+html[data-skin="glass"] .skin-btn.active {
+  background: var(--card-hi);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .18), inset 0 1px 0 rgba(255, 255, 255, .22);
+}
+html[data-skin="glass"][data-theme="light"] .theme-btn.active,
+html[data-skin="glass"][data-theme="light"] .skin-btn.active {
+  box-shadow: 0 2px 8px rgba(60, 70, 120, .12), inset 0 1px 0 rgba(255, 255, 255, .9);
+}
+
+/* 主按钮：玻璃上的实色块也要带一层高光，否则显得是贴上去的 */
+html[data-skin="glass"] button.primary {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* ---------- 弹窗 ----------
+   弹窗背后是整页内容，模糊在这里是实打实有用的，值已经由 --blur-panel 给了。
+   这里只补一层顶部高光，跟卡片同一套语言 */
+html[data-skin="glass"] dialog {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, .10) 0%, transparent 120px);
+}
+html[data-skin="glass"][data-theme="light"] dialog {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, .45) 0%, transparent 120px);
+}
+
+/* 显示项面板里的小方块 */
+html[data-skin="glass"] .pref-tile {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12);
+}
+html[data-skin="glass"][data-theme="light"] .pref-tile {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .8);
+}
+
+/* ---------- 额度条 ----------
+   实心色条在玻璃上太硬，压一层竖向渐变让它也有点厚度 */
+html[data-skin="glass"] .track {
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, .18);
+}
+html[data-skin="glass"] .fill {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35);
+}
+
+/* ---------- 窄屏 ----------
+   遮罩自己也是一层玻璃，盖住的卡片会被糊掉，侧栏就浮得起来 */
+html[data-skin="glass"] .sidebar-backdrop {
+  backdrop-filter: blur(6px) saturate(140%);
+  -webkit-backdrop-filter: blur(6px) saturate(140%);
+}

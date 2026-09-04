@@ -58,7 +58,8 @@ cursor_dashboard/
 ├── config.py     环境变量集中在这里
 ├── cli.py        命令行入口 cursor-quota
 ├── server.py     FastAPI 服务端 cursor-panel，只做编排
-└── web/index.html   单文件前端，无 CDN 依赖
+└── web/            前端：index.html + css/（令牌、骨架、皮肤）+ js/app.js
+                 无构建步骤、无 CDN 依赖，挂在 /static 下
 ```
 
 `client` + `usage` 是取数层，CLI 和面板都用它，改字段只需要改一处。

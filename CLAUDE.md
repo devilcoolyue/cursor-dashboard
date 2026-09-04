@@ -28,8 +28,7 @@ uv run cursor-quota -c other.json
 ```bash
 uv run python -c "import cursor_dashboard.server, cursor_dashboard.cli"   # 导入即语法+循环依赖检查
 uv run python -m unittest discover -s tests -v
-# 页面内联 JS：抽出来交给 node
-python3 -c "import re,pathlib;print(re.search(r'<script>(.*)</script>',pathlib.Path('cursor_dashboard/web/index.html').read_text(encoding='utf-8'),re.S).group(1))" > /tmp/page.js && node --check /tmp/page.js
+node --check cursor_dashboard/web/js/app.js                               # 页面脚本
 ```
 
 **本机 curl 必须加 `--noproxy '*'`**——环境里设了 `http_proxy=127.0.0.1:7890`，
@@ -58,7 +57,12 @@ cursor_dashboard/
 ├── config.py     环境变量
 ├── cli.py        命令行入口（render/bar/main）
 ├── server.py     FastAPI，只做编排
-└── web/index.html
+└── web/
+    ├── index.html          结构 + 皮肤引导脚本，挂 /static 下的三个样式表
+    ├── css/tokens.css      主题令牌表（皮肤 × 明暗，四套取值）
+    ├── css/base.css        骨架样式，只准写 var()
+    ├── css/skins/glass.css 液态玻璃皮肤
+    └── js/app.js           全部页面逻辑
 ```
 
 **`client` + `usage` 是取数层，`server` 只做编排**——CLI 和面板共用同一份接口定义和
@@ -109,7 +113,9 @@ cursor_dashboard/
 `store.AccountsError` 由 `server.handle_accounts_error` 转成 500 + `detail`，
 前端读的就是 `detail` 字段。
 
-`web/index.html` 是**单文件、无 CDN 依赖**的页面。`load()` 一个请求拿回整组卡片，
+页面是**无构建、无 CDN 依赖**的静态文件，整个 `web/` 目录由 `server.py` 挂在
+`/static` 下（`app.mount`，注意不能挂在 `/` 上，会把 `/api/*` 一起吃掉）。
+改完刷新浏览器就生效，没有任何打包步骤。`load()` 一个请求拿回整组卡片，
 每 60 秒静默重取一次（`POLL_INTERVAL`），标签页切回来也立刻重取；`silent` 模式不
 显示骨架、失败也不清空页面。`loadGeneration` + `AbortController` 防止切组后旧响应
 污染新视图。单卡刷新只替换 `accounts` 里的一项再整体 `render()`，`_loading` 让该卡
@@ -125,6 +131,37 @@ cursor_dashboard/
 "$495.32 / $495" 说的是同一件事。
 额度刷新时间由前端把 `reset_at` 转成浏览器本地时区，不使用后端向下取整的 `days_left`；
 不足 48 小时时显示到整小时（`remainingParts`）。
+
+**页面风格由 `SKINS` 声明表 + 三层 CSS 决定**，地位跟下面的 `CARD_OPTIONS` 平级。
+风格和明暗是 `<html>` 上**两个正交的属性**：`data-skin`（classic / glass）×
+`data-theme`（light / dark，"跟随系统"由 JS 解析成其中之一）。
+**不要合并成"经典深色/玻璃浅色"这样的四选一**——每加一套皮肤选项就翻倍，
+而且"跟随系统"没法落在任何一个上。
+
+三层 CSS 的分工是死规矩：`tokens.css` 是所有颜色、圆角、阴影的唯一出处，四套组合
+各写一份**完整**取值（只补差集的话，没补到的令牌会落回 `:root` 兜底的经典深色，
+玻璃浅色下就冒出几个深色残留）；`base.css` 只准写 `var()`，一个颜色字面量都不许
+有，换皮肤才只是换那张表；`skins/*.css` 只写令牌表达不了的形态差异，且
+**每条选择器都必须挂在 `html[data-skin="…"]` 下**，漏了前缀就会渗进别的皮肤。
+加一套皮肤 = `SKINS` 里多一条 + 一个 `css/skins/*.css` + `index.html` 里多一行
+`<link>`，别处都不用碰。皮肤 CSS 一次全部加载，不按需插 `<link>`——省下那点流量
+不够抵消切换时重下样式表的白闪。
+
+`index.html` 头部那段内联引导脚本负责防闪烁：它必须内联、必须排在样式表之前，
+把 localStorage 里的皮肤和明暗尽早打到 `<html>` 上，否则浏览器会先按兜底画一帧。
+它刻意不做白名单校验（校验表在 `SKINS`，抄一份过去就成了两处事实来源），脏值会
+落回兜底、由 `app.js` 纠正；里面的 `'classic'` 是全页唯一一处必须和
+`DEFAULT_SKIN` 保持一致的重复，改默认皮肤要两处一起改。
+
+玻璃皮肤有三个已经踩过的坑：**只有固定不动的层（侧栏、顶栏、弹窗、气泡）用
+`backdrop-filter`，卡片一律不用**——卡片背后只有 `--app-canvas` 那层平滑渐变，
+模糊低频信号的产出和原图几乎一样，白烧 GPU；而 42 张卡各挂一个，滚动时每帧都要
+重采样，这是玻璃风掉帧的头号原因。卡片的玻璃感改用半透明底 + 上缘高光 + 柔外阴影
+堆出来。**卡片 hover 不要写 `transform`**：它会让 `.card` 变成层叠上下文，额度行
+那个 `z-index: 100` 的 tooltip 就只在卡片内部有效，被邻卡压住——跟"不要给 `.card`
+加 `overflow: hidden`"是同一个坑，而且只在鼠标底下那张卡上发作，更难发现。
+**`--app-canvas` 的色斑 alpha 别再往下调**：玻璃是"透出背后的东西"才成立的，
+背景压太暗就没东西可透，整页会退回一块灰底加白框。
 
 **卡片上哪些东西显示，由 `CARD_OPTIONS` 这一张声明表说了算**（角标、燃尽水印、周期环、
 套餐徽章、部门、邮箱、额度上限，以及 meta 里的五行）。表是唯一事实来源：`card()` /

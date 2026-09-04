@@ -27,6 +27,7 @@ import uvicorn
 import requests
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import pools, snapshot
@@ -41,6 +42,7 @@ from .config import (
     REFRESH_ENABLED,
     REQUEST_CONCURRENCY,
     REQUEST_MIN_INTERVAL,
+    WEB_DIR,
     WEB_INDEX,
 )
 from .scheduler import Scheduler
@@ -292,6 +294,12 @@ def find_account(account_key: str) -> dict:
 @app.get("/")
 def index():
     return FileResponse(WEB_INDEX)
+
+
+# 样式和脚本走静态托管。**这里不能挂在 "/" 上**——那会把 /api/* 一起吃掉。
+# 不鉴权是有意的：CSS/JS 里没有任何账号数据，鉴权只在 /api/* 这一层；
+# 真要藏起整个面板，PANEL_TOKEN 拦住 /api/* 就够了，页面本身没东西可看。
+app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 
 
 @app.get("/api/config")
