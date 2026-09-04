@@ -222,10 +222,33 @@
   .meta > div > :first-child { flex: none; }
   .meta b { color: var(--fg); font-weight: 500; font-variant-numeric: tabular-nums; min-width: 0; text-align: right; }
   .meta .tip { border-bottom: 1px dotted var(--dimmer); cursor: help; }
-  /* Grok 那行的标题是外链，不能套用全局的 a 蓝色——meta 区一片灰底上只有它发蓝，
-     看着像出了故障。hover 才提亮，跟其它可点的元素一个路子 */
-  .meta a.tip { color: inherit; text-decoration: none; cursor: pointer; }
-  .meta a.tip:hover { color: var(--fg); border-bottom-color: var(--dim); }
+  /* Grok 那行的提示框里有个可点的下载地址，所以它不能用上面那套 ::after
+     ——伪元素塞不进链接，pointer-events: none 也让鼠标够不着。这里单独做成真实元素。
+     关键是 .grok-card 自己带 padding-bottom 当桥：标题和提示框之间那 8px 空隙归它
+     所有，鼠标从标题挪上去的路上一直踩在它身上，:hover 不会断，才点得到里面的链接 */
+  .grok-hint { position: relative; border-bottom: 1px dotted var(--dimmer); cursor: help; }
+  .grok-card {
+    position: absolute; left: 0; bottom: 100%; z-index: 20;
+    width: max-content; max-width: 250px; padding-bottom: 8px;
+    opacity: 0; visibility: hidden;
+    transition: opacity .14s, visibility 0s .14s;
+  }
+  .grok-hint:hover .grok-card, .grok-card:hover {
+    opacity: 1; visibility: visible;
+    transition: opacity .14s .25s, visibility 0s .25s;
+  }
+  .grok-card-inner {
+    display: block; background: #0b0d10; color: var(--fg);
+    border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px;
+    font-size: 11.5px; font-weight: 400; line-height: 1.6; text-align: left;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .5);
+  }
+  .grok-card a {
+    color: var(--accent); text-decoration: none;
+    display: inline-flex; align-items: center; gap: 3px; word-break: break-all;
+  }
+  .grok-card a:hover { color: #74acff; text-decoration: underline; }
+  .grok-card a svg { width: 11px; height: 11px; flex: none; display: block; }
   .stale { margin-top: 8px; font-size: 11.5px; color: var(--warn); line-height: 1.6; }
   .skel-note { color: var(--dimmer); font-size: 11.5px; margin-top: 14px; }
   .err { color: var(--bad); font-size: 13px; margin: 14px 0 12px; }
@@ -648,15 +671,22 @@ const ICON = {
   key: SVG('<circle cx="7.5" cy="16.5" r="5"/><path d="m11.5 13 8.5-8.5"/><path d="m17 7 2.5 2.5"/><path d="M20 4l2 2"/>'),
   refresh: SVG('<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>'),
   chevron: SVG('<path d="m9 18 6-6-6-6"/>'),
+  external: SVG('<path d="M7 17 17 7"/><path d="M9 7h8v8"/>'),
   trash: SVG('<path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M18 6v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V6"/>'),
 };
 
 const GROK_URL = 'https://cursor.com/download/bot';
-// 提示框是 CSS 的 content: attr(data-tip)，里面的地址点不了也选不中，所以标签本身
-// 同时做成链接。地址照旧写进文案，方便照着抄
 const GROK_TIP = 'Grok Bot 是 x.ai 的独立 App，使用 Cursor 账号登录，额度单独结算，'
   + '不占用上方的 Cursor Models / Other Models，按周重置。'
-  + '未安装该 App 的账号始终显示 100%。下载地址：' + GROK_URL;
+  + '未安装该 App 的账号始终显示 100%。';
+
+// 这条提示不走通用的 data-tip：里面的下载地址要能点，而 ::after 伪元素塞不进链接
+function grokHint() {
+  return `<span class="grok-hint">Grok Bot 周额度<span class="grok-card"><span
+    class="grok-card-inner">${esc(GROK_TIP)}<br>下载地址：<a href="${GROK_URL}"
+    target="_blank" rel="noopener noreferrer">${GROK_URL}${ICON.external}</a>
+  </span></span></span>`;
+}
 
 // 额度上限是服务端从官方百分比反解出来的（见 usage.pool_limits），解不出就不显示，
 // 绝不拿 included_usd（$20）顶替——那是订阅价，不是这条额度的池子
@@ -794,8 +824,7 @@ function card(a) {
         <b>${spendValue(q.overall, s)}</b></div>
       <div><span>按量付费</span><b>${od.enabled ? '开启 · 已用 ' + money(od.used_usd) : '关闭'}</b></div>
       ${grok ? `<div>
-        <a class="tip left" href="${GROK_URL}" target="_blank" rel="noopener noreferrer"
-          data-tip="${esc(GROK_TIP)}">Grok Bot 周额度</a>
+        ${grokHint()}
         <b style="color:${color(grok.remaining_pct)}">剩 ${grok.remaining_pct.toFixed(1)}%<span style="color:var(--dimmer);font-weight:400"> · ${localDate(grok.reset_at)} 重置</span></b>
       </div>` : ''}
     </div>
