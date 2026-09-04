@@ -192,10 +192,12 @@
   .icon-btn svg { width: 15px; height: 15px; display: block; }
 
   /* 三条额度都是按钮：点开看本周期用了哪些模型。整行可点，命中面积比图标大得多 */
-  .quota { margin: 14px 0 12px; display: flex; flex-direction: column; gap: 3px; }
+  .quota { margin: 10px 0 9px; display: flex; flex-direction: column; gap: 2px; }
+  /* 行高压到 1.35：body 的 1.55 是给正文段落的，这里每行只有一句话，
+     照搬过来三行就白高出 7px。padding 收到 4/5 仍有 33px 的命中高度 */
   button.q-row {
-    display: grid; grid-template-columns: 1fr auto auto; gap: 4px 8px; align-items: baseline;
-    width: calc(100% + 16px); margin: 0 -8px; padding: 5px 8px 7px;
+    display: grid; grid-template-columns: 1fr auto auto; gap: 3px 8px; align-items: baseline;
+    width: calc(100% + 16px); margin: 0 -8px; padding: 4px 8px 5px; line-height: 1.35;
     background: transparent; border: 1px solid transparent; border-radius: 8px;
     text-align: left;
   }
