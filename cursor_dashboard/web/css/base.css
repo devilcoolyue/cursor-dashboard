@@ -259,7 +259,9 @@ body::before {
 }
 
 .main-content {
-  flex: 1 1 auto; padding: 24px 24px 64px;
+  /* 四边同一个值。底部曾经是 64px，滚到最后一行卡片时下面会空出一大片，
+     和左右 24px 的边距对不上 */
+  flex: 1 1 auto; padding: 24px;
 }
 .filter-stat-row { margin-bottom: 16px; }
 .filter-stat-row[hidden] { display: none; }
@@ -750,7 +752,7 @@ a { color: var(--accent); }
   .search-wrap { width: 100%; max-width: none; flex: 1 1 100%; order: 3; }
   .search-field { width: 100%; }
   .sort-wrap select { min-width: 140px; }
-  .main-content { padding: 16px 14px 48px; }
+  .main-content { padding: 16px 14px; }
   .grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
   .card { padding-left: 15px; padding-right: 15px; }
   .card-head { padding-top: 30px; }
