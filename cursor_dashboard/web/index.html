@@ -224,10 +224,16 @@
 
   .topbar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .search-wrap {
-    position: relative; display: flex; align-items: center;
-    width: 220px; transition: width .2s ease;
+    display: flex; align-items: center; justify-content: flex-end;
+    width: 280px; flex: none;
+    /* 外框宽度恒定：展开只在内部发生，topbar 与卡片区都不用重排 */
+    contain: layout style;
   }
-  .search-wrap:focus-within { width: 280px; }
+  .search-field {
+    position: relative; display: flex; align-items: center;
+    width: 220px; transition: width .18s cubic-bezier(.22, .61, .36, 1);
+  }
+  .search-wrap:focus-within .search-field { width: 100%; }
   .search-wrap .search-icon {
     position: absolute; left: 10px; width: 14px; height: 14px;
     color: var(--dimmer); pointer-events: none;
@@ -767,7 +773,7 @@
     .mobile-menu-btn { display: grid; }
     .topbar-right { width: 100%; justify-content: space-between; gap: 8px; }
     .search-wrap { width: 100%; max-width: none; flex: 1 1 100%; order: 3; }
-    .search-wrap:focus-within { width: 100%; }
+    .search-field { width: 100%; }
     .sort-wrap select { min-width: 140px; }
     .main-content { padding: 16px 14px 48px; }
     .grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
@@ -885,14 +891,16 @@
 
       <div class="topbar-right">
         <div class="search-wrap">
-          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-          </svg>
-          <input type="text" id="search-input" placeholder="按姓名、邮箱或部门搜索…" autocomplete="off" spellcheck="false" />
-          <button type="button" id="search-clear" class="search-clear" hidden aria-label="清空搜索" title="清空搜索">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-          <kbd class="search-kbd" title="按 / 键快速搜索">/</kbd>
+          <div class="search-field">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="text" id="search-input" placeholder="按姓名、邮箱或部门搜索…" autocomplete="off" spellcheck="false" />
+            <button type="button" id="search-clear" class="search-clear" hidden aria-label="清空搜索" title="清空搜索">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <kbd class="search-kbd" title="按 / 键快速搜索">/</kbd>
+          </div>
         </div>
 
         <div class="sort-wrap">
@@ -1543,7 +1551,19 @@ function filteredAccounts() {
   });
 }
 
+let searchRenderTimer = null;
+
+function scheduleSearchRender() {
+  clearTimeout(searchRenderTimer);
+  searchRenderTimer = setTimeout(() => {
+    searchRenderTimer = null;
+    render();
+  }, 90);
+}
+
 function clearSearch() {
+  clearTimeout(searchRenderTimer);
+  searchRenderTimer = null;
   searchQuery = '';
   const input = $('#search-input');
   if (input) input.value = '';
@@ -2039,7 +2059,8 @@ if (searchInput) {
     searchQuery = e.target.value.trim();
     if (searchClearBtn) searchClearBtn.hidden = !searchQuery;
     $('.search-wrap')?.classList.toggle('has-query', Boolean(searchQuery));
-    render();
+    // 连击时合并成一次重绘：render() 会整体重建卡片 DOM，逐字符跑会拖垮输入手感
+    scheduleSearchRender();
   });
 }
 if (searchClearBtn) {
