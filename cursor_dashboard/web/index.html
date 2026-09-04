@@ -17,37 +17,62 @@
     font: 14px/1.55 -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
     -webkit-font-smoothing: antialiased;
   }
-  .wrap { max-width: 1080px; margin: 0 auto; padding: 32px 24px 64px; }
-  header { display: flex; align-items: baseline; gap: 14px; }
-  h1 { font-size: 20px; font-weight: 600; margin: 0; letter-spacing: .2px; }
-  .sub { color: var(--dimmer); font-size: 12px; }
-  .bar-top { display: flex; gap: 10px; margin: 20px 0 12px; align-items: center; }
-  .spacer { flex: 1; }
-  .stamp { color: var(--dimmer); font-size: 12px; }
-  .sort-control { display: flex; align-items: center; gap: 7px; flex: none; }
-  .sort-control label { margin: 0; color: var(--dimmer); white-space: nowrap; }
-  #sort-order {
-    width: 184px; padding: 7px 30px 7px 10px; background: var(--card-hi);
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 28px 24px 64px; }
+
+  /* ---------- 顶部工具栏：标题 / 操作 / 部门筛选收成一块 ---------- */
+  .panel-chrome {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 16px 18px 14px; margin-bottom: 20px;
   }
+  .panel-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px 20px; flex-wrap: wrap;
+  }
+  .title-block { min-width: 0; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0; letter-spacing: .2px; line-height: 1.3; }
+  .sub { display: block; color: var(--dimmer); font-size: 12px; margin-top: 3px; }
+
+  .bar-top {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-width: 0;
+  }
+  .stamp {
+    color: var(--dimmer); font-size: 11.5px; line-height: 1.4;
+    max-width: 280px; min-width: 0;
+  }
+  .sort-control { display: flex; align-items: center; gap: 6px; flex: none; }
+  .sort-control label { margin: 0; color: var(--dimmer); white-space: nowrap; font-size: 12px; }
+  #sort-order {
+    width: 168px; padding: 6px 28px 6px 10px; background: var(--card-hi);
+    font-size: 12.5px;
+  }
+  .bar-top button.primary { padding: 6px 12px; font-size: 13px; }
 
   .department-nav {
-    display: flex; align-items: flex-end; gap: 14px; margin: 0 0 24px;
-    border-bottom: 1px solid var(--line); min-width: 0;
+    display: flex; align-items: center; gap: 10px; margin: 12px 0 0; padding-top: 12px;
+    border-top: 1px solid var(--line); min-width: 0;
   }
-  .department-caption { color: var(--dimmer); font-size: 11px; padding: 9px 0; flex: none; }
-  .department-tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
-  .department-tabs::-webkit-scrollbar { display: none; }
+  .department-caption {
+    color: var(--dimmer); font-size: 11px; flex: none; letter-spacing: .3px;
+  }
+  .department-tabs {
+    display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; flex: 1;
+  }
   button.department-tab {
-    position: relative; flex: none; border: 0; border-radius: 0; background: transparent;
-    color: var(--dim); padding: 8px 10px 9px; white-space: nowrap;
+    flex: none; border: 1px solid var(--line); border-radius: 999px;
+    background: var(--bg); color: var(--dim);
+    padding: 4px 11px; white-space: nowrap; font-size: 12.5px; line-height: 1.45;
   }
-  button.department-tab:hover:not(:disabled) { background: transparent; border-color: transparent; color: var(--fg); }
-  button.department-tab[aria-selected="true"] { color: var(--fg); }
-  button.department-tab[aria-selected="true"]::after {
-    content: ""; position: absolute; height: 2px; left: 10px; right: 10px; bottom: -1px;
-    background: var(--accent);
+  button.department-tab:hover:not(:disabled) {
+    background: var(--card-hi); border-color: #39414d; color: var(--fg);
   }
-  .department-count { color: var(--dimmer); font-size: 11px; margin-left: 4px; font-variant-numeric: tabular-nums; }
+  button.department-tab[aria-selected="true"] {
+    background: rgba(91, 156, 255, .14); border-color: var(--accent); color: var(--fg);
+  }
+  .department-count {
+    color: var(--dimmer); font-size: 11px; margin-left: 5px;
+    font-variant-numeric: tabular-nums;
+  }
+  button.department-tab[aria-selected="true"] .department-count { color: var(--accent); }
 
   button {
     font: inherit; color: var(--fg); background: var(--card-hi);
@@ -372,12 +397,13 @@
 
   @media (max-width: 620px) {
     .wrap { padding: 22px 14px 48px; }
-    .bar-top { flex-wrap: wrap; }
-    .bar-top .spacer { display: none; }
-    .sort-control { margin-left: auto; }
-    #sort-order { width: 168px; }
-    .bar-top .stamp { width: 100%; order: 5; }
-    .department-nav { gap: 6px; }
+    .panel-chrome { padding: 14px 14px 12px; }
+    .panel-head { align-items: stretch; }
+    .bar-top { width: 100%; }
+    .stamp { max-width: none; flex: 1 1 100%; }
+    #sort-order { width: 156px; }
+    .department-nav { align-items: flex-start; gap: 8px; }
+    .department-tabs { gap: 5px; }
     .grid { grid-template-columns: minmax(0, 1fr); }
     .card { padding-left: 15px; padding-right: 15px; }
     .card-head { padding-top: 30px; }
@@ -400,29 +426,31 @@
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <h1>Cursor 额度面板</h1>
-    <span class="sub">cookie 只存服务端</span>
-  </header>
-
-  <div class="bar-top">
-    <button class="primary" id="add">+ 添加账号</button>
-    <span class="spacer"></span>
-    <div class="sort-control">
-      <label for="sort-order">排序</label>
-      <select id="sort-order">
-        <option value="added">添加顺序</option>
-        <option value="remaining-asc">综合剩余：低到高</option>
-        <option value="remaining-desc">综合剩余：高到低</option>
-      </select>
+  <section class="panel-chrome" aria-label="面板工具栏">
+    <div class="panel-head">
+      <header class="title-block">
+        <h1>Cursor 额度面板</h1>
+        <span class="sub">cookie 只存服务端</span>
+      </header>
+      <div class="bar-top">
+        <button class="primary" id="add">+ 添加账号</button>
+        <div class="sort-control">
+          <label for="sort-order">排序</label>
+          <select id="sort-order">
+            <option value="added">添加顺序</option>
+            <option value="remaining-asc">综合剩余：低到高</option>
+            <option value="remaining-desc">综合剩余：高到低</option>
+          </select>
+        </div>
+        <span class="stamp" id="stamp"></span>
+      </div>
     </div>
-    <span class="stamp" id="stamp"></span>
-  </div>
 
-  <nav class="department-nav" aria-label="按部门查看账号">
-    <span class="department-caption">部门</span>
-    <div class="department-tabs" id="department-tabs" role="tablist"></div>
-  </nav>
+    <nav class="department-nav" aria-label="按部门查看账号">
+      <span class="department-caption">部门</span>
+      <div class="department-tabs" id="department-tabs" role="tablist"></div>
+    </nav>
+  </section>
 
   <div id="view"></div>
 </div>
