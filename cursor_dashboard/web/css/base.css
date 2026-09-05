@@ -285,24 +285,25 @@ body::before {
 .search-clear svg { width: 13px; height: 13px; }
 
 .sort-wrap {
-  position: relative; display: flex; align-items: center; flex: none;
+  position: relative; display: flex; align-items: center; flex: 0 1 214px;
+  width: 214px; min-width: 0;
 }
 .sort-wrap .sort-icon {
-  position: absolute; left: 9px; width: 13px; height: 13px;
+  position: absolute; left: 10px; width: 14px; height: 14px; z-index: 1;
   color: var(--dim); pointer-events: none;
 }
 #sort-order {
-  height: 34px; min-width: 154px; padding: 0 28px 0 29px; background: var(--input-bg);
+  height: 34px; width: 100%; padding: 0 28px 0 31px; background: var(--input-bg);
   border: 1px solid var(--line); border-radius: var(--radius-ctl); color: var(--fg);
   font-size: 12.5px; font-weight: 500; cursor: pointer;
-  appearance: none; -webkit-appearance: none; outline: none;
+  outline: none;
   transition: border-color .15s, box-shadow .15s;
 }
 #sort-order:hover { border-color: var(--dim); }
 #sort-order:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
-.sort-wrap .chevron-icon {
-  position: absolute; right: 9px; width: 12px; height: 12px;
-  color: var(--dimmer); pointer-events: none;
+.sort-wrap .ui-select-trigger {
+  height: 34px; min-height: 34px; padding: 0 10px 0 31px;
+  font-size: 12.5px; font-weight: 500;
 }
 
 .main-content {
@@ -560,19 +561,6 @@ button.q-row:hover .q-go, button.q-row:focus-visible .q-go {
 .empty { border: 1px dashed var(--line); border-radius: var(--radius-card); padding: 48px 24px; text-align: center; color: var(--dim); }
 .empty p { margin: 0 0 18px; }
 
-/* 必须 fixed：只写 position: relative 会覆盖 UA 给 dialog:modal 的 fixed，
-   弹窗就跟着回到文档流末尾，showModal() 把焦点移进来时整页会跟着滚一下 */
-dialog {
-  background: var(--card); color: var(--fg); border: 1px solid var(--line);
-  backdrop-filter: var(--blur-panel); -webkit-backdrop-filter: var(--blur-panel);
-  border-radius: var(--radius-dialog); padding: 24px; width: min(460px, calc(100vw - 40px));
-  position: fixed; inset: 0; margin: auto;
-  max-height: calc(100dvh - 48px); overflow-y: auto; overscroll-behavior: contain;
-  box-shadow: var(--dialog-shadow);
-}
-/* 弹窗开着时锁住背景滚动，补上滚动条宽度免得整页横向跳一下 */
-body.modal-open { overflow: hidden; }
-dialog::backdrop { background: var(--backdrop); }
 /* 明细弹窗内容最长：头尾钉住、只让表格滚，关闭按钮才不会被推走或挡住花费列 */
 /* display 只能写在 [open] 上：写在 dialog.wide 上会盖掉 UA 的
    dialog:not([open]) { display: none }，关掉之后弹窗还赖在页面上 */
@@ -582,16 +570,6 @@ dialog.wide #detail-body {
   flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
 }
 
-dialog h2 { margin: 0 0 18px; padding-right: 30px; font-size: 16px; }
-.dialog-close {
-  position: absolute; top: 12px; right: 12px; z-index: 2;
-  width: 30px; height: 30px; padding: 0;
-  display: grid; place-items: center; background: transparent; border-color: transparent;
-  color: var(--dim);
-}
-.dialog-close:hover:not(:disabled) { color: var(--fg); }
-.dialog-close svg { width: 16px; height: 16px; }
-dialog p { color: var(--dim); font-size: 13px; margin: 0 0 16px; line-height: 1.7; }
 label { display: block; font-size: 12px; color: var(--dim); margin: 0 0 6px; }
 .optional { color: var(--dimmer); margin-left: 4px; }
 .f { margin-bottom: 14px; }
@@ -804,7 +782,7 @@ a { color: var(--accent); }
   .topbar-right { width: 100%; justify-content: space-between; gap: 8px; }
   .search-wrap { width: 100%; max-width: none; flex: 1 1 100%; order: 3; }
   .search-field { width: 100%; }
-  .sort-wrap select { min-width: 140px; }
+  .sort-wrap { flex: 0 1 min(200px, calc(100% - 110px)); width: min(200px, calc(100% - 110px)); }
   .main-content { padding: 16px 14px; }
   .grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
   .card { padding-left: 15px; padding-right: 15px; }

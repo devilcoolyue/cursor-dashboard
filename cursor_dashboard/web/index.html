@@ -33,6 +33,7 @@
      远不够抵消切换时重新下载样式表造成的白闪 -->
 <link rel="stylesheet" href="/static/css/tokens.css?v=__ASSET_VERSION__">
 <link rel="stylesheet" href="/static/css/base.css?v=__ASSET_VERSION__">
+<link rel="stylesheet" href="/static/css/ui.css?v=__ASSET_VERSION__">
 <link rel="stylesheet" href="/static/css/skins/glass.css?v=__ASSET_VERSION__">
 <link rel="stylesheet" href="/static/css/skins/cyberpunk.css?v=__ASSET_VERSION__">
 <link rel="stylesheet" href="/static/css/skins/graphite.css?v=__ASSET_VERSION__">
@@ -166,9 +167,6 @@
             <option value="reset-asc">重置时间：即将重置</option>
             <option value="reset-desc">重置时间：较远优先</option>
           </select>
-          <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
         </div>
 
         <button class="primary add-btn" id="add">
@@ -215,9 +213,9 @@
       → 找到 <code>WorkosCursorSessionToken</code> → 复制 Value。
     </p>
   </div>
-  <div class="row">
-    <span class="status" id="d-status" style="flex:1;text-align:left"></span>
-    <button id="d-cancel">取消</button>
+  <div class="row ui-dialog-actions">
+    <span class="status" id="d-status" role="status" style="flex:1;text-align:left"></span>
+    <button id="d-cancel" data-close-dialog="dlg">取消</button>
     <button class="primary" id="d-save">校验并保存</button>
   </div>
 </dialog>
@@ -236,9 +234,9 @@
       aria-label="新部门名称" placeholder="输入新部门名称，例如：智慧运维"
       autocomplete="off" maxlength="64" hidden>
   </div>
-  <div class="row">
-    <span class="status" id="department-status" style="flex:1;text-align:left"></span>
-    <button id="department-cancel">取消</button>
+  <div class="row ui-dialog-actions">
+    <span class="status" id="department-status" role="status" style="flex:1;text-align:left"></span>
+    <button id="department-cancel" data-close-dialog="department-dlg">取消</button>
     <button class="primary" id="department-save">保存分组</button>
   </div>
 </dialog>
@@ -264,9 +262,9 @@
   </button>
   <h2>面板口令</h2>
   <p>这个面板启用了口令保护，输入后会记在本浏览器里。</p>
-  <div class="f"><input type="password" id="a-token" placeholder="PANEL_TOKEN"></div>
-  <div class="row">
-    <span class="status" id="a-status" style="flex:1;text-align:left"></span>
+  <div class="f"><input type="password" id="a-token" aria-label="面板口令" placeholder="PANEL_TOKEN" autocomplete="current-password" autofocus></div>
+  <div class="row ui-dialog-actions">
+    <span class="status" id="a-status" role="status" style="flex:1;text-align:left"></span>
     <button class="primary" id="a-ok">进入</button>
   </div>
 </dialog>
@@ -295,6 +293,7 @@
     <button type="button" class="primary" data-close-dialog="prefs-dlg">完成</button>
   </div>
 </dialog>
+<script src="/static/js/ui.js?v=__ASSET_VERSION__"></script>
 <script src="/static/js/app.js?v=__ASSET_VERSION__"></script>
 </body>
 </html>

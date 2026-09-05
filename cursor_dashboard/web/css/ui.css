@@ -1,0 +1,142 @@
+/* Shared controls follow the current skin's semantic tokens. */
+.ui-select {
+  position: relative; display: inline-block; width: 100%; min-width: 0;
+  vertical-align: middle;
+}
+.ui-select > select[hidden], .ui-select-menu[hidden] { display: none; }
+button.ui-select-trigger {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%; min-width: 0; min-height: 40px; padding: 8px 11px;
+  background: var(--input-bg); color: var(--fg);
+  border: 1px solid var(--line); border-radius: var(--radius-ctl);
+  box-shadow: var(--ui-control-shadow); text-align: left; line-height: 1.5;
+  transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
+}
+button.ui-select-trigger:hover:not(:disabled) {
+  background: var(--input-bg); border-color: var(--dim);
+}
+button.ui-select-trigger:focus-visible,
+button.ui-select-trigger[aria-expanded="true"] {
+  outline: none; border-color: var(--accent); box-shadow: var(--ui-focus-shadow);
+}
+button.ui-select-trigger[aria-invalid="true"] { border-color: var(--bad); }
+button.ui-select-trigger:disabled { cursor: not-allowed; }
+.ui-select-value {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ui-select-chevron {
+  width: 14px; height: 14px; flex: none; color: var(--dim);
+  transition: transform .15s ease, color .15s ease;
+}
+.ui-select-trigger[aria-expanded="true"] .ui-select-chevron {
+  transform: rotate(180deg); color: var(--accent);
+}
+
+/* The popover enters the top layer, including when its select is in a dialog. */
+.ui-select-menu {
+  position: fixed; inset: auto; z-index: 1200; margin: 0; padding: 5px;
+  box-sizing: border-box; min-width: 0; max-width: calc(100vw - 16px);
+  max-height: min(320px, calc(100dvh - 24px)); overflow-y: auto;
+  overscroll-behavior: contain; scrollbar-width: thin;
+  scrollbar-color: var(--line-popover) var(--ui-transparent);
+  border: 1px solid var(--line-popover); border-radius: var(--radius-ctl);
+  background: var(--card-popover); color: var(--fg); box-shadow: var(--shadow-popover);
+  backdrop-filter: var(--blur-panel); -webkit-backdrop-filter: var(--blur-panel);
+  animation: ui-menu-in .12s ease-out;
+}
+.ui-select-menu::backdrop { background: var(--ui-transparent); }
+.ui-select-option {
+  display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 8px 9px;
+  border-radius: var(--ui-option-radius); color: var(--fg); cursor: pointer;
+  font-size: 13px; font-weight: 400; line-height: 1.45; user-select: none;
+}
+.ui-select-option-label { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.ui-select-option.is-active:not([aria-disabled="true"]) { background: var(--ui-option-hover-bg); }
+.ui-select-option[aria-selected="true"] {
+  color: var(--accent); background: var(--ui-option-selected-bg); font-weight: 600;
+}
+.ui-select-option.is-active[aria-selected="true"] { box-shadow: var(--ui-option-selected-shadow); }
+.ui-select-check { width: 15px; height: 15px; flex: none; color: var(--accent); visibility: hidden; }
+.ui-select-option[aria-selected="true"] .ui-select-check { visibility: visible; }
+.ui-select-option[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
+.ui-select-option.is-action {
+  margin-top: 5px; padding-top: 10px; border-top: 1px solid var(--line);
+  border-top-left-radius: 0; border-top-right-radius: 0; color: var(--accent);
+}
+.ui-select-group {
+  padding: 9px 9px 5px; color: var(--dimmer); font-size: 11px; font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.ui-select-group:not(:first-child) { margin-top: 4px; border-top: 1px solid var(--line); }
+.ui-select-empty { padding: 12px 9px; color: var(--dim); font-size: 13px; }
+
+/* Keep native fixed positioning and closed-dialog display behavior. */
+dialog {
+  position: fixed; inset: 0; margin: auto; padding: 24px;
+  width: min(460px, calc(100vw - 40px)); max-height: calc(100dvh - 48px);
+  overflow-y: auto; overscroll-behavior: contain;
+  background: var(--card); color: var(--fg); border: 1px solid var(--line);
+  border-radius: var(--radius-dialog); box-shadow: var(--dialog-shadow);
+  backdrop-filter: var(--blur-panel); -webkit-backdrop-filter: var(--blur-panel);
+}
+dialog[open] { animation: ui-dialog-in .16s ease-out; }
+body.modal-open { overflow: hidden; }
+dialog::backdrop { background: var(--backdrop); animation: ui-backdrop-in .16s ease-out; }
+dialog h2 { margin: 0 0 18px; padding-right: 30px; font-size: 16px; line-height: 1.5; overflow-wrap: anywhere; }
+dialog p { color: var(--dim); font-size: 13px; margin: 0 0 16px; line-height: 1.7; overflow-wrap: anywhere; }
+.dialog-close {
+  position: absolute; top: 12px; right: 12px; z-index: 2;
+  width: 30px; height: 30px; padding: 0; display: grid; place-items: center;
+  background: var(--ui-transparent); border-color: var(--ui-transparent); color: var(--dim);
+}
+.dialog-close:hover:not(:disabled) { color: var(--fg); }
+.dialog-close svg { width: 16px; height: 16px; }
+dialog button:focus-visible, dialog a:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 3px;
+}
+dialog input:focus-visible, dialog textarea:focus-visible { box-shadow: var(--ui-focus-shadow); }
+
+dialog.ui-message-dialog { width: min(420px, calc(100vw - 32px)); }
+.ui-message-icon {
+  display: grid; place-items: center; width: 40px; height: 40px; margin-bottom: 16px;
+  border: 1px solid var(--card-active-border); border-radius: var(--radius-ctl);
+  background: var(--accent-bg); color: var(--accent);
+}
+.ui-message-icon svg { width: 20px; height: 20px; }
+dialog .ui-message-title { margin-bottom: 8px; font-size: 17px; }
+dialog .ui-message-description { margin-bottom: 16px; white-space: pre-wrap; }
+.ui-message-subject {
+  display: flex; flex-direction: column; gap: 3px; padding: 12px 0;
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.ui-message-subject strong { color: var(--fg); font-size: 13px; font-weight: 600; }
+.ui-message-subject span { color: var(--dim); font-size: 12px; }
+dialog .ui-message-error { color: var(--bad); margin: 14px 0 0; font-size: 12px; }
+.ui-message-subject[hidden], .ui-message-error[hidden] { display: none; }
+.ui-dialog-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 22px; }
+.ui-dialog-actions button { min-width: 76px; min-height: 36px; font-size: 13px; }
+.ui-dialog-actions .ui-confirm-button { min-width: 96px; }
+button.ui-danger-button {
+  color: var(--bad); background: var(--ui-danger-bg); border-color: var(--ui-danger-border); font-weight: 600;
+}
+button.ui-danger-button:hover:not(:disabled) {
+  background: var(--ui-danger-hover-bg); border-color: var(--ui-danger-hover-border);
+}
+.ui-message-dialog[aria-busy="true"] .ui-confirm-button { cursor: progress; }
+
+@keyframes ui-menu-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ui-dialog-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes ui-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+@media (max-width: 620px) {
+  dialog { padding: 22px 20px; max-height: calc(100dvh - 32px); }
+  .ui-select-option { min-height: 40px; }
+  .ui-dialog-actions button { min-height: 40px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-select-menu, dialog[open], dialog::backdrop { animation: none; }
+  .ui-select-trigger, .ui-select-chevron { transition: none; }
+}

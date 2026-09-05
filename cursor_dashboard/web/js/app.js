@@ -1,5 +1,7 @@
 const $ = (s) => document.querySelector(s);
 const view = $('#view');
+PanelUI.init();
+const openModal = (dialog, options) => PanelUI.open(dialog, options);
 
 let token = localStorage.getItem('panelToken') || '';
 const headers = () => token ? { 'X-Panel-Token': token } : {};
@@ -429,9 +431,10 @@ function populateDepartmentSelect(select, newInput, current = '') {
     '<option value="">不选择（未分组）</option>',
     ...departments.map((department) =>
       `<option value="${esc(department)}">${esc(department)}</option>`),
-    `<option value="${NEW_DEPARTMENT}">＋ 新建部门…</option>`
+    `<option value="${NEW_DEPARTMENT}" data-action>＋ 新建部门…</option>`
   ].join('');
   select.value = current || '';
+  PanelUI.select.refresh(select);
   newInput.value = '';
   newInput.hidden = true;
 }
@@ -780,7 +783,7 @@ async function openDetail(id, group) {
   try {
     const r = await fetch(`/api/accounts/${encodeURIComponent(id)}/usage-detail`,
                           { headers: headers() });
-    if (r.status === 401) { detailDlg.close(); openModal($('#auth')); return; }
+    if (r.status === 401) { PanelUI.close(detailDlg); openModal($('#auth')); return; }
     const d = await r.json();
     if (generation !== detailRequest) return;   // 关掉又点了别的，别让旧响应覆盖
     if (!r.ok) throw new Error(d.detail || '读取明细失败');
@@ -791,25 +794,6 @@ async function openDetail(id, group) {
     $('#detail-body').innerHTML = `<div class="detail-empty">${esc(e.message)}</div>`;
   }
 }
-
-// 背景锁滚动：showModal() 不会阻止 body 跟着滚，滚轮落在遮罩上照样能拖动底下的页面
-function openModal(dlg) {
-  const barWidth = window.innerWidth - document.documentElement.clientWidth;
-  if (barWidth > 0) document.body.style.paddingRight = barWidth + 'px';
-  document.body.classList.add('modal-open');
-  if (!dlg.open) dlg.showModal();
-}
-
-// 盯 open 属性而不是监听 close 事件：关闭路径有四条（× 按钮、取消按钮、Esc、
-// 提交后自动关），close 事件在实测的 Chrome 里并不总会派发，属性变化则一定有
-const modalLock = new MutationObserver(() => {
-  if (document.querySelector('dialog[open]')) return;     // 还有别的弹窗开着
-  document.body.classList.remove('modal-open');
-  document.body.style.paddingRight = '';
-});
-document.querySelectorAll('dialog').forEach((dlg) => {
-  modalLock.observe(dlg, { attributes: true, attributeFilter: ['open'] });
-});
 
 let toastTimer = null;
 function toast(text) {
@@ -828,11 +812,30 @@ view.addEventListener('click', async (e) => {
     return;
   }
   if (del !== undefined) {
-    if (!confirm(`删除账号 ${del}？只从服务端账号库移除，不影响 Cursor 账号本身。`)) return;
-    const r = await fetch('/api/accounts/' + encodeURIComponent(del), {
-      method: 'DELETE', headers: headers()
+    const account = accounts.find((item) => item.id === del);
+    const removed = await PanelUI.confirm({
+      title: '删除账号',
+      message: '确认从面板移除这个账号？只删除服务端的账号记录，不影响 Cursor 账号本身。',
+      subject: account?.label || del,
+      detail: account?.email || del,
+      tone: 'danger',
+      confirmText: '删除账号',
+      pendingText: '删除中…',
+      onConfirm: async () => {
+        const response = await fetch('/api/accounts/' + encodeURIComponent(del), {
+          method: 'DELETE', headers: headers()
+        });
+        if (response.status === 401) {
+          openModal($('#auth'));
+          throw new Error('面板口令已失效，请重新输入口令后重试。');
+        }
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.detail || '删除失败，请稍后重试。');
+        }
+      },
     });
-    if (r.ok) load();
+    if (removed) { await load(); toast('已删除账号'); }
   } else if (one !== undefined) {
     refreshOne(one);
   } else if (detail !== undefined) {
@@ -1160,6 +1163,7 @@ $('#department-tabs').addEventListener('click', (e) => {
 });
 
 $('#sort-order').value = sortMode;
+PanelUI.select.refresh($('#sort-order'));
 $('#sort-order').addEventListener('change', (e) => {
   sortMode = SORT_MODES.has(e.target.value) ? e.target.value : SORT_ADDED;
   localStorage.setItem('accountSort', sortMode);
@@ -1181,7 +1185,9 @@ if (searchClearBtn) {
   searchClearBtn.addEventListener('click', clearSearch);
 }
 window.addEventListener('keydown', (e) => {
-  if (e.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) {
+  if (e.key === '/' && !document.querySelector('dialog[open]')
+      && document.activeElement?.getAttribute('role') !== 'combobox'
+      && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) {
     e.preventDefault();
     if (searchInput) {
       searchInput.focus();
@@ -1231,7 +1237,7 @@ $('#d-save').onclick = async () => {
       selectedDepartment = d.department || '';
       localStorage.setItem('selectedDepartment', selectedDepartment);
       say('已保存 ' + (d.email || d.label), 'good');
-      setTimeout(() => { dlg.close(); load(); }, 700);
+      setTimeout(() => { PanelUI.close(dlg); load(); }, 700);
     } else {
       say(d.detail || '保存失败', 'bad');
       $('#d-save').disabled = false;
@@ -1245,7 +1251,6 @@ $('#d-save').onclick = async () => {
 $('#add').onclick = () => openDialog(
   '', selectedDepartment === ALL_DEPARTMENTS ? '' : selectedDepartment
 );
-$('#d-cancel').onclick = () => dlg.close();
 $('#d-department').onchange = () =>
   toggleNewDepartment($('#d-department'), $('#d-department-new'));
 
@@ -1261,7 +1266,7 @@ function openDepartmentDialog(id, label, department) {
   $('#department-status').className = 'status';
   $('#department-save').disabled = false;
   openModal(departmentDlg);
-  $('#department-input').focus();
+  PanelUI.select.focus($('#department-input'));
 }
 
 $('#department-save').onclick = async () => {
@@ -1285,7 +1290,7 @@ $('#department-save').onclick = async () => {
     if (account) account.department = d.department || '';
     selectedDepartment = d.department || '';
     localStorage.setItem('selectedDepartment', selectedDepartment);
-    departmentDlg.close();
+    PanelUI.close(departmentDlg);
     load();
   } catch (e) {
     status.className = 'status bad';
@@ -1294,13 +1299,8 @@ $('#department-save').onclick = async () => {
   }
 };
 
-$('#department-cancel').onclick = () => departmentDlg.close();
 $('#department-input').onchange = () =>
   toggleNewDepartment($('#department-input'), $('#department-new'));
-
-document.querySelectorAll('[data-close-dialog]').forEach((button) => {
-  button.onclick = () => document.getElementById(button.dataset.closeDialog).close();
-});
 
 // ---------- 口令 ----------
 $('#a-ok').onclick = async () => {
@@ -1312,7 +1312,7 @@ $('#a-ok').onclick = async () => {
     return;
   }
   localStorage.setItem('panelToken', token);
-  $('#auth').close();
+  PanelUI.close($('#auth'));
   load();
 };
 

@@ -61,8 +61,10 @@ cursor_dashboard/
     ├── index.html          结构 + 皮肤引导脚本，挂 /static 下的三个样式表
     ├── css/tokens.css      主题令牌表（皮肤 × 明暗，四套取值）
     ├── css/base.css        骨架样式，只准写 var()
+    ├── css/ui.css          公共下拉菜单、弹窗样式，沿用主题令牌
     ├── css/skins/glass.css 液态玻璃皮肤
-    └── js/app.js           全部页面逻辑
+    ├── js/ui.js            PanelUI 公共下拉菜单、弹窗插件
+    └── js/app.js           页面业务逻辑
 ```
 
 **`client` + `usage` 是取数层，`server` 只做编排**——CLI 和面板共用同一份接口定义和
@@ -208,8 +210,13 @@ hover 时出现），所以 `.card:hover` 时环淡出、按钮淡入，两者�
 为 `null` 时整个不显示——**不要拿 `plan.included_usd`（$20）顶替**，那是订阅价不是池子。
 升级前存的旧快照没有这个字段，`== null` 判断已经覆盖 `undefined`。
 新增账号默认带入当前部门，「全部」使用前端 sentinel，不写入数据库。新增和调整分组
-使用原生 `select`：空值代表未分组，已有部门动态生成，选择「新建部门…」后才显示
-自由文本输入框；不要改回浏览器表现不一致的 `datalist`。
+使用 `PanelUI` 增强的 `select`：原生元素保存值并派发 `change`，自定义菜单负责显示，
+空值代表未分组，已有部门动态生成，选择「新建部门…」后才显示自由文本输入框。
+直接修改 `.value` 后调用 `PanelUI.select.refresh()`，聚焦使用 `PanelUI.select.focus()`。
+公共组件逻辑在 `web/js/ui.js`、样式在 `web/css/ui.css`，后者加载在 base 和 skins 之间。
+弹窗统一走 `PanelUI.open/close`，确认和通知使用 `PanelUI.confirm/alert`，不使用浏览器
+`confirm/alert`。确认接口可接收异步 `onConfirm`，提交时禁用关闭和重复提交，抛错显示在
+弹窗内；用户文本使用 `textContent`。保留 native dialog 的顶层、焦点约束和 open 属性观察。
 
 ## 必须知道的坑
 

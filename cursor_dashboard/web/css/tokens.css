@@ -20,6 +20,17 @@
   --radius-dialog: 14px;
   --radius-pill: 999px;
   --skin-menu-hover-bg: var(--btn-hover-bg);
+  --ui-transparent: transparent;
+  --ui-focus-shadow: 0 0 0 3px var(--accent-bg);
+  --ui-control-shadow: inset 0 1px 0 var(--line-subtle);
+  --ui-option-hover-bg: var(--row-hover-bg);
+  --ui-option-selected-bg: var(--accent-bg);
+  --ui-option-selected-shadow: inset 0 0 0 1px var(--card-active-border);
+  --ui-option-radius: max(4px, calc(var(--radius-ctl) - 3px));
+  --ui-danger-bg: var(--card-exhausted-bg);
+  --ui-danger-hover-bg: color-mix(in srgb, var(--bad) 16%, var(--card));
+  --ui-danger-border: var(--card-exhausted-border);
+  --ui-danger-hover-border: var(--bad);
   --skin-swatch-classic: linear-gradient(135deg, #2b313b 0%, #161920 55%, #0b0d11 100%);
   --skin-swatch-glass: linear-gradient(135deg, rgba(126, 96, 255, .95) 0%, rgba(28, 168, 220, .9) 48%, rgba(226, 74, 154, .9) 100%);
   --skin-swatch-cyberpunk: linear-gradient(135deg, #15171b 48%, #36e4e9 49%, #36e4e9 72%, #f266b4 73%);
