@@ -19,6 +19,7 @@
   --radius-ctl: 8px;
   --radius-dialog: 14px;
   --radius-pill: 999px;
+  --skin-menu-hover-bg: var(--btn-hover-bg);
   --skin-swatch-classic: linear-gradient(135deg, #2b313b 0%, #161920 55%, #0b0d11 100%);
   --skin-swatch-glass: linear-gradient(135deg, rgba(126, 96, 255, .95) 0%, rgba(28, 168, 220, .9) 48%, rgba(226, 74, 154, .9) 100%);
   --skin-swatch-cyberpunk: linear-gradient(135deg, #15171b 48%, #36e4e9 49%, #36e4e9 72%, #f266b4 73%);
@@ -155,6 +156,8 @@ html[data-skin="glass"] {
   --radius-card: 20px;
   --radius-ctl: 12px;
   --radius-dialog: 24px;
+  /* A white button highlight disappears on the near-white popover. */
+  --skin-menu-hover-bg: var(--row-hover-bg);
   /* saturate 不是可有可无的装饰：iOS 那种"背后的颜色渗进玻璃"的观感，
      靠的就是把透上来的像素提饱和，只 blur 出来的是一块脏灰。
      只有固定不动的几层（侧栏、顶栏、弹窗、气泡）吃这个值，卡片不吃——

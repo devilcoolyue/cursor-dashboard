@@ -170,7 +170,12 @@ body::before {
 }
 .skin-menu-item .skin-swatch { width: 22px; height: 22px; }
 .skin-menu-item .skin-name { flex: 1; }
-.skin-menu-item.active { color: var(--fg); background: var(--accent-bg); font-weight: 600; }
+.skin-menu-item:is(:hover, :focus-visible):not(:disabled) {
+  color: var(--fg); background: var(--skin-menu-hover-bg);
+}
+.skin-menu-item.active:not(:disabled) {
+  color: var(--fg); background: var(--accent-bg); font-weight: 600;
+}
 .skin-menu-check { width: 14px; height: 14px; flex: none; color: var(--accent); visibility: hidden; }
 .skin-menu-item.active .skin-menu-check { visibility: visible; }
 @keyframes skin-menu-in {
