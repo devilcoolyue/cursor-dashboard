@@ -1,0 +1,33 @@
+/* Flat monochrome structure keeps semantic quota colors intact. */
+html[data-skin="graphite"] .dept-nav-item[aria-selected="true"] {
+  background: var(--accent-bg);
+  border-color: var(--line);
+}
+
+html[data-skin="graphite"] .card {
+  transition: border-color .15s ease;
+}
+
+html[data-skin="graphite"] .card:not(.exhausted):not(.dead):hover {
+  border-color: var(--dimmer);
+}
+
+html[data-skin="graphite"] .plan,
+html[data-skin="graphite"] .view-badge,
+html[data-skin="graphite"] .skin-btn,
+html[data-skin="graphite"] .theme-btn {
+  border-radius: var(--radius-ctl);
+}
+
+html[data-skin="graphite"] .track {
+  height: 4px;
+}
+
+html[data-skin="graphite"] .track,
+html[data-skin="graphite"] .fill {
+  border-radius: var(--radius-ctl);
+}
+
+html[data-skin="graphite"] .label {
+  font-weight: 650;
+}

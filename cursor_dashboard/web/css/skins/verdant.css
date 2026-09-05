@@ -1,0 +1,32 @@
+/* Quiet green navigation with a small warm accent. */
+html[data-skin="verdant"] .dept-nav-item[aria-selected="true"] {
+  background: var(--accent-bg);
+  border-color: var(--line);
+  box-shadow: var(--skin-nav-shadow);
+}
+
+html[data-skin="verdant"] .card {
+  transition: border-color .18s ease, box-shadow .18s ease;
+}
+
+html[data-skin="verdant"] .card:not(.exhausted):not(.dead):hover {
+  border-color: var(--card-active-border);
+  box-shadow: var(--skin-card-hover-shadow);
+}
+
+html[data-skin="verdant"] .plan {
+  color: var(--skin-detail-accent);
+  border-color: var(--line);
+}
+
+html[data-skin="verdant"] .department-mark {
+  border-left-color: var(--skin-detail-accent);
+}
+
+html[data-skin="verdant"] .meta {
+  border-top-style: dotted;
+}
+
+html[data-skin="verdant"] .track {
+  height: 6px;
+}

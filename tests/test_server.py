@@ -1,14 +1,130 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import tempfile
 import time
 import unittest
+from html.parser import HTMLParser
+from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlsplit
 
 import requests
 
 from cursor_dashboard import server, snapshot
 from cursor_dashboard.client import AuthExpired, RateLimited
+
+
+class AssetLinks(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.urls: dict[str, str] = {}
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        attributes = dict(attrs)
+        if tag == "script":
+            url = attributes.get("src", "")
+        elif tag == "link" and attributes.get("rel") == "stylesheet":
+            url = attributes.get("href", "")
+        else:
+            return
+        path = urlsplit(url).path
+        if path.startswith("/static/"):
+            self.urls[path] = url
+
+
+class FrontendCacheTest(unittest.TestCase):
+    def setUp(self) -> None:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.web = Path(directory.name)
+        (self.web / "css" / "skins").mkdir(parents=True)
+        (self.web / "js").mkdir()
+        (self.web / "css" / "base.css").write_text("body { color: red; }", encoding="utf-8")
+        (self.web / "css" / "skins" / "glass.css").write_text("body { opacity: .9; }", encoding="utf-8")
+        (self.web / "js" / "app.js").write_text("const version = 1;", encoding="utf-8")
+        self.index = self.web / "index.html"
+        self.index.write_text(
+            '<!doctype html><link rel="stylesheet" href="/static/css/base.css?v=__ASSET_VERSION__">'
+            '<link rel="stylesheet" href="/static/css/skins/glass.css?v=__ASSET_VERSION__">'
+            '<script src="/static/js/app.js?v=__ASSET_VERSION__"></script>',
+            encoding="utf-8",
+        )
+
+    def render_index(self):
+        with patch.object(server, "WEB_DIR", self.web), \
+             patch.object(server, "WEB_INDEX", self.index):
+            return server.index()
+
+    def asset_urls(self, response) -> dict[str, str]:
+        parser = AssetLinks()
+        parser.feed(response.body.decode("utf-8"))
+        return parser.urls
+
+    def test_shipped_page_versions_every_stylesheet_and_script(self) -> None:
+        response = server.index()
+        urls = self.asset_urls(response)
+
+        self.assertIn("/static/js/app.js", urls)
+        self.assertTrue(any(path.endswith(".css") for path in urls))
+        self.assertNotIn("__ASSET_VERSION__", response.body.decode("utf-8"))
+        for path, url in urls.items():
+            with self.subTest(path=path):
+                self.assertTrue(parse_qs(urlsplit(url).query).get("v"), url)
+                self.assertTrue((server.WEB_DIR / path.removeprefix("/static/")).is_file())
+
+    def test_unchanged_assets_keep_urls_and_html_requires_revalidation(self) -> None:
+        first = self.render_index()
+        second = self.render_index()
+
+        self.assertEqual(first.headers["cache-control"], "no-cache")
+        self.assertEqual(self.asset_urls(first), self.asset_urls(second))
+        self.assertEqual(len(self.asset_urls(first)), 3)
+
+    def test_changed_asset_content_invalidates_urls_with_unchanged_file_metadata(self) -> None:
+        for relative_path, contents in (
+            ("js/app.js", "const version = 2;"),
+            ("css/base.css", "body { color: tan; }"),
+            ("css/skins/glass.css", "body { opacity: .8; }"),
+        ):
+            with self.subTest(asset=relative_path):
+                path = self.web / relative_path
+                before = self.asset_urls(self.render_index())
+                previous_stat = path.stat()
+                path.write_text(contents, encoding="utf-8")
+                os.utime(path, ns=(previous_stat.st_atime_ns, previous_stat.st_mtime_ns))
+                after = self.asset_urls(self.render_index())
+
+                self.assertEqual(path.stat().st_size, previous_stat.st_size)
+                self.assertEqual(path.stat().st_mtime_ns, previous_stat.st_mtime_ns)
+                self.assertNotEqual(before[f"/static/{relative_path}"], after[f"/static/{relative_path}"])
+
+    def test_changed_html_invalidates_asset_urls(self) -> None:
+        before = self.asset_urls(self.render_index())
+        self.index.write_text(self.index.read_text(encoding="utf-8") + "<main></main>", encoding="utf-8")
+        after = self.asset_urls(self.render_index())
+
+        self.assertNotEqual(before["/static/js/app.js"], after["/static/js/app.js"])
+
+
+class StaticCacheTest(unittest.IsolatedAsyncioTestCase):
+    async def test_static_200_and_304_require_revalidation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, "app.js").write_text("const version = 1;", encoding="utf-8")
+            static = server.RevalidatingStaticFiles(directory=directory)
+            response = await static.get_response("app.js", {"method": "GET", "headers": []})
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.headers["cache-control"], "no-cache")
+            cached = await static.get_response("app.js", {
+                "method": "GET",
+                "headers": [(b"if-none-match", response.headers["etag"].encode("ascii"))],
+            })
+
+            self.assertEqual(cached.status_code, 304)
+            self.assertEqual(cached.headers["cache-control"], "no-cache")
+            self.assertEqual(cached.headers["etag"], response.headers["etag"])
 
 
 class RequestConcurrencyTest(unittest.IsolatedAsyncioTestCase):

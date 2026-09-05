@@ -58,7 +58,8 @@ cursor_dashboard/
 ├── config.py     环境变量集中在这里
 ├── cli.py        命令行入口 cursor-quota
 ├── server.py     FastAPI 服务端 cursor-panel，只做编排
-└── web/index.html   单文件前端，无 CDN 依赖
+└── web/            前端：index.html + css/（令牌、骨架、组件、皮肤）+ js/（ui.js、app.js）
+                 无构建步骤、无 CDN 依赖，挂在 /static 下
 ```
 
 `client` + `usage` 是取数层，CLI 和面板都用它，改字段只需要改一处。
@@ -112,6 +113,27 @@ cursor_dashboard/
 - 浏览器记住最后选择的部门和排序方式。切换部门会取消上一轮未完成请求。
 - 账号默认按添加顺序显示，也可按综合剩余百分比从低到高或从高到低排序。
 
+## 液态玻璃动效测试
+
+在独立工作区运行 `uv run python dev/preview.py --port 8789`，打开
+`http://127.0.0.1:8789`。预览使用内存中的模拟账号，不访问 Cursor、不读取真实账号库，
+重启后数据重置。默认进入液态玻璃主题，添加测试账号时 Cookie 填 `demo`。
+
+可验证明暗滑块、部门切换与卡片入场、额度明细展开/收回、单卡刷新、新账号凝聚五处
+动效。仅玻璃主题启用；系统开启「减少动态效果」后停用液态形变。明暗与部门滑块分三段
+走完 950ms：整块先收成一滴（圆头 + 尖尾，尖朝运动的反方向），这滴水从中间那些 tab
+底下穿过去，落位后再摊开成框。形状由 `clip-path` 画——`border-radius` 出不来水滴，
+椭圆角接出来是蛋、直角配正方形又只有一丁点尾巴。位移不足 4px 时直接就位不演。滑动途中轮廓和投影各加重一档，浅色下用靛蓝描边
+（白描边在白托盘上看不见）。
+单卡刷新期间那张卡退回骨架，失败显示原因，完成后按当前排序更新位置并把焦点放回刷新
+按钮；后台轮询不触发入场动效。
+详情从额度行的实际轮廓展开，宽高采用不同的缓动节奏，文字保持原字号并在展开途中显现；
+收起采用独立轨迹，支持中途关闭时从当前形态连续收回。
+
+浏览器回归脚本：`playwright-cli run-code --filename dev/verify-glass.js`，连接上面的
+测试页后执行，截图保存在 `output/playwright/`。
+详情逐帧验证使用 `playwright-cli run-code --filename dev/verify-detail-motion.js`。
+
 ## 添加账号
 
 面板点「+ 添加账号」，填写姓名并粘贴 cookie，保存前服务端会先验活。所属部门选填：
@@ -134,6 +156,10 @@ httpOnly 连 cursor.com 自己的页面 JS 都读不到，iframe 嵌 cursor.com 
 新增账号时默认带入当前正在查看的部门。已有账号可点卡片右上角的楼宇图标单独调整
 分组，不需要重新粘贴 cookie。
 
+排序与部门选择使用统一的主题下拉菜单，支持方向键、Enter 选择、Esc 收起、长列表滚动
+和视口边缘避让。删除账号会显示带姓名、邮箱的确认弹窗；提交期间禁用重复操作，失败时
+在弹窗内显示原因并允许重试。
+
 卡片中的部门和邮箱使用完整宽度，长邮箱会自动换行而不是省略。添加账号、调整分组和
 面板口令弹窗都可通过右上角关闭按钮、取消按钮或 Esc 关闭。
 
@@ -154,6 +180,37 @@ cookie 确认失效后卡片才会变红，点钥匙图标重新粘贴即可。�
 
 每张卡片都有「最后统计」一行，显示这份数据是什么时候取到的（后台是错开刷的，每张卡
 的时间本来就不一样）。页头显示后台轮一遍所有账号需要多久。
+
+## 前端公共组件
+
+`web/js/ui.js` 暴露 `PanelUI`，`web/css/ui.css` 负责组件样式，颜色、阴影和圆角沿用
+`tokens.css`。所有资源本地加载，无需 npm、构建工具或 CDN。
+
+```javascript
+PanelUI.init();                         // 增强现有单选 select，注册 dialog；可重复调用
+PanelUI.select.refresh(selectElement);  // 代码修改 value 后同步显示；选项变化会自动同步
+PanelUI.select.focus(selectElement);    // 聚焦可见的选择器
+PanelUI.open(dialogElement);            // 打开自定义内容弹窗
+PanelUI.close(dialogElement);           // 关闭弹窗并恢复焦点与背景滚动
+
+const confirmed = await PanelUI.confirm({
+  title: '删除账号',
+  message: '确认移除这个账号？',
+  subject: '账号姓名',
+  detail: 'name@example.com',
+  tone: 'danger',
+  confirmText: '删除账号',
+  pendingText: '删除中…',
+  onConfirm: async () => { /* 执行请求；抛出的错误会显示在弹窗内 */ },
+});
+await PanelUI.alert({ title: '操作完成', message: '账号信息已更新。' });
+```
+
+原始 `select` 仍保存值并触发标准 `input` / `change` 事件，可继续使用表单提交。
+动态插入组件后调用 `PanelUI.init(container)`；`data-native`、多选和不支持 Popover API
+的浏览器保留原生选择器。弹窗的关闭按钮使用 `data-close-dialog="弹窗ID"`，默认支持
+Esc 和点击遮罩关闭；设置 `data-dismiss-backdrop="false"` 可禁用遮罩关闭。
+下拉展开时 Esc 只收起菜单，再次按下才关闭弹窗。确认弹窗默认聚焦取消按钮。
 
 ## 卡片上的字段
 

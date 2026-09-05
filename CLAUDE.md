@@ -28,8 +28,7 @@ uv run cursor-quota -c other.json
 ```bash
 uv run python -c "import cursor_dashboard.server, cursor_dashboard.cli"   # 导入即语法+循环依赖检查
 uv run python -m unittest discover -s tests -v
-# 页面内联 JS：抽出来交给 node
-python3 -c "import re,pathlib;print(re.search(r'<script>(.*)</script>',pathlib.Path('cursor_dashboard/web/index.html').read_text(encoding='utf-8'),re.S).group(1))" > /tmp/page.js && node --check /tmp/page.js
+node --check cursor_dashboard/web/js/app.js                               # 页面脚本
 ```
 
 **本机 curl 必须加 `--noproxy '*'`**——环境里设了 `http_proxy=127.0.0.1:7890`，
@@ -58,7 +57,14 @@ cursor_dashboard/
 ├── config.py     环境变量
 ├── cli.py        命令行入口（render/bar/main）
 ├── server.py     FastAPI，只做编排
-└── web/index.html
+└── web/
+    ├── index.html          结构 + 皮肤引导脚本，挂 /static 下的三个样式表
+    ├── css/tokens.css      主题令牌表（皮肤 × 明暗，四套取值）
+    ├── css/base.css        骨架样式，只准写 var()
+    ├── css/ui.css          公共下拉菜单、弹窗样式，沿用主题令牌
+    ├── css/skins/glass.css 液态玻璃皮肤
+    ├── js/ui.js            PanelUI 公共下拉菜单、弹窗插件
+    └── js/app.js           页面业务逻辑
 ```
 
 **`client` + `usage` 是取数层，`server` 只做编排**——CLI 和面板共用同一份接口定义和
@@ -109,11 +115,16 @@ cursor_dashboard/
 `store.AccountsError` 由 `server.handle_accounts_error` 转成 500 + `detail`，
 前端读的就是 `detail` 字段。
 
-`web/index.html` 是**单文件、无 CDN 依赖**的页面。`load()` 一个请求拿回整组卡片，
+页面是**无构建、无 CDN 依赖**的静态文件，整个 `web/` 目录由 `server.py` 挂在
+`/static` 下（`app.mount`，注意不能挂在 `/` 上，会把 `/api/*` 一起吃掉）。
+改完刷新浏览器就生效，没有任何打包步骤。`load()` 一个请求拿回整组卡片，
 每 60 秒静默重取一次（`POLL_INTERVAL`），标签页切回来也立刻重取；`silent` 模式不
 显示骨架、失败也不清空页面。`loadGeneration` + `AbortController` 防止切组后旧响应
-污染新视图。单卡刷新只替换 `accounts` 里的一项再整体 `render()`，`_loading` 让该卡
-渲染成带姓名/部门/邮箱的骨架。渲染一律走 `esc()` 转义。每张卡的 `_order` 保留添加
+污染新视图。**单卡刷新期间那张卡退回骨架**（`card()` 开头查 `refreshingAccounts`），
+完成后 `replaceAccountCard` 只换这一张的 DOM 并按当前排序重新插位、把焦点放回刷新
+按钮，失败保留上一份数据并显示原因。试过「保留数据 + `aria-busy` + 按钮转圈」那版，
+数字一个没变，肉眼根本看不出点没点动——**闪烁的骨架是唯一看得出来的反馈，别再改回
+原地留数据**。渲染一律走 `esc()` 转义。每张卡的 `_order` 保留添加
 顺序；排序只对渲染副本操作。卡片有四种状态：正常、`stale`（有数据但最近一次刷新
 失败，照常显示数据 + 黄字说明）、`expired`（连续确认后才变红）、`pending`（后台还
 没轮到，骨架 + 说明）。`stale` 文案刻意不说「会话失效」——被限流时说失效会把人骗去
@@ -125,6 +136,60 @@ cursor_dashboard/
 "$495.32 / $495" 说的是同一件事。
 额度刷新时间由前端把 `reset_at` 转成浏览器本地时区，不使用后端向下取整的 `days_left`；
 不足 48 小时时显示到整小时（`remainingParts`）。
+
+**页面风格由 `SKINS` 声明表 + 三层 CSS 决定**，地位跟下面的 `CARD_OPTIONS` 平级。
+风格和明暗是 `<html>` 上**两个正交的属性**：`data-skin`（classic / glass）×
+`data-theme`（light / dark，"跟随系统"由 JS 解析成其中之一）。
+**不要合并成"经典深色/玻璃浅色"这样的四选一**——每加一套皮肤选项就翻倍，
+而且"跟随系统"没法落在任何一个上。
+
+三层 CSS 的分工是死规矩：`tokens.css` 是所有颜色、圆角、阴影的唯一出处，四套组合
+各写一份**完整**取值（只补差集的话，没补到的令牌会落回 `:root` 兜底的经典深色，
+玻璃浅色下就冒出几个深色残留）；`base.css` 只准写 `var()`，一个颜色字面量都不许
+有，换皮肤才只是换那张表；`skins/*.css` 只写令牌表达不了的形态差异，且
+**每条选择器都必须挂在 `html[data-skin="…"]` 下**，漏了前缀就会渗进别的皮肤。
+加一套皮肤 = `SKINS` 里多一条 + 一个 `css/skins/*.css` + `index.html` 里多一行
+`<link>`，别处都不用碰。**玻璃皮肤里"拿白盖白"是个反复出现的坑**，已经踩中三处：
+气泡描边（`--line-popover` 那条注释）、明暗/部门滑块、加载骨架。滑块曾用
+`--glass-edge`（白 .9）描边 + `--card-hi` 打底，而它压着的托盘正好也是 `--card-hi`，
+深色切浅色时整段动画凭空消失；骨架的 `--skel-base` 浅色是白 .55、卡片是白 .48，
+深色是白 .07、卡片也是白 .07（分毫不差），静止时那几条根本不存在，只有扫光划过的
+一瞬能看见。规律是一样的：**玻璃的面都是半透明白，压在上面的东西要么比它实一大档，
+要么换成带色的暗膜**（靛蓝那族），白描白底在这套皮肤里永远等于没画。滑块因此有自己
+的 `--glass-slide-*`，骨架的两个令牌也按这条重定了值。滑块滑动时那滴水的形状是
+`clip-path` 画的（`border-radius` 做不出尖），而 **`clip-path` 是在 `filter` 之后
+应用的**——描边和投影跟形状放同一个元素上会被自己裁光，所以水滴本体在 `::before`、
+`filter` 留在外层，改这块之前先看 `glass-motion.js` 里那段注释。皮肤 CSS 一次全部加载，不按需插 `<link>`——省下那点流量
+不够抵消切换时重下样式表的白闪。
+
+`index.html` 头部那段内联引导脚本负责防闪烁：它必须内联、必须排在样式表之前，
+把 localStorage 里的皮肤和明暗尽早打到 `<html>` 上，否则浏览器会先按兜底画一帧。
+它刻意不做白名单校验（校验表在 `SKINS`，抄一份过去就成了两处事实来源），脏值会
+落回兜底、由 `app.js` 纠正；里面的 `'classic'` 是全页唯一一处必须和
+`DEFAULT_SKIN` 保持一致的重复，改默认皮肤要两处一起改。
+
+玻璃皮肤有三个已经踩过的坑：**只有固定不动的层（侧栏、顶栏、弹窗、气泡）用
+`backdrop-filter`，卡片一律不用**——卡片背后只有 `--app-canvas` 那层平滑渐变，
+模糊低频信号的产出和原图几乎一样，白烧 GPU；而 42 张卡各挂一个，滚动时每帧都要
+重采样，这是玻璃风掉帧的头号原因。卡片的玻璃感改用半透明底 + 上缘高光 + 柔外阴影
+堆出来。**卡片 hover 不要写 `transform`**：它会让 `.card` 变成层叠上下文，额度行
+那个 `z-index: 100` 的 tooltip 就只在卡片内部有效，被邻卡压住——跟"不要给 `.card`
+加 `overflow: hidden`"是同一个坑，而且只在鼠标底下那张卡上发作，更难发现。
+**`--app-canvas` 的色斑 alpha 别再往下调**：玻璃是"透出背后的东西"才成立的，
+背景压太暗就没东西可透，整页会退回一块灰底加白框。
+
+**卡片上哪些东西显示，由 `CARD_OPTIONS` 这一张声明表说了算**（角标、燃尽水印、周期环、
+套餐徽章、部门、邮箱、额度上限，以及 meta 里的五行）。表是唯一事实来源：`card()` /
+`bar()` / `identityMeta()` 按它渲染，侧边栏「卡片显示项」面板也按它生成勾选框，
+加开关只要在表里多写一条。勾选结果存 `localStorage.panelCardPrefs`，读回时用
+`{ ...OPTION_DEFAULTS, ...readPrefs() }` 合并——**不要直接拿存量当配置**，那样以后
+新增的开关在老用户那儿会因为缺字段而消失；`readPrefs` 只认表里还有的键和布尔值，
+删掉的开关和手改坏的值都进不了渲染。三个别踩的点：模板串里必须写
+`cond ? html : ''`，**写 `cond && html` 条件为假时进页面的是字符串 "false"**；
+meta 五行全关时连 `.meta` 容器一起省掉，否则会剩一条 `border-top` 的横线；
+关掉「Grok Bot 周额度」只是不渲染那一行，**后台照常请求 `get-sand-usage-status`**，
+想减出站量得动 `REFRESH_INTERVAL`，不是动这个开关。燃尽水印的开关不管卡片底色
+（`.card.exhausted` 的暗红底是状态识别，去掉燃尽卡就跟正常卡长得一样了）。
 
 卡片左上角的**角标**（`ribbon` / `quotaTier`）按综合剩余额度分四档：>30% 充足绿、
 10~30% 偏紧黄、>0~10% 告急红、0% 燃尽暗红。**阈值必须跟 `color()` 同源**，两处对不
@@ -158,8 +223,13 @@ hover 时出现），所以 `.card:hover` 时环淡出、按钮淡入，两者�
 为 `null` 时整个不显示——**不要拿 `plan.included_usd`（$20）顶替**，那是订阅价不是池子。
 升级前存的旧快照没有这个字段，`== null` 判断已经覆盖 `undefined`。
 新增账号默认带入当前部门，「全部」使用前端 sentinel，不写入数据库。新增和调整分组
-使用原生 `select`：空值代表未分组，已有部门动态生成，选择「新建部门…」后才显示
-自由文本输入框；不要改回浏览器表现不一致的 `datalist`。
+使用 `PanelUI` 增强的 `select`：原生元素保存值并派发 `change`，自定义菜单负责显示，
+空值代表未分组，已有部门动态生成，选择「新建部门…」后才显示自由文本输入框。
+直接修改 `.value` 后调用 `PanelUI.select.refresh()`，聚焦使用 `PanelUI.select.focus()`。
+公共组件逻辑在 `web/js/ui.js`、样式在 `web/css/ui.css`，后者加载在 base 和 skins 之间。
+弹窗统一走 `PanelUI.open/close`，确认和通知使用 `PanelUI.confirm/alert`，不使用浏览器
+`confirm/alert`。确认接口可接收异步 `onConfirm`，提交时禁用关闭和重复提交，抛错显示在
+弹窗内；用户文本使用 `textContent`。保留 native dialog 的顶层、焦点约束和 open 属性观察。
 
 ## 必须知道的坑
 

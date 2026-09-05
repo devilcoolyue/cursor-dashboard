@@ -6,7 +6,10 @@ import os
 from pathlib import Path
 
 PACKAGE_DIR = Path(__file__).resolve().parent
-WEB_INDEX = PACKAGE_DIR / "web" / "index.html"
+# 页面拆成了 index.html + css/ + js/，整个 web/ 目录挂到 /static 下静态托管。
+# 仍然没有任何构建步骤，也不引任何 CDN：改完刷新浏览器就生效。
+WEB_DIR = PACKAGE_DIR / "web"
+WEB_INDEX = WEB_DIR / "index.html"
 
 # SQLite 账号库。旧 ACCOUNTS_PATH 仅作为首次启动时的 JSON 迁移来源；若已有部署设置
 # 了它，数据库会自然落到同目录、同文件名的 .db 文件中。

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import random
 import secrets
 import threading
@@ -26,7 +27,8 @@ from datetime import datetime, timezone
 import uvicorn
 import requests
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import pools, snapshot
@@ -41,6 +43,7 @@ from .config import (
     REFRESH_ENABLED,
     REQUEST_CONCURRENCY,
     REQUEST_MIN_INTERVAL,
+    WEB_DIR,
     WEB_INDEX,
 )
 from .scheduler import Scheduler
@@ -291,7 +294,30 @@ def find_account(account_key: str) -> dict:
 
 @app.get("/")
 def index():
-    return FileResponse(WEB_INDEX)
+    html = WEB_INDEX.read_text(encoding="utf-8")
+    revision = hashlib.sha256(html.encode("utf-8"))
+    # 每次读取当前文件内容，静态文件部署后无需重启也能换资源地址。
+    for asset in sorted(WEB_DIR.rglob("*")):
+        if asset.is_file() and asset.suffix in {".css", ".js"}:
+            revision.update(asset.relative_to(WEB_DIR).as_posix().encode("utf-8"))
+            revision.update(asset.read_bytes())
+    return HTMLResponse(
+        html.replace("__ASSET_VERSION__", revision.hexdigest()[:16]),
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+class RevalidatingStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+# 样式和脚本走静态托管。**这里不能挂在 "/" 上**——那会把 /api/* 一起吃掉。
+# 不鉴权是有意的：CSS/JS 里没有任何账号数据，鉴权只在 /api/* 这一层；
+# 真要藏起整个面板，PANEL_TOKEN 拦住 /api/* 就够了，页面本身没东西可看。
+app.mount("/static", RevalidatingStaticFiles(directory=WEB_DIR), name="static")
 
 
 @app.get("/api/config")
