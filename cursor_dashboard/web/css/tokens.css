@@ -180,6 +180,16 @@ html[data-skin="glass"] {
 html[data-skin="glass"][data-theme="dark"] {
   --glass-glint: rgba(255, 255, 255, .19);
   --glass-edge: rgba(255, 255, 255, .25);
+  /* 明暗/部门滑块。底色必须比它压着的 --card-hi 更实，否则那滴水化在托盘里 */
+  --glass-slide-bg: rgba(255, 255, 255, .22);
+  --glass-slide-edge: rgba(255, 255, 255, .38);
+  --glass-slide-edge-lit: rgba(255, 255, 255, .58);
+  --glass-slide-shadow: 0 8px 20px rgba(0, 0, 0, .38);
+  --glass-slide-shadow-lit: 0 12px 28px rgba(0, 0, 0, .5);
+  /* clip-path 会把 border 和 box-shadow 一起裁没，滑动那一路的描边和投影只能改用
+     drop-shadow —— 它跟的是裁完的形状 */
+  --glass-slide-drop: drop-shadow(0 6px 14px rgba(0, 0, 0, .5));
+  --glass-slide-outline: rgba(255, 255, 255, .8);
   --bg: #0b0e1c;
   /* 底色 + 四团色斑。纯 CSS，不引任何图片，页面仍然零外部资源。
      色斑的 alpha 别再往下调了：玻璃是"透出背后的东西"才成立的，背景压得太暗
@@ -215,8 +225,10 @@ html[data-skin="glass"][data-theme="dark"] {
   --card-dead: rgba(255, 123, 123, .42);
   --card-exhausted-bg: rgba(120, 30, 46, .22);
   --card-exhausted-border: rgba(255, 123, 123, .28);
-  --skel-base: rgba(255, 255, 255, .07);
-  --skel-hi: rgba(255, 255, 255, .16);
+  /* 骨架压在半透明卡片上，base 必须跟 --card 拉开一档，否则静止时那几条是隐形的
+     （旧值 .07 跟 --card 分毫不差，只有扫光划过的一瞬能看见） */
+  --skel-base: rgba(255, 255, 255, .16);
+  --skel-hi: rgba(255, 255, 255, .4);
   --code-bg: rgba(255, 255, 255, .09);
   --card-active-border: rgba(124, 178, 255, .45);
   --card-active-bg: rgba(124, 178, 255, .14);
@@ -245,6 +257,17 @@ html[data-skin="glass"][data-theme="dark"] {
 html[data-skin="glass"][data-theme="light"] {
   --glass-glint: rgba(255, 255, 255, .72);
   --glass-edge: rgba(255, 255, 255, .9);
+  /* 浅色下 --glass-edge 那圈白描边等于没画：托盘(--card-hi .70 白)和滑块都是白的，
+     深色切过来整个动画就消失了。这里的边和影必须换成带色的，才勾得出那滴水的轮廓 */
+  --glass-slide-bg: rgba(255, 255, 255, .97);
+  --glass-slide-edge: rgba(96, 108, 178, .34);
+  --glass-slide-edge-lit: rgba(96, 108, 178, .54);
+  --glass-slide-shadow: 0 8px 20px rgba(60, 70, 120, .26);
+  --glass-slide-shadow-lit: 0 12px 28px rgba(60, 70, 120, .36);
+  --glass-slide-drop: drop-shadow(0 6px 14px rgba(60, 70, 120, .34));
+  /* 水滴那一路的描边比静止态的 --glass-slide-edge 重得多：它只有 1px，又是白件压
+     白托盘，颜色再淡就跟没画一样 */
+  --glass-slide-outline: rgba(84, 96, 170, .82);
   --bg: #eef1fa;
   --app-canvas:
     radial-gradient(1100px 780px at 8% -6%, rgba(167, 139, 250, .58), transparent 60%),
@@ -283,8 +306,11 @@ html[data-skin="glass"][data-theme="light"] {
   --card-dead: rgba(217, 59, 59, .38);
   --card-exhausted-bg: rgba(255, 190, 190, .34);
   --card-exhausted-border: rgba(217, 59, 59, .26);
-  --skel-base: rgba(255, 255, 255, .55);
-  --skel-hi: rgba(255, 255, 255, .92);
+  /* 又是"白件压白底"：卡片本身就是 .48 的白，再拿 .55 的白画骨架等于没画。
+     浅色下骨架得是**带色的暗膜**（跟 --line-popover、--glass-slide-edge 同一路数），
+     扫光那道才用白 */
+  --skel-base: rgba(96, 108, 178, .22);
+  --skel-hi: rgba(255, 255, 255, .72);
   --code-bg: rgba(255, 255, 255, .78);
   --card-active-border: rgba(47, 107, 234, .40);
   --card-active-bg: rgba(47, 107, 234, .10);

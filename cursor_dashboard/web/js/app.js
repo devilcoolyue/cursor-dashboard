@@ -278,8 +278,7 @@ function actions(a) {
     <button class="icon-btn tip below" data-edit="${esc(a.id)}" data-label="${esc(a.label)}"
       data-department="${esc(a.department)}" aria-label="重新授权"
       data-tip="重新授权 · 粘贴新的 cookie">${ICON.key}</button>
-    <button class="icon-btn tip below" data-one="${esc(a.id)}" aria-label="${refreshingAccounts.has(a.id) ? '正在刷新账号' : '刷新账号'}"
-      ${refreshingAccounts.has(a.id) ? 'disabled' : ''}
+    <button class="icon-btn tip below" data-one="${esc(a.id)}" aria-label="刷新账号"
       data-tip="刷新这个账号的额度">${ICON.refresh}</button>
     <button class="icon-btn tip below right danger" data-del="${esc(a.id)}" aria-label="删除账号"
       data-tip="删除账号">${ICON.trash}</button>
@@ -294,7 +293,7 @@ function skeleton(account = null, note = '') {
       </div>`
     : `<div class="skel skel-line" style="width:38%;height:14px"></div>
        <div class="skel skel-line" style="width:58%;margin-bottom:22px"></div>`;
-  return `<div class="card"${account?.id ? ` data-account-id="${esc(account.id)}"` : ''}>
+  return `<div class="card" aria-busy="true"${account?.id ? ` data-account-id="${esc(account.id)}"` : ''}>
     ${head}
     <div class="skel skel-line" style="width:100%"></div>
     <div class="skel skel-line" style="width:100%"></div>
@@ -317,11 +316,13 @@ const staleText = (a) =>
   `${STALE_TEXT[a.error_kind] || a.error || '刷新失败'}；上面仍是上一次统计的数据`;
 
 function card(a) {
-  if (a._loading) return skeleton(a);
+  // 单卡刷新期间整张卡退回骨架。试过"保留数据 + aria-busy + 按钮转圈"，
+  // 数据一个字没变，肉眼根本看不出点没点动——闪烁的骨架才是唯一看得出来的信号。
+  if (refreshingAccounts.has(a.id)) return skeleton(a, '正在向 Cursor 重新取数…');
   if (a.pending) return skeleton(a, '排队等待后台更新…');
 
   if (!a.ok) {
-    return `<div class="card dead${refreshingAccounts.has(a.id) ? ' is-refreshing' : ''}" data-account-id="${esc(a.id)}" aria-busy="${refreshingAccounts.has(a.id)}">${actions(a)}
+    return `<div class="card dead" data-account-id="${esc(a.id)}">${actions(a)}
       <div class="card-head">
         <div class="name-line"><span class="label">${esc(a.label)}</span></div>
         ${identityMeta(a.department, a.email)}
@@ -359,7 +360,7 @@ function card(a) {
       <b style="color:${color(grok.remaining_pct)}">剩 ${grok.remaining_pct.toFixed(1)}%<span style="color:var(--dimmer);font-weight:400"> · ${localDate(grok.reset_at)} 重置</span></b>
     </div>`);
   }
-  return `<div class="card${exhausted ? ' exhausted' : ''}${refreshingAccounts.has(a.id) ? ' is-refreshing' : ''}" data-account-id="${esc(a.id)}" aria-busy="${refreshingAccounts.has(a.id)}">
+  return `<div class="card${exhausted ? ' exhausted' : ''}" data-account-id="${esc(a.id)}">
     ${shows('watermark') && exhausted ? '<span class="burnout-watermark" aria-hidden="true"><span>燃</span><span>尽</span><span>了</span></span>' : ''}
     ${shows('ribbon') ? ribbon(quotaTier(q)) : ''}
     ${shows('cycleRing') ? cycleRing(c) : ''}
@@ -461,13 +462,13 @@ const accountOrder = (account) => Number.isFinite(account._order)
   ? account._order : Number.MAX_SAFE_INTEGER;
 
 function overallRemaining(account) {
-  if (account._loading || account.pending || !account.ok) return null;
+  if (account.pending || !account.ok) return null;
   const remaining = account.data?.quota?.overall?.remaining_pct;
   return typeof remaining === 'number' && Number.isFinite(remaining) ? remaining : null;
 }
 
 function resetTime(account) {
-  if (account._loading || account.pending || !account.ok) return null;
+  if (account.pending || !account.ok) return null;
   const raw = account.data?.cycle?.reset_at;
   const d = parseDate(raw);
   return d ? d.getTime() : null;
@@ -480,8 +481,7 @@ function sortedAccounts() {
       const aTime = resetTime(a);
       const bTime = resetTime(b);
       if (aTime === null && bTime === null) {
-        const pendingOrder = Number(Boolean(a._loading || a.pending))
-          - Number(Boolean(b._loading || b.pending));
+        const pendingOrder = Number(Boolean(a.pending)) - Number(Boolean(b.pending));
         return pendingOrder || accountOrder(a) - accountOrder(b);
       }
       if (aTime === null) return 1;
@@ -492,8 +492,7 @@ function sortedAccounts() {
     const aRemaining = overallRemaining(a);
     const bRemaining = overallRemaining(b);
     if (aRemaining === null && bRemaining === null) {
-      const pendingOrder = Number(Boolean(a._loading || a.pending))
-        - Number(Boolean(b._loading || b.pending));
+      const pendingOrder = Number(Boolean(a.pending)) - Number(Boolean(b.pending));
       return pendingOrder || accountOrder(a) - accountOrder(b);
     }
     if (aRemaining === null) return 1;
@@ -717,13 +716,12 @@ function replaceAccountCard(id) {
 async function refreshOne(id) {
   const original = accounts.find((account) => account.id === id);
   if (!original || refreshingAccounts.has(id)) return;
-  refreshingAccounts.add(id);
   const current = findAccountCard(id);
   const widths = [...(current?.querySelectorAll('.fill') || [])].map((fill) => fill.style.width);
-  current?.classList.add('is-refreshing');
-  current?.setAttribute('aria-busy', 'true');
-  const button = current?.querySelector('[data-one]');
-  if (button) { button.disabled = true; button.setAttribute('aria-label', '正在刷新账号'); }
+  // 骨架没有按钮，焦点会掉到 body；记下来，等真卡回来再放回刷新按钮上
+  const refocus = !!current?.contains(document.activeElement);
+  refreshingAccounts.add(id);
+  replaceAccountCard(id);
   let updated = false;
   let notice = '';
   try {
@@ -745,6 +743,9 @@ async function refreshOne(id) {
   } finally {
     refreshingAccounts.delete(id);
     const replacement = replaceAccountCard(id);
+    if (refocus && !document.querySelector('dialog[open]')) {
+      replacement?.querySelector('[data-one]')?.focus({ preventScroll: true });
+    }
     if (updated) GlassMotion.refreshed(replacement, widths);
     stamp();
     if (notice) toast(notice);

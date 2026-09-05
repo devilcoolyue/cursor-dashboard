@@ -193,10 +193,33 @@ html[data-skin="glass"] .glass-motion-track .dept-nav-item[aria-selected="true"]
 }
 html[data-skin="glass"] .glass-selection-surface {
   position: absolute; z-index: 0; pointer-events: none;
-  background: linear-gradient(160deg, var(--glass-glint), transparent 64%), var(--card-hi);
-  border: 1px solid var(--glass-edge);
-  box-shadow: var(--shadow), inset 0 1px 0 var(--glass-glint);
+  background: linear-gradient(160deg, var(--glass-glint), transparent 64%), var(--glass-slide-bg);
+  border: 1px solid var(--glass-slide-edge);
+  box-shadow: var(--glass-slide-shadow), inset 0 1px 0 var(--glass-glint);
   transform-origin: center;
+  transition: border-color .18s ease, box-shadow .18s ease;
+}
+/* 滑动途中形状交给 clip-path，而 clip-path 是照着 border-box 裁的：border 会被裁成
+   一圈残边、box-shadow 直接消失。所以这一路把描边和投影都换成 drop-shadow，它跟的是
+   裁完的轮廓。inset 高光画在元素里面，照样留得住 */
+html[data-skin="glass"] .glass-selection-surface.is-sliding {
+  background: none; border-color: transparent; box-shadow: none;
+  /* 四向零模糊的 drop-shadow 叠出一圈**实心**描边。单独一层带模糊的晕会被摊得太淡，
+     白水滴压在白托盘上就又是"看不见"那个老毛病了。
+     水滴本体画在 ::before 上：clip-path 是在 filter 之后应用的，两者放同一个元素时
+     描边和投影会被自己裁光 */
+  filter:
+    drop-shadow(1px 0 0 var(--glass-slide-outline))
+    drop-shadow(-1px 0 0 var(--glass-slide-outline))
+    drop-shadow(0 1px 0 var(--glass-slide-outline))
+    drop-shadow(0 -1px 0 var(--glass-slide-outline))
+    var(--glass-slide-drop);
+  transition: none;
+}
+html[data-skin="glass"] .glass-selection-surface.is-sliding::before {
+  content: ""; position: absolute; inset: -1px;   /* 盖到 border-box，跟静止态同一个轮廓 */
+  background: linear-gradient(160deg, var(--glass-glint), transparent 64%), var(--glass-slide-bg);
+  box-shadow: inset 0 1px 0 var(--glass-glint);
 }
 
 html[data-skin="glass"] #detail-dlg {
@@ -236,29 +259,6 @@ html[data-skin="glass"] .glass-refresh-wave {
   background: linear-gradient(135deg, transparent 16%, var(--glass-glint) 52%, transparent 86%);
   box-shadow: inset 0 0 0 1px var(--glass-edge);
 }
-html[data-skin="glass"] .card.is-refreshing .acts { opacity: 1; transition: none; }
-html[data-skin="glass"] .card.is-refreshing .cycle-ring { opacity: 0; transition: none; }
-html[data-skin="glass"] .is-refreshing [data-one] { position: relative; opacity: 1; }
-html[data-skin="glass"] .is-refreshing [data-one]::before {
-  content: ""; position: absolute; inset: 3px; pointer-events: none;
-  background: linear-gradient(145deg, var(--glass-glint), transparent), var(--accent-bg);
-  border: 1px solid var(--glass-edge); border-radius: 42% 58% 60% 40%;
-  box-shadow: inset 0 1px 0 var(--glass-glint);
-}
-html[data-skin="glass"] .is-refreshing [data-one] > svg { position: relative; z-index: 1; }
-@media (prefers-reduced-motion: no-preference) {
-  html[data-skin="glass"] .is-refreshing [data-one]::before {
-    animation: glass-refresh-drop 1.25s ease-in-out infinite;
-  }
-  html[data-skin="glass"] .is-refreshing [data-one] > svg {
-    animation: glass-refresh-turn 1.8s linear infinite;
-  }
-}
-@keyframes glass-refresh-drop {
-  0%, 100% { border-radius: 42% 58% 60% 40%; transform: rotate(-18deg) scale(.9, 1); }
-  50% { border-radius: 62% 38% 42% 58%; transform: rotate(24deg) scale(1.08, .92); }
-}
-@keyframes glass-refresh-turn { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
   html[data-skin="glass"] .card,
   html[data-skin="glass"] .fill { transition: none; }

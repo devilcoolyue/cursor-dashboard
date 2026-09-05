@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import time
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -67,8 +68,10 @@ def find(account_id):
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
+    # Version per request: editing CSS/JS should show up on a plain reload, not
+    # only after a hard refresh.
     return WEB.joinpath("index.html").read_text().replace(
-        "__ASSET_VERSION__", "glass-preview"
+        "__ASSET_VERSION__", f"preview-{time.time():.0f}"
     ).replace("var el = document.documentElement;", "var el = document.documentElement;\n"
               "    if (!localStorage.getItem('panelSkin')) localStorage.setItem('panelSkin', 'glass');")
 

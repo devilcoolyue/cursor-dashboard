@@ -36,7 +36,22 @@ async (page) => {
   check(await page.locator('.glass-selection-surface').count() === 2, 'Glass selection surfaces initialize');
 
   await page.getByRole('button', { name: '深色', exact: true }).click();
-  check(await page.evaluate(() => document.querySelector('.theme-switch .glass-selection-surface').getAnimations().length > 0), 'Theme selection stretches during movement');
+  check(await page.evaluate(() => {
+    const surface = document.querySelector('.theme-switch .glass-selection-surface');
+    const animation = surface.getAnimations().find((a) => a.effect.getKeyframes().length > 10);
+    if (!animation) return false;
+    const full = surface.getBoundingClientRect().width;
+    animation.pause();
+    animation.currentTime = animation.effect.getTiming().duration * .5;
+    const mid = surface.getBoundingClientRect().width;
+    const clip = surface.getAnimations({ subtree: true })
+      .find((a) => a.effect.pseudoElement === '::before');
+    const shape = getComputedStyle(surface, '::before').clipPath;
+    animation.play();
+    // 半程必须已经是一滴水：缩到满框六成以内，而且形状归 ::before 的 clip-path 管
+    // （clip-path 和 filter 同元素时描边会被裁掉，所以必须是伪元素上那一份）
+    return mid < full * .6 && !!clip && shape.startsWith('polygon');
+  }), 'Theme selection contracts into a clipped droplet mid-flight');
   await settle();
   await shot('desktop-dark');
   await page.getByRole('button', { name: '浅色', exact: true }).click();
@@ -56,12 +71,12 @@ async (page) => {
 
   await all();
   await settle();
-  const beforeQuota = await firstCard().locator('.quota').innerText();
   await page.evaluate(() => { window.previewOtherCard = document.querySelectorAll('.card')[1]; });
   await firstCard().hover();
   await firstCard().getByRole('button', { name: '刷新账号', exact: true }).click();
   check(await firstCard().getAttribute('aria-busy') === 'true', 'Refresh announces its pending state');
-  check(await firstCard().locator('.quota').innerText() === beforeQuota, 'Refresh retains the last quota values');
+  check(await firstCard().locator('.skel').count() > 0, 'Refresh falls back to the skeleton so the reload is visible');
+  check(await firstCard().locator('.quota').count() === 0, 'Refreshing card drops the numbers it is about to replace');
   check(await page.evaluate(() => window.previewOtherCard === document.querySelectorAll('.card')[1]), 'Refresh leaves unrelated card DOM intact');
   await shot('refresh-pending');
   await department('Design');
@@ -79,7 +94,8 @@ async (page) => {
   await firstCard().getByRole('button', { name: '刷新账号', exact: true }).click();
   await firstCard().locator('.stale').waitFor();
   check(await firstCard().locator('.quota').innerText() === retained, 'Failed refresh retains data and shows the failure');
-  check(await firstCard().getAttribute('aria-busy') === 'false', 'Failed refresh restores the control');
+  check(await firstCard().getAttribute('aria-busy') === null, 'Failed refresh restores the card');
+  check(await firstCard().locator('.skel').count() === 0, 'Failed refresh leaves no skeleton behind');
   await page.unroute('**/api/accounts/*/refresh');
 
   await page.getByRole('combobox', { name: '排序方式' }).click();
@@ -93,8 +109,16 @@ async (page) => {
   });
   await firstCard().hover();
   await firstCard().getByRole('button', { name: '刷新账号', exact: true }).click();
-  await page.waitForFunction((id) => document.querySelector(`.card[data-account-id="${CSS.escape(id)}"]`)?.getAttribute('aria-busy') === 'false', sortedId);
+  const busy = (id, state) => page.waitForFunction(([target, want]) =>
+    (document.querySelector(`.card[data-account-id="${CSS.escape(target)}"]`)?.getAttribute('aria-busy') === 'true') === want,
+    [id, state]);
+  await busy(sortedId, true);
+  await busy(sortedId, false);
   check(await firstCard().getAttribute('data-account-id') !== sortedId, 'Successful refresh maintains the chosen quota sort order');
+  check(await page.evaluate((id) => {
+    const card = document.querySelector(`.card[data-account-id="${CSS.escape(id)}"]`);
+    return !!card && card.contains(document.activeElement) && 'one' in document.activeElement.dataset;
+  }, sortedId), 'Refresh hands focus back to the refresh button');
   await page.unroute('**/api/accounts/*/refresh');
   await page.getByRole('combobox', { name: '排序方式' }).click();
   await page.getByRole('option', { name: '添加顺序', exact: true }).click();
