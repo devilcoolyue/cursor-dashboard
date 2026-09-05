@@ -454,13 +454,17 @@ button.primary:hover:not(:disabled) {
 
 /* 右上角的周期环：环走过多少 = 本周期过了多少，中心是还剩多久刷新。
    这块地方平时是空的（操作按钮只在 hover 时出现），鼠标一进卡片环就淡出让位。
-   环刻意 pointer-events: none —— 它压着删除/刷新按钮，能接鼠标就会挡住点击 */
+   环刻意 pointer-events: none —— 它压着删除/刷新按钮，能接鼠标就会挡住点击。
+   让位的第二个条件写的是 :has(:focus-visible) 而不是 :focus-within：弹窗关闭时
+   PanelUI 会把焦点还给当初点开它的那颗按钮（无障碍要求），用 :focus-within 的话
+   鼠标点一次「调整分组 / 重新授权」，回来后按钮就永久亮着、环再也不出现，鼠标移出
+   卡片也不消失。:focus-visible 只在键盘操作时成立，鼠标点开的那次不会粘住 */
 .cycle-ring {
   position: absolute; top: 12px; right: 12px; z-index: 2;
   width: 44px; height: 44px; display: grid; place-items: center;
   pointer-events: none; transition: opacity .12s;
 }
-.card:hover .cycle-ring, .card:focus-within .cycle-ring { opacity: 0; }
+.card:hover .cycle-ring, .card:has(:focus-visible) .cycle-ring { opacity: 0; }
 .cycle-ring svg { position: absolute; inset: 0; width: 44px; height: 44px; transform: rotate(-90deg); }
 .cycle-ring circle { fill: none; stroke-width: 3.5; }
 .ring-track { stroke: var(--ring-track); }
@@ -471,7 +475,7 @@ button.primary:hover:not(:disabled) {
 .ring-text b { font-size: 13px; color: var(--fg); font-weight: 600; margin-right: 1px; }
 
 .acts { position: absolute; top: 13px; right: 12px; z-index: 2; display: flex; gap: 2px; opacity: 0; transition: opacity .12s; }
-.card:hover .acts, .card:focus-within .acts { opacity: 1; }
+.card:hover .acts, .card:has(:focus-visible) .acts { opacity: 1; }
 .icon-btn {
   width: 28px; height: 28px; padding: 0;
   display: grid; place-items: center;
@@ -823,7 +827,7 @@ a { color: var(--accent); }
   .name-line { padding-right: 0; }
   .acts { opacity: 1; }
   .cycle-ring { top: 5px; right: 130px; }
-  .card:hover .cycle-ring, .card:focus-within .cycle-ring { opacity: 1; }
+  .card:hover .cycle-ring, .card:has(:focus-visible) .cycle-ring { opacity: 1; }
   .row { flex-wrap: wrap; }
   .row .status { width: 100%; }
 }
