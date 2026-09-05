@@ -160,6 +160,13 @@ html[data-skin="glass"][data-theme="light"] dialog {
   background-image: linear-gradient(180deg, rgba(255, 255, 255, .45) 0%, transparent 120px);
 }
 
+/* 滚动提示那枚徽章：--card-popover 在深色下只有 .82，底下的数字会透上来。
+   它钉在滚动区底边不随内容动，属于"固定不动的层"，可以用 backdrop-filter */
+html[data-skin="glass"] dialog.wide .scroll-more svg {
+  backdrop-filter: var(--blur-panel);
+  -webkit-backdrop-filter: var(--blur-panel);
+}
+
 /* 显示项面板里的小方块 */
 html[data-skin="glass"] .pref-tile {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12);

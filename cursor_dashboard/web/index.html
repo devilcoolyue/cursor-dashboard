@@ -249,7 +249,13 @@
   <div class="detail-content">
     <h2 id="detail-title">模型明细</h2>
     <p class="detail-note" id="detail-note"></p>
-    <div id="detail-body"></div>
+    <div class="detail-viewport">
+      <div id="detail-body"></div>
+      <div class="scroll-more" id="detail-more" hidden aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+      </div>
+    </div>
     <p class="detail-pricing">花费由 Cursor 按各模型的输入 / 输出 / 缓存写 / 缓存读四档单价结算，
       接口只回传算好的金额，不含单价 ——
       <a href="https://cursor.com/docs/models-and-pricing" target="_blank"

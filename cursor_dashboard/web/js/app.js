@@ -756,6 +756,16 @@ async function refreshOne(id) {
 // 点额度行才会向 cursor.com 要一次明细。**别做成打开页面就批量拉**：42 个账号
 // 一起拉就是又一次请求洪峰，而这正是本项目最大的风险（按 IP 限流）的来源。
 const detailDlg = $('#detail-dlg');
+const detailBody = $('#detail-body');
+const detailMore = $('#detail-more');
+// 底部那个箭头只在真的还有内容时亮。内容换了、尺寸变了都要重算——弹窗开合时
+// 玻璃皮肤那段形变会一路改高度，所以 ResizeObserver 也得盯着
+function updateDetailMore() {
+  detailMore.hidden = detailBody.scrollHeight - detailBody.scrollTop - detailBody.clientHeight <= 4;
+}
+const setDetailBody = (html) => { detailBody.innerHTML = html; updateDetailMore(); };
+detailBody.addEventListener('scroll', updateDetailMore, { passive: true });
+new ResizeObserver(updateDetailMore).observe(detailBody);
 let detailRequest = 0;
 let detailController = null;
 new MutationObserver(() => {
@@ -834,7 +844,7 @@ function renderDetail(d, group) {
           ${shortTokens(d.totals.total_tokens)} tokens</span>
         <span>${money(d.totals.spend_usd)}</span>
       </div>` : '';
-  $('#detail-body').innerHTML = groups.map((g) => detailGroup(g, (d.quota || {})[g.key])).join('') + totals;
+  setDetailBody(groups.map((g) => detailGroup(g, (d.quota || {})[g.key])).join('') + totals);
 }
 
 async function openDetail(id, group, source) {
@@ -845,7 +855,7 @@ async function openDetail(id, group, source) {
   // 分类名由组头负责显示，标题只认账号，免得单组视图里同一个词写两遍
   $('#detail-title').textContent = `${account ? account.label : id} · 本周期模型明细`;
   $('#detail-note').textContent = '正在从 Cursor 取本周期明细…';
-  $('#detail-body').innerHTML = detailSkeleton(group);
+  setDetailBody(detailSkeleton(group));
   openModal(detailDlg, {
     opener: () => findAccountCard(id)?.querySelector(`[data-group="${CSS.escape(group)}"]`) || source,
     transition: GlassMotion.detail,
@@ -862,7 +872,7 @@ async function openDetail(id, group, source) {
   } catch (e) {
     if (e.name === 'AbortError' || generation !== detailRequest || !detailDlg.open) return;
     $('#detail-note').textContent = '';
-    $('#detail-body').innerHTML = `<div class="detail-empty">${esc(e.message)}</div>`;
+    setDetailBody(`<div class="detail-empty">${esc(e.message)}</div>`);
   }
 }
 

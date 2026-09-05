@@ -111,8 +111,13 @@ async def detail(account_id: str):
     await asyncio.sleep(.8)
     groups = []
     for key, name, models in [
-        ("cursor_models", "Cursor Models", ["Auto", "Composer"]),
-        ("other_models", "Other Models", ["Claude Sonnet", "GPT", "Gemini Pro"]),
+        # 行数刻意给够：明细弹窗的滚动条让位和"还能往下滚"的提示要有东西才测得出来
+        ("cursor_models", "Cursor Models", [
+            "Auto", "Composer", "cursor-grok-4.6-high-fast", "cursor-grok-4.6-medium-fast",
+            "default", "composer-2.5-fast", "cursor-grok-4.5-high-fast", "cursor-grok-4.6-high"]),
+        ("other_models", "Other Models", [
+            "claude-opus-5-thinking-high", "claude-sonnet-5", "gpt-5.2-codex",
+            "gemini-3-pro", "o4-mini"]),
     ]:
         quota = account["data"]["quota"][key]
         total = round(quota["used_pct"] / 100 * quota["limit_usd"], 2)
@@ -123,7 +128,7 @@ async def detail(account_id: str):
                        "total_tokens": sum(sum(row[k] for k in ("input_tokens", "output_tokens", "cache_write_tokens", "cache_read_tokens")) for row in rows)})
     return {"groups": groups, "quota": account["data"]["quota"],
             "cycle_start": account["data"]["cycle"]["start"], "fetched_at": now().isoformat(),
-            "totals": {"model_count": 5, "total_tokens": sum(g["total_tokens"] for g in groups),
+            "totals": {"model_count": sum(len(g["models"]) for g in groups), "total_tokens": sum(g["total_tokens"] for g in groups),
                        "spend_usd": sum(g["spend_usd"] for g in groups)}}
 
 

@@ -567,8 +567,40 @@ button.q-row:hover .q-go, button.q-row:focus-visible .q-go {
 dialog.wide { width: min(820px, calc(100vw - 32px)); overflow: hidden; }
 dialog.wide[open] { display: flex; flex-direction: column; }
 dialog.wide .detail-content { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+/* 滚动条借弹窗右边的内边距站着：容器往右探 14px，内容再用等量 padding 缩回来。
+   不这么让位的话，macOS 那根悬浮滚动条会直接压在"花费"那一列的数字上 */
+/* 名字别再叫 .detail-scroll —— 那个类名 detailGroup() 已经用在每张表的横向滚动
+   容器上了，重名会把表格也套上这里的 flex 和负 margin，整张表右移 14px */
+dialog.wide .detail-viewport {
+  position: relative; display: flex; flex: 1 1 auto; min-height: 0; margin-right: -14px;
+}
 dialog.wide #detail-body {
-  flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  flex: 1 1 auto; min-height: 0; padding-right: 14px;
+  overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+}
+/* 下面还有内容时才出现的一枚小徽章。**别做成渐变雾**：玻璃皮肤下 --card 是半透明的，
+   拿它当雾色根本盖不住底下那行字，箭头也就混在表格里挑不出来。这里改用气泡那组令牌
+   （--card-popover 一族本来就是为"压在玻璃上还得看得清"配的），一枚不透明的圆片，
+   哪套皮肤都成立。right 停在 14px 上，别骑到让给滚动条的那条 */
+dialog.wide .scroll-more {
+  /* 骑在滚动区的下边界上：一半落在价目表上方那截空白里，只压到最后一行的下缘，
+     不至于把某个数字盖掉半个 */
+  position: absolute; left: 0; right: 14px; bottom: -12px;
+  display: flex; justify-content: center; pointer-events: none;
+}
+dialog.wide .scroll-more svg {
+  width: 24px; height: 24px; padding: 4px; box-sizing: border-box;
+  color: var(--fg); background: var(--card-popover);
+  border: 1px solid var(--line-popover); border-radius: 999px;
+  box-shadow: var(--shadow-popover);
+}
+@media (prefers-reduced-motion: no-preference) {
+  dialog.wide .scroll-more svg { animation: scroll-more-bob 1.7s ease-in-out infinite; }
+}
+@keyframes scroll-more-bob {
+  0%, 100% { transform: translateY(-2px); }
+  50% { transform: translateY(2px); }
 }
 
 label { display: block; font-size: 12px; color: var(--dim); margin: 0 0 6px; }
