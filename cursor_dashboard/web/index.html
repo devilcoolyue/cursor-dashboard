@@ -31,13 +31,13 @@
 <!-- 三层，顺序不能换：令牌表 → 骨架（只用 var()）→ 皮肤覆盖。
      皮肤文件一次全部加载，不按需插 <link>：一共几百行，省下的那点流量
      远不够抵消切换时重新下载样式表造成的白闪 -->
-<link rel="stylesheet" href="/static/css/tokens.css">
-<link rel="stylesheet" href="/static/css/base.css">
-<link rel="stylesheet" href="/static/css/skins/glass.css">
-<link rel="stylesheet" href="/static/css/skins/cyberpunk.css">
-<link rel="stylesheet" href="/static/css/skins/graphite.css">
-<link rel="stylesheet" href="/static/css/skins/verdant.css">
-<link rel="stylesheet" href="/static/css/skins/blueprint.css">
+<link rel="stylesheet" href="/static/css/tokens.css?v=__ASSET_VERSION__">
+<link rel="stylesheet" href="/static/css/base.css?v=__ASSET_VERSION__">
+<link rel="stylesheet" href="/static/css/skins/glass.css?v=__ASSET_VERSION__">
+<link rel="stylesheet" href="/static/css/skins/cyberpunk.css?v=__ASSET_VERSION__">
+<link rel="stylesheet" href="/static/css/skins/graphite.css?v=__ASSET_VERSION__">
+<link rel="stylesheet" href="/static/css/skins/verdant.css?v=__ASSET_VERSION__">
+<link rel="stylesheet" href="/static/css/skins/blueprint.css?v=__ASSET_VERSION__">
 </head>
 <body>
 <div class="app-layout">
@@ -295,6 +295,6 @@
     <button type="button" class="primary" data-close-dialog="prefs-dlg">完成</button>
   </div>
 </dialog>
-<script src="/static/js/app.js"></script>
+<script src="/static/js/app.js?v=__ASSET_VERSION__"></script>
 </body>
 </html>
