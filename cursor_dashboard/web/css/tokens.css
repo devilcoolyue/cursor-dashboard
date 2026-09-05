@@ -178,6 +178,8 @@ html[data-skin="glass"] {
 
 /* ---------- 玻璃 · 深色 ---------- */
 html[data-skin="glass"][data-theme="dark"] {
+  --glass-glint: rgba(255, 255, 255, .19);
+  --glass-edge: rgba(255, 255, 255, .25);
   --bg: #0b0e1c;
   /* 底色 + 四团色斑。纯 CSS，不引任何图片，页面仍然零外部资源。
      色斑的 alpha 别再往下调了：玻璃是"透出背后的东西"才成立的，背景压得太暗
@@ -241,6 +243,8 @@ html[data-skin="glass"][data-theme="dark"] {
 
 /* ---------- 玻璃 · 浅色 ---------- */
 html[data-skin="glass"][data-theme="light"] {
+  --glass-glint: rgba(255, 255, 255, .72);
+  --glass-edge: rgba(255, 255, 255, .9);
   --bg: #eef1fa;
   --app-canvas:
     radial-gradient(1100px 780px at 8% -6%, rgba(167, 139, 250, .58), transparent 60%),

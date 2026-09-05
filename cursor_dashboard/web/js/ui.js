@@ -267,6 +267,8 @@ window.PanelUI = (() => {
       .sort((a, b) => dialogs.get(a).order - dialogs.get(b).order);
   }
 
+  const resolveOpener = (state) => typeof state.opener === 'function' ? state.opener() : state.opener;
+
   function syncDialogs() {
     const openDialogs = openDialogsInOrder();
     if (openDialogs.length && savedPadding === null) {
@@ -284,15 +286,17 @@ window.PanelUI = (() => {
     for (const [dialog, state] of dialogs) {
       if (dialog.open || !state.wasOpen) continue;
       state.wasOpen = false;
+      state.closing = false;
       if (dialog.contains(activeSelect?.trigger)) activeSelect.close();
       const topDialog = openDialogs.at(-1);
       if (topDialog && dialogs.get(topDialog).order > state.order) {
         state.onClosed?.();
         continue;
       }
-      if (state.opener?.isConnected && !state.opener.matches(':disabled')
-          && (!topDialog || topDialog.contains(state.opener))) {
-        state.opener.focus({ preventScroll: true });
+      const opener = resolveOpener(state);
+      if (opener?.isConnected && !opener.matches(':disabled')
+          && (!topDialog || topDialog.contains(opener))) {
+        opener.focus({ preventScroll: true });
       } else if (topDialog) {
         const target = topDialog.querySelector('.ui-cancel-button:not(:disabled):not([hidden]), [autofocus]:not(:disabled), button:not(:disabled), input:not(:disabled)');
         (target || topDialog).focus({ preventScroll: true });
@@ -333,11 +337,13 @@ window.PanelUI = (() => {
     return state;
   }
 
-  function open(dialog, { focus } = {}) {
+  function open(dialog, { focus, opener = document.activeElement, transition } = {}) {
     const state = registerDialog(dialog);
     if (dialog.open) return;
     activeSelect?.close();
-    state.opener = document.activeElement;
+    state.opener = opener;
+    state.transition = transition;
+    state.closing = false;
     state.wasOpen = true;
     state.order = ++modalOrder;
     dialog.returnValue = '';
@@ -345,13 +351,22 @@ window.PanelUI = (() => {
     syncDialogs();
     const target = typeof focus === 'string' ? dialog.querySelector(focus) : focus;
     target?.focus({ preventScroll: true });
+    state.transition?.open?.(dialog, resolveOpener(state));
   }
 
   function close(dialog, result = '') {
     if (!dialog || dialog.getAttribute('aria-busy') === 'true') return false;
+    const state = dialogs.get(dialog);
+    if (state?.closing) return false;
     if (dialog.contains(activeSelect?.trigger)) activeSelect.close();
-    dialog.close(result);
-    syncDialogs();
+    const complete = () => {
+      dialog.close(result);
+      syncDialogs();
+    };
+    if (dialog.open && state?.transition?.close) {
+      state.closing = true;
+      state.transition.close(dialog, resolveOpener(state), complete);
+    } else complete();
     return true;
   }
 

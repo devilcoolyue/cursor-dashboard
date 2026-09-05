@@ -566,6 +566,7 @@ button.q-row:hover .q-go, button.q-row:focus-visible .q-go {
    dialog:not([open]) { display: none }，关掉之后弹窗还赖在页面上 */
 dialog.wide { width: min(820px, calc(100vw - 32px)); overflow: hidden; }
 dialog.wide[open] { display: flex; flex-direction: column; }
+dialog.wide .detail-content { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 dialog.wide #detail-body {
   flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
 }

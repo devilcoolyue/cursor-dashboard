@@ -29,6 +29,7 @@ let loadGeneration = 0;
 let loadController = null;
 let inFlight = false;
 let autoRefreshCycle = 0;          // 后台轮一遍所有账号要多久，由 /api/config 给
+const refreshingAccounts = new Set();
 const POLL_INTERVAL = 60000;       // 只读服务端快照，不打 cursor.com
 
 const money = (n) => '$' + Number(n || 0).toFixed(2);
@@ -277,7 +278,8 @@ function actions(a) {
     <button class="icon-btn tip below" data-edit="${esc(a.id)}" data-label="${esc(a.label)}"
       data-department="${esc(a.department)}" aria-label="重新授权"
       data-tip="重新授权 · 粘贴新的 cookie">${ICON.key}</button>
-    <button class="icon-btn tip below" data-one="${esc(a.id)}" aria-label="刷新账号"
+    <button class="icon-btn tip below" data-one="${esc(a.id)}" aria-label="${refreshingAccounts.has(a.id) ? '正在刷新账号' : '刷新账号'}"
+      ${refreshingAccounts.has(a.id) ? 'disabled' : ''}
       data-tip="刷新这个账号的额度">${ICON.refresh}</button>
     <button class="icon-btn tip below right danger" data-del="${esc(a.id)}" aria-label="删除账号"
       data-tip="删除账号">${ICON.trash}</button>
@@ -292,7 +294,7 @@ function skeleton(account = null, note = '') {
       </div>`
     : `<div class="skel skel-line" style="width:38%;height:14px"></div>
        <div class="skel skel-line" style="width:58%;margin-bottom:22px"></div>`;
-  return `<div class="card">
+  return `<div class="card"${account?.id ? ` data-account-id="${esc(account.id)}"` : ''}>
     ${head}
     <div class="skel skel-line" style="width:100%"></div>
     <div class="skel skel-line" style="width:100%"></div>
@@ -319,7 +321,7 @@ function card(a) {
   if (a.pending) return skeleton(a, '排队等待后台更新…');
 
   if (!a.ok) {
-    return `<div class="card dead">${actions(a)}
+    return `<div class="card dead${refreshingAccounts.has(a.id) ? ' is-refreshing' : ''}" data-account-id="${esc(a.id)}" aria-busy="${refreshingAccounts.has(a.id)}">${actions(a)}
       <div class="card-head">
         <div class="name-line"><span class="label">${esc(a.label)}</span></div>
         ${identityMeta(a.department, a.email)}
@@ -357,7 +359,7 @@ function card(a) {
       <b style="color:${color(grok.remaining_pct)}">剩 ${grok.remaining_pct.toFixed(1)}%<span style="color:var(--dimmer);font-weight:400"> · ${localDate(grok.reset_at)} 重置</span></b>
     </div>`);
   }
-  return `<div class="card${exhausted ? ' exhausted' : ''}">
+  return `<div class="card${exhausted ? ' exhausted' : ''}${refreshingAccounts.has(a.id) ? ' is-refreshing' : ''}" data-account-id="${esc(a.id)}" aria-busy="${refreshingAccounts.has(a.id)}">
     ${shows('watermark') && exhausted ? '<span class="burnout-watermark" aria-hidden="true"><span>燃</span><span>尽</span><span>了</span></span>' : ''}
     ${shows('ribbon') ? ribbon(quotaTier(q)) : ''}
     ${shows('cycleRing') ? cycleRing(c) : ''}
@@ -390,12 +392,15 @@ function departmentStats() {
     });
 }
 
+let departmentTabsKey = '';
 function renderDepartmentTabs() {
   const stats = departmentStats();
   const tabs = [[ALL_DEPARTMENTS, '全部账号', totalAccountCount],
     ...stats.map(([department, count]) => [department, departmentName(department), count])];
   const tabsEl = $('#department-tabs');
-  if (tabsEl) {
+  const tabsKey = JSON.stringify(tabs);
+  if (tabsEl && departmentTabsKey !== tabsKey) {
+    departmentTabsKey = tabsKey;
     tabsEl.innerHTML = tabs.map(([department, name, count]) => {
       const isAll = department === ALL_DEPARTMENTS;
       const isSelected = department === selectedDepartment;
@@ -414,6 +419,10 @@ function renderDepartmentTabs() {
       </button>`;
     }).join('');
   }
+  tabsEl?.querySelectorAll('[data-department-filter]').forEach((button) => {
+    button.setAttribute('aria-selected', String(button.dataset.departmentFilter === selectedDepartment));
+  });
+  GlassMotion.selection(tabsEl, tabsEl?.querySelector('[aria-selected="true"]'));
 
   const titleEl = $('#current-view-title');
   if (titleEl) {
@@ -607,8 +616,8 @@ function stamp() {
 // ---------- 拉数据 ----------
 // 页面只读服务端快照，永远不触发对 cursor.com 的回源——回源是后台调度器的事。
 // 所以这里一个请求就能把整组卡片拿回来，不再需要多个 worker 逐卡请求。
-async function load({ silent = false } = {}) {
-  if (silent && inFlight) return;
+async function load({ silent = false, arrival = false, addedId = null } = {}) {
+  if (silent && (inFlight || refreshingAccounts.size)) return;
   const generation = ++loadGeneration;
   if (loadController) loadController.abort();
   loadController = new AbortController();
@@ -634,6 +643,7 @@ async function load({ silent = false } = {}) {
         return;
       }
       const data = await r.json();
+      if (generation !== loadGeneration) return;
       if (!r.ok) throw new Error(data.detail || '读取账号失败');
       departmentSummary = data.departments || [];
       totalAccountCount = data.total || 0;
@@ -652,6 +662,11 @@ async function load({ silent = false } = {}) {
     accounts = payload.accounts.map((account, order) => ({ ...account, _order: order }));
     localStorage.setItem(lastCountKey, accounts.length);
     render();
+    if (addedId) {
+      const added = findAccountCard(addedId);
+      added?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+      if (added) GlassMotion.arrive([added], { added: true });
+    } else if (arrival) GlassMotion.arrive(view.querySelectorAll('.card'));
     stamp();
   } catch (e) {
     if (e.name === 'AbortError') return;
@@ -670,28 +685,70 @@ document.addEventListener('visibilitychange', () => {
   if (!document.hidden && accounts.length) load({ silent: true });
 });
 
+function findAccountCard(id) {
+  return view.querySelector(`.card[data-account-id="${CSS.escape(id)}"]`);
+}
+
+function replaceAccountCard(id) {
+  const current = findAccountCard(id);
+  const account = accounts.find((item) => item.id === id);
+  if (!current || !account) return null;
+  const focused = current.contains(document.activeElement) ? document.activeElement : null;
+  const focusKey = focused && ['one', 'edit', 'del', 'deptId', 'group'].find((key) => key in focused.dataset);
+  const template = document.createElement('template');
+  template.innerHTML = card(account);
+  const replacement = template.content.firstElementChild;
+  const active = document.activeElement;
+  current.replaceWith(replacement);
+  const grid = replacement.parentElement;
+  filteredAccounts().forEach((item, index) => {
+    const element = findAccountCard(item.id);
+    if (element && grid.children[index] !== element) grid.insertBefore(element, grid.children[index] || null);
+  });
+  if (focusKey && !document.querySelector('dialog[open]')) {
+    [...replacement.querySelectorAll('button')].find((button) =>
+      button.dataset[focusKey] === focused.dataset[focusKey])?.focus({ preventScroll: true });
+  } else if (active.isConnected && document.activeElement !== active && !document.querySelector('dialog[open]')) {
+    active.focus({ preventScroll: true });
+  }
+  return replacement;
+}
+
 async function refreshOne(id) {
-  const i = accounts.findIndex(a => a.id === id);
-  if (i < 0) return;
-  const order = accounts[i]._order;
-  accounts[i] = { ...accounts[i], _loading: true };
-  render();
+  const original = accounts.find((account) => account.id === id);
+  if (!original || refreshingAccounts.has(id)) return;
+  refreshingAccounts.add(id);
+  const current = findAccountCard(id);
+  const widths = [...(current?.querySelectorAll('.fill') || [])].map((fill) => fill.style.width);
+  current?.classList.add('is-refreshing');
+  current?.setAttribute('aria-busy', 'true');
+  const button = current?.querySelector('[data-one]');
+  if (button) { button.disabled = true; button.setAttribute('aria-label', '正在刷新账号'); }
+  let updated = false;
+  let notice = '';
   try {
     const r = await fetch(`/api/accounts/${encodeURIComponent(id)}/refresh`,
                           { method: 'POST', headers: headers() });
     if (r.status === 401) { openModal($('#auth')); return; }
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || '刷新失败');
-    accounts[i] = { ...d.account, _order: order };
-    if (d.notice) toast(d.notice);
+    // The department may have changed while this request was in flight.
+    const index = accounts.findIndex((account) => account.id === id);
+    if (index >= 0) accounts[index] = { ...d.account, _order: accounts[index]._order };
+    updated = d.account.ok && !d.account.stale && !d.notice;
+    notice = d.notice || '';
   } catch (e) {
-    accounts[i] = {
-      ...accounts[i], _loading: false, ok: false, expired: false,
-      pending: false, error: e.message
-    };
+    const account = accounts.find((item) => item.id === id);
+    if (account) Object.assign(account, {
+      stale: !!account.ok, pending: false, error_kind: 'error', error: e.message,
+    });
+  } finally {
+    refreshingAccounts.delete(id);
+    const replacement = replaceAccountCard(id);
+    if (updated) GlassMotion.refreshed(replacement, widths);
+    stamp();
+    if (notice) toast(notice);
   }
-  render();
-  stamp();
 }
 
 // ---------- 模型明细 ----------
@@ -699,6 +756,13 @@ async function refreshOne(id) {
 // 一起拉就是又一次请求洪峰，而这正是本项目最大的风险（按 IP 限流）的来源。
 const detailDlg = $('#detail-dlg');
 let detailRequest = 0;
+let detailController = null;
+new MutationObserver(() => {
+  if (!detailDlg.open) {
+    detailRequest += 1;
+    detailController?.abort();
+  }
+}).observe(detailDlg, { attributes: true, attributeFilter: ['open'] });
 
 // 模型名长短不一，骨架也跟着长短不一，比一排等宽方块更像正在填的表
 const SKEL_WIDTHS = ['64%', '52%', '71%', '45%', '58%', '49%'];
@@ -772,24 +836,30 @@ function renderDetail(d, group) {
   $('#detail-body').innerHTML = groups.map((g) => detailGroup(g, (d.quota || {})[g.key])).join('') + totals;
 }
 
-async function openDetail(id, group) {
+async function openDetail(id, group, source) {
   const account = accounts.find((a) => a.id === id);
   const generation = ++detailRequest;
+  detailController?.abort();
+  detailController = new AbortController();
   // 分类名由组头负责显示，标题只认账号，免得单组视图里同一个词写两遍
   $('#detail-title').textContent = `${account ? account.label : id} · 本周期模型明细`;
   $('#detail-note').textContent = '正在从 Cursor 取本周期明细…';
   $('#detail-body').innerHTML = detailSkeleton(group);
-  openModal(detailDlg);
+  openModal(detailDlg, {
+    opener: () => findAccountCard(id)?.querySelector(`[data-group="${CSS.escape(group)}"]`) || source,
+    transition: GlassMotion.detail,
+  });
   try {
     const r = await fetch(`/api/accounts/${encodeURIComponent(id)}/usage-detail`,
-                          { headers: headers() });
+                          { headers: headers(), signal: detailController.signal });
+    if (generation !== detailRequest || !detailDlg.open) return;
     if (r.status === 401) { PanelUI.close(detailDlg); openModal($('#auth')); return; }
     const d = await r.json();
     if (generation !== detailRequest) return;   // 关掉又点了别的，别让旧响应覆盖
     if (!r.ok) throw new Error(d.detail || '读取明细失败');
     renderDetail(d, group);
   } catch (e) {
-    if (generation !== detailRequest) return;
+    if (e.name === 'AbortError' || generation !== detailRequest || !detailDlg.open) return;
     $('#detail-note').textContent = '';
     $('#detail-body').innerHTML = `<div class="detail-empty">${esc(e.message)}</div>`;
   }
@@ -839,7 +909,7 @@ view.addEventListener('click', async (e) => {
   } else if (one !== undefined) {
     refreshOne(one);
   } else if (detail !== undefined) {
-    openDetail(detail, group);
+    openDetail(detail, group, btn);
   } else if (deptId !== undefined) {
     openDepartmentDialog(deptId, label, department);
   } else if (edit !== undefined) {
@@ -864,8 +934,9 @@ function selectDepartment(department) {
   }
   selectedDepartment = department;
   localStorage.setItem('selectedDepartment', department);
+  renderDepartmentTabs();
   closeMobileSidebar();
-  load();
+  load({ arrival: true });
 }
 
 $('#mobile-menu-btn')?.addEventListener('click', openMobileSidebar);
@@ -1042,7 +1113,9 @@ function updateTheme(mode) {
   document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
   document.querySelectorAll('[data-theme-set]').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.themeSet === mode);
+    btn.setAttribute('aria-pressed', String(btn.dataset.themeSet === mode));
   });
+  GlassMotion.selection($('.theme-switch'), $('.theme-btn.active'));
 }
 
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
@@ -1204,6 +1277,7 @@ const dlg = $('#dlg'), dstat = $('#d-status');
 const say = (text, cls = '') => { dstat.className = 'status ' + cls; dstat.textContent = text; };
 
 function openDialog(label = '', department = '', isEdit = false) {
+  dlg.dataset.editing = String(isEdit);
   $('#d-title').textContent = isEdit ? '重新授权' : '添加账号';
   $('#d-label').value = label || '';
   populateDepartmentSelect($('#d-department'), $('#d-department-new'), department);
@@ -1215,6 +1289,7 @@ function openDialog(label = '', department = '', isEdit = false) {
 }
 
 $('#d-save').onclick = async () => {
+  const isEdit = dlg.dataset.editing === 'true';
   const cookie = $('#d-cookie').value.trim();
   const department = readDepartment($('#d-department'), $('#d-department-new'));
   if (!cookie) return say('cookie 不能为空', 'bad');
@@ -1237,7 +1312,9 @@ $('#d-save').onclick = async () => {
       selectedDepartment = d.department || '';
       localStorage.setItem('selectedDepartment', selectedDepartment);
       say('已保存 ' + (d.email || d.label), 'good');
-      setTimeout(() => { PanelUI.close(dlg); load(); }, 700);
+      PanelUI.close(dlg);
+      if (!isEdit) clearSearch();
+      await load({ addedId: !isEdit ? (d.email || d.label) : null });
     } else {
       say(d.detail || '保存失败', 'bad');
       $('#d-save').disabled = false;

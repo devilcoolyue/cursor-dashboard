@@ -246,13 +246,15 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
       stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
   </button>
-  <h2 id="detail-title">模型明细</h2>
-  <p class="detail-note" id="detail-note"></p>
-  <div id="detail-body"></div>
-  <p class="detail-pricing">花费由 Cursor 按各模型的输入 / 输出 / 缓存写 / 缓存读四档单价结算，
-    接口只回传算好的金额，不含单价 ——
-    <a href="https://cursor.com/docs/models-and-pricing" target="_blank"
-      rel="noopener noreferrer">查看官方定价表 ↗</a></p>
+  <div class="detail-content">
+    <h2 id="detail-title">模型明细</h2>
+    <p class="detail-note" id="detail-note"></p>
+    <div id="detail-body"></div>
+    <p class="detail-pricing">花费由 Cursor 按各模型的输入 / 输出 / 缓存写 / 缓存读四档单价结算，
+      接口只回传算好的金额，不含单价 ——
+      <a href="https://cursor.com/docs/models-and-pricing" target="_blank"
+        rel="noopener noreferrer">查看官方定价表 ↗</a></p>
+  </div>
 </dialog>
 
 <dialog id="auth">
@@ -294,6 +296,7 @@
   </div>
 </dialog>
 <script src="/static/js/ui.js?v=__ASSET_VERSION__"></script>
+<script src="/static/js/glass-motion.js?v=__ASSET_VERSION__"></script>
 <script src="/static/js/app.js?v=__ASSET_VERSION__"></script>
 </body>
 </html>
