@@ -1,0 +1,40 @@
+/* Compact geometry and restrained neon edges. */
+html[data-skin="cyberpunk"] .sidebar-header {
+  box-shadow: var(--skin-brand-shadow);
+}
+
+html[data-skin="cyberpunk"] .dept-nav-item[aria-selected="true"] {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  box-shadow: var(--skin-nav-shadow);
+}
+
+html[data-skin="cyberpunk"] .card {
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+html[data-skin="cyberpunk"] .card:not(.exhausted):not(.dead):hover {
+  border-color: var(--accent);
+  box-shadow: var(--skin-card-hover-shadow);
+}
+
+html[data-skin="cyberpunk"] .plan,
+html[data-skin="cyberpunk"] .view-badge {
+  border-radius: var(--radius-ctl);
+}
+
+html[data-skin="cyberpunk"] .q-val,
+html[data-skin="cyberpunk"] .q-limit,
+html[data-skin="cyberpunk"] .ring-text,
+html[data-skin="cyberpunk"] .meta b {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+html[data-skin="cyberpunk"] .track,
+html[data-skin="cyberpunk"] .fill {
+  border-radius: var(--radius-ctl);
+}
+
+html[data-skin="cyberpunk"] .department-mark {
+  border-left-color: var(--skin-detail-accent);
+}

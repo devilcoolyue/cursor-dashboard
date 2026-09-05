@@ -34,6 +34,10 @@
 <link rel="stylesheet" href="/static/css/tokens.css">
 <link rel="stylesheet" href="/static/css/base.css">
 <link rel="stylesheet" href="/static/css/skins/glass.css">
+<link rel="stylesheet" href="/static/css/skins/cyberpunk.css">
+<link rel="stylesheet" href="/static/css/skins/graphite.css">
+<link rel="stylesheet" href="/static/css/skins/verdant.css">
+<link rel="stylesheet" href="/static/css/skins/blueprint.css">
 </head>
 <body>
 <div class="app-layout">
@@ -73,9 +77,15 @@
       </div>
 
       <div class="appearance-group">
-        <div class="appearance-label">界面风格</div>
+        <div class="appearance-heading">
+          <div class="appearance-label">界面风格</div>
+          <span class="skin-current" id="skin-current" aria-live="polite" hidden></span>
+        </div>
         <!-- 按钮由 app.js 照着 SKINS 表生成：加一套皮肤只改那张表，不动这里 -->
-        <div class="skin-switch" id="skin-switch" role="group" aria-label="界面风格切换"></div>
+        <div class="skin-picker" id="skin-picker">
+          <div class="skin-switch" id="skin-switch" role="group" aria-label="界面风格切换"></div>
+          <div class="skin-menu" id="skin-menu" role="menu" aria-label="更多界面风格" hidden></div>
+        </div>
       </div>
 
       <div class="appearance-group">

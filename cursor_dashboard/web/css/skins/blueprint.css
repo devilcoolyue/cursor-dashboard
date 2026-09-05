@@ -1,0 +1,40 @@
+/* The drafting grid stays behind the solid, readable work surfaces. */
+html[data-skin="blueprint"] body::before {
+  background-size: 28px 28px;
+}
+
+html[data-skin="blueprint"] .dept-nav-item[aria-selected="true"] {
+  background: var(--accent-bg);
+  border-color: var(--card-active-border);
+  box-shadow: var(--skin-nav-shadow);
+}
+
+html[data-skin="blueprint"] .card {
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+html[data-skin="blueprint"] .card:not(.exhausted):not(.dead):hover {
+  border-color: var(--accent);
+  box-shadow: var(--skin-card-hover-shadow);
+}
+
+html[data-skin="blueprint"] .meta {
+  border-top-style: dashed;
+}
+
+html[data-skin="blueprint"] .plan,
+html[data-skin="blueprint"] .view-badge,
+html[data-skin="blueprint"] .skin-btn,
+html[data-skin="blueprint"] .theme-btn,
+html[data-skin="blueprint"] .track,
+html[data-skin="blueprint"] .fill {
+  border-radius: var(--radius-ctl);
+}
+
+html[data-skin="blueprint"] .q-val,
+html[data-skin="blueprint"] .q-limit,
+html[data-skin="blueprint"] .ring-text,
+html[data-skin="blueprint"] .dept-count,
+html[data-skin="blueprint"] .meta b {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}

@@ -845,6 +845,7 @@ view.addEventListener('click', async (e) => {
 });
 
 function closeMobileSidebar() {
+  setSkinMenuOpen(false);
   $('#sidebar')?.classList.remove('open');
   $('#sidebar-backdrop')?.classList.remove('open');
 }
@@ -877,22 +878,24 @@ $('#sidebar-backdrop')?.addEventListener('click', closeMobileSidebar);
 // **不要把它们合并成"经典深色/玻璃浅色"这样的四选一**：那样每加一套皮肤，
 // 选项数量就翻一倍，而且"跟随系统"没法落在其中任何一个上。
 //
-// swatch 是按钮上那块预览色卡，直接写成 CSS background 的值。它会原样进 style
-// 属性，所以不能走 esc()——转义后的实体 CSS 不认。表里的值是代码常量，不是
-// 用户输入，这样是安全的；往里写东西时别引入引号。
+// featured 保留常用的两个入口，其余风格进入箭头菜单；色卡取值统一放在 tokens.css。
 const SKINS = [
   {
     key: 'classic',
     name: '经典',
     hint: '实色卡片，信息密度优先',
-    swatch: 'linear-gradient(135deg, #2b313b 0%, #161920 55%, #0b0d11 100%)',
+    featured: true,
   },
   {
     key: 'glass',
     name: '液态玻璃',
     hint: '半透明层叠、背景色斑，仿 iOS 控制中心',
-    swatch: 'linear-gradient(135deg, rgba(126,96,255,.95) 0%, rgba(28,168,220,.9) 48%, rgba(226,74,154,.9) 100%)',
+    featured: true,
   },
+  { key: 'cyberpunk', name: '赛博朋克', hint: '霓虹青与电光洋红' },
+  { key: 'graphite', name: '石墨极简', hint: '黑白灰与利落线条' },
+  { key: 'verdant', name: '青野绿意', hint: '自然青绿与柔和中性色' },
+  { key: 'blueprint', name: '工程蓝图', hint: '制图网格与精密刻度' },
 ];
 // 改这个默认值要连 index.html 头部那段引导脚本里的 'classic' 一起改，
 // 那是全页唯一一处必须跟这里保持一致的重复
@@ -902,30 +905,123 @@ const SKIN_KEYS = new Set(SKINS.map((s) => s.key));
 
 const storedSkin = localStorage.getItem(SKIN_STORAGE_KEY);
 let activeSkin = SKIN_KEYS.has(storedSkin) ? storedSkin : DEFAULT_SKIN;
+let skinMenuPinned = false;
+let skinMenuCloseTimer;
 
 function renderSkinSwitch() {
   const box = $('#skin-switch');
   if (!box) return;
-  box.innerHTML = SKINS.map((skin) => {
-    const on = skin.key === activeSkin;
-    return `<button type="button" class="skin-btn${on ? ' active' : ''}"
-      data-skin-set="${esc(skin.key)}" title="${esc(skin.hint)}" aria-pressed="${on}">
-      <span class="skin-swatch" style="background:${skin.swatch}"></span>
+  box.innerHTML = SKINS.filter((skin) => skin.featured).map((skin) => {
+    return `<button type="button" class="skin-btn"
+      data-skin-set="${esc(skin.key)}" title="${esc(skin.hint)}" aria-pressed="false">
+      <span class="skin-swatch" style="background:var(--skin-swatch-${esc(skin.key)})" aria-hidden="true"></span>
       <span class="skin-name">${esc(skin.name)}</span>
     </button>`;
-  }).join('');
+  }).join('') + `<button type="button" class="skin-more" id="skin-more" title="更多风格"
+    aria-label="更多风格" aria-haspopup="menu" aria-controls="skin-menu" aria-expanded="false">
+    ${ICON.chevron}
+  </button>`;
+  $('#skin-menu').innerHTML = SKINS.filter((skin) => !skin.featured).map((skin) => `
+    <button type="button" class="skin-menu-item" role="menuitemradio" aria-checked="false" tabindex="-1"
+      data-skin-set="${esc(skin.key)}" title="${esc(skin.hint)}">
+      <span class="skin-swatch" style="background:var(--skin-swatch-${esc(skin.key)})" aria-hidden="true"></span>
+      <span class="skin-name">${esc(skin.name)}</span>
+      <svg class="skin-menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+    </button>`).join('');
+}
+
+function setSkinMenuOpen(open) {
+  clearTimeout(skinMenuCloseTimer);
+  $('#skin-menu').hidden = !open;
+  $('#skin-more').setAttribute('aria-expanded', String(open));
+  if (!open) skinMenuPinned = false;
+}
+
+function focusSkinMenuItem(last = false) {
+  const items = [...$('#skin-menu').querySelectorAll('[data-skin-set]')];
+  const selected = items.find((item) => item.dataset.skinSet === activeSkin);
+  (last ? items[items.length - 1] : selected || items[0])?.focus();
 }
 
 function updateSkin(key) {
   activeSkin = SKIN_KEYS.has(key) ? key : DEFAULT_SKIN;
   try { localStorage.setItem(SKIN_STORAGE_KEY, activeSkin); } catch { /* 隐私模式写不进去，本次会话照样生效 */ }
   document.documentElement.setAttribute('data-skin', activeSkin);
-  renderSkinSwitch();
+  const skin = SKINS.find((item) => item.key === activeSkin);
+  $('#skin-picker').querySelectorAll('[data-skin-set]').forEach((btn) => {
+    const on = btn.dataset.skinSet === activeSkin;
+    btn.classList.toggle('active', on);
+    btn.setAttribute(btn.getAttribute('role') === 'menuitemradio' ? 'aria-checked' : 'aria-pressed', String(on));
+  });
+  $('#skin-more').classList.toggle('active', !skin.featured);
+  $('#skin-more').setAttribute('aria-label', skin.featured ? '更多风格' : `更多风格，当前：${skin.name}`);
+  $('#skin-current').textContent = skin.featured ? '' : skin.name;
+  $('#skin-current').hidden = !!skin.featured;
 }
 
-$('#skin-switch')?.addEventListener('click', (e) => {
+renderSkinSwitch();
+
+$('#skin-picker').addEventListener('click', (e) => {
   const btn = e.target.closest('[data-skin-set]');
-  if (btn) updateSkin(btn.dataset.skinSet);
+  if (!btn) return;
+  updateSkin(btn.dataset.skinSet);
+  setSkinMenuOpen(false);
+  if (btn.closest('#skin-menu')) $('#skin-more').focus();
+});
+
+$('#skin-more').addEventListener('pointerenter', (e) => {
+  if (e.pointerType === 'mouse') setSkinMenuOpen(true);
+});
+$('#skin-picker').addEventListener('pointerenter', () => clearTimeout(skinMenuCloseTimer));
+$('#skin-picker').addEventListener('pointerleave', () => {
+  if (!skinMenuPinned && !$('#skin-menu').contains(document.activeElement)) {
+    skinMenuCloseTimer = setTimeout(() => setSkinMenuOpen(false), 180);
+  }
+});
+$('#skin-more').addEventListener('click', () => {
+  if (skinMenuPinned) {
+    setSkinMenuOpen(false);
+    return;
+  }
+  setSkinMenuOpen(true);
+  skinMenuPinned = true;
+  focusSkinMenuItem();
+});
+$('#skin-more').addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+  e.preventDefault();
+  setSkinMenuOpen(true);
+  skinMenuPinned = true;
+  focusSkinMenuItem(e.key === 'ArrowUp');
+});
+$('#skin-menu').addEventListener('keydown', (e) => {
+  const items = [...$('#skin-menu').querySelectorAll('[data-skin-set]')];
+  const index = items.indexOf(document.activeElement);
+  let next;
+  if (e.key === 'ArrowDown') next = (index + 1) % items.length;
+  else if (e.key === 'ArrowUp') next = (index - 1 + items.length) % items.length;
+  else if (e.key === 'Home') next = 0;
+  else if (e.key === 'End') next = items.length - 1;
+  else if (e.key === 'Tab') {
+    // 菜单项不进页面的 Tab 顺序，从触发按钮继续向前或向后移动。
+    $('#skin-more').focus();
+    setSkinMenuOpen(false);
+    return;
+  } else return;
+  e.preventDefault();
+  items[next]?.focus();
+});
+$('#skin-picker').addEventListener('focusout', (e) => {
+  if (!$('#skin-picker').contains(e.relatedTarget)) setSkinMenuOpen(false);
+});
+document.addEventListener('pointerdown', (e) => {
+  if (!$('#skin-picker').contains(e.target)) setSkinMenuOpen(false);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || $('#skin-menu').hidden) return;
+  e.preventDefault();
+  if ($('#skin-menu').contains(document.activeElement)) $('#skin-more').focus();
+  setSkinMenuOpen(false);
 });
 
 // 属性其实已经由 index.html 的引导脚本打上去了，这里再跑一次是为了两件事：
