@@ -312,11 +312,15 @@ fast 档分毫不差，fast 档差 0.8~2.3%），还得跟着供应商调价维�
 回来——**这是一个明确的取舍，不要再自作主张摘掉它**；真要减出站量，先动
 `REFRESH_INTERVAL`，那条杠杆比少打一个接口大得多。
 Grok Bot 是 x.ai 的独立桌面/iOS App（用 Cursor 账号登录的常驻云端 agent），跟在编辑器
-里写代码是两回事，没装这个 App 的账号会一直显示 100%，卡片上的悬停提示已经写明。
+里写代码是两回事，拥有额度但尚未使用时显示剩余 100%，卡片上的悬停提示已经写明。
 `client.grok_status()` 吞普通异常返回 `{}`（这条额度可有可无，不该把整个账号拖成失败），
 但 **`AuthExpired` / `RateLimited` 必须冒泡**——调度器靠这两类异常判断该退避还是该报
 失效，吞掉就等于对限流视而不见。接口只给 `currentPeriodStart`，重置时间是 `+7 天`
-算出来的；返回空时 `grok_weekly` 整条为 `None`，前端不渲染这一行。
+算出来的；返回空、`includedLimitZero: true` 或 `usagePercent` 缺失（含 `null` / 空串）
+时，`grok_weekly` 整条为 `None`，面板和 CLI 都不显示。无额度账号也会返回周期和升级
+提示，不能只按响应非空判断资格；有效的 `usagePercent: 0` 仍显示剩余 100%。不要按
+Cursor 套餐名过滤，Free 绑定 SuperGrok 后也可能有独立额度；也不要按 `hasAvailableUsage`
+过滤，已用尽的额度仍应显示剩余 0%。修复后需刷新账号，重启会恢复旧快照而不会重新组装。
 
 **`accounts.db` 存的是等同登录态的会话 token**，权限 0600，已 gitignore。首次启动会
 从旧 `accounts.json` 导入一次；`snapshots` 表只存 cookie 的 sha256 前 16 位，不存

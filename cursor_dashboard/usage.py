@@ -191,8 +191,11 @@ def assemble(label: str, me, plan_info, usage_summary, period_usage, grok_status
     cycle_start = ms_to_dt(period.get("billingCycleStart")) or iso_to_dt(summary.get("billingCycleStart"))
     days_left = (cycle_end - datetime.now(timezone.utc)).days if cycle_end else None
 
+    # 无额度账号也返回周期和升级提示，不能把缺失用量当成剩余 100%。
+    grok_usage = grok.get("usagePercent")
+    has_grok_quota = not grok.get("includedLimitZero") and grok_usage not in (None, "")
     # Grok Bot 是按周结算的独立池子，接口只给周期起点，重置时间自己 +7 天
-    grok_start = iso_to_dt(grok.get("currentPeriodStart"))
+    grok_start = iso_to_dt(grok.get("currentPeriodStart")) if has_grok_quota else None
     grok_reset = grok_start + timedelta(days=7) if grok_start else None
 
     auto_pool, api_pool, total_pool = pool_limits(
@@ -238,11 +241,11 @@ def assemble(label: str, me, plan_info, usage_summary, period_usage, grok_status
             "limit_usd": cents(on_demand.get("limit")) if on_demand.get("limit") else None,
         },
         # Grok Bot 的周额度，跟上面三条完全独立（不占同一个池子）。
-        # 接口失败时 client.grok_status 返回 {}，这里就整条给 None，前端不显示
+        # 无包含额度、用量缺失或接口失败时整条给 None，面板和 CLI 都不显示。
         "grok_weekly": {
-            "used_pct": pct(grok.get("usagePercent")),
-            "remaining_pct": remain(grok.get("usagePercent")),
+            "used_pct": pct(grok_usage),
+            "remaining_pct": remain(grok_usage),
             "reset_at": grok_reset.isoformat() if grok_reset else None,
-        } if grok else None,
+        } if has_grok_quota else None,
         "notice": period.get("displayMessage") or None,
     }

@@ -213,7 +213,7 @@ const ICON = {
 const GROK_URL = 'https://cursor.com/download/bot';
 const GROK_TIP = 'Grok Bot 是 x.ai 的独立 App，使用 Cursor 账号登录，额度单独结算，'
   + '不占用上方的 Cursor Models / Other Models，按周重置。'
-  + '未安装该 App 的账号始终显示 100%。';
+  + '拥有额度但尚未使用时显示剩余 100%。';
 
 // 这条提示不走通用的 data-tip：里面的下载地址要能点，而 ::after 伪元素塞不进链接
 function grokHint() {

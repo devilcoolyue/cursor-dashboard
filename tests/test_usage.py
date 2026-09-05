@@ -93,6 +93,57 @@ class GrokWeeklyTest(unittest.TestCase):
         """client.grok_status 失败时返回 {}，整条给 None，前端就不显示这一行。"""
         self.assertIsNone(assemble("测试", {}, {}, {}, {}, {})["grok_weekly"])
 
+    def test_free_account_without_included_quota_hides_weekly_usage(self):
+        data = assemble("free", {}, {"planInfo": {"planName": "Free"}},
+                        {"membershipType": "free"}, {}, {
+            "currentPeriodStart": "2026-09-05T18:22:04.315Z",
+            "includedLimitZero": True,
+            "upgradeRecommendation": {"kind": "upgrade-to-pro"},
+            "grokPlanLabel": "Grok Bot Plan",
+        })
+        self.assertIsNone(data["grok_weekly"])
+        self.assertEqual(data["plan"]["name"], "Free")
+
+    def test_zero_included_limit_overrides_reported_usage(self):
+        for used in (0, 12.5):
+            with self.subTest(used=used):
+                self.assertIsNone(assemble("测试", {}, {}, {}, {}, {
+                    "includedLimitZero": True,
+                    "usagePercent": used,
+                })["grok_weekly"])
+
+    def test_metadata_without_usage_does_not_imply_full_quota(self):
+        for usage in ({}, {"usagePercent": None}, {"usagePercent": ""}):
+            with self.subTest(usage=usage):
+                self.assertIsNone(assemble("测试", {}, {}, {}, {}, {
+                    "currentPeriodStart": "2026-09-01T00:00:00Z",
+                    "hasNonZeroIncludedLimit": True,
+                    **usage,
+                })["grok_weekly"])
+
+    def test_available_unused_quota_is_independent_of_cursor_plan(self):
+        for plan_name in ("Free", "Pro"):
+            with self.subTest(plan=plan_name):
+                grok = assemble("测试", {}, {"planInfo": {"planName": plan_name}},
+                                {"membershipType": plan_name.lower()}, {}, {
+                    "currentPeriodStart": "2026-09-01T00:00:00Z",
+                    "usagePercent": 0,
+                    "hasAvailableUsage": True,
+                    "hasNonZeroIncludedLimit": True,
+                })["grok_weekly"]
+                self.assertEqual(grok["used_pct"], 0.0)
+                self.assertEqual(grok["remaining_pct"], 100.0)
+                self.assertEqual(grok["reset_at"][:10], "2026-09-08")
+
+    def test_exhausted_quota_remains_visible(self):
+        grok = assemble("测试", {}, {}, {}, {}, {
+            "usagePercent": 100,
+            "hasAvailableUsage": False,
+            "hasNonZeroIncludedLimit": True,
+        })["grok_weekly"]
+        self.assertEqual(grok["used_pct"], 100.0)
+        self.assertEqual(grok["remaining_pct"], 0.0)
+
 
 class AssembleDetailTest(unittest.TestCase):
     payload = {
