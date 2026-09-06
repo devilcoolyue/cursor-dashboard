@@ -287,10 +287,14 @@ class AccountIndexTest(unittest.TestCase):
         self.assertEqual(server.accounts_for_department(self.accounts, None), self.accounts)
 
     def test_public_index_never_contains_cookie(self) -> None:
-        public = server.account_index(self.accounts)
+        with patch.object(server.admin, "get_policy", return_value={
+            "all_accounts": False, "departments": [], "account_ids": [],
+        }):
+            public = server.account_index(self.accounts)
 
         self.assertEqual(len(public), 3)
         self.assertTrue(all("cookie" not in item for item in public))
+        self.assertTrue(all(item["can_switch"] is False for item in public))
         self.assertEqual(public[0]["id"], "zhang@example.com")
 
     def test_department_counts_include_ungrouped(self) -> None:
