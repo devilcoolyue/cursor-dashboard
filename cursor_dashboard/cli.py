@@ -14,15 +14,17 @@ Cookie 取法：浏览器登录 cursor.com
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import sys
 from pathlib import Path
 
-import requests
-
-from .client import AuthExpired, CursorClient, RateLimited
+from . import sessions
+from .client import AuthExpired, DESKTOP_ENDPOINTS, RateLimited, fetch_one
+from .config import REQUEST_MIN_INTERVAL
+from .desktop import DesktopSessionError
 from .store import AccountsError, load_accounts
-from .usage import collect
+from .usage import assemble_desktop
 
 
 def bar(p, width=24):
@@ -55,6 +57,33 @@ def render(d: dict) -> str:
     return "\n".join(lines)
 
 
+async def query_accounts(accounts, *, temporary=False):
+    async def fetch(cookie, label, name, *args):
+        await asyncio.sleep(REQUEST_MIN_INTERVAL)
+        return await asyncio.to_thread(fetch_one, cookie, label, name, *args)
+
+    results, failed = [], 0
+    for account in accounts:
+        label = account.get("label") or "unnamed"
+        try:
+            if temporary:
+                session, email = await sessions.exchange_cookie(account["cookie"], label, fetch)
+                raw = [await fetch("", label, name, session.token) for name in DESKTOP_ENDPOINTS]
+                sessions.verify_identity(raw[0], email=email, subject=session.subject)
+            else:
+                account = await sessions.ensure_account(account, fetch)
+                raw = [await sessions.request_account(account, fetch, name) for name in DESKTOP_ENDPOINTS]
+                sessions.verify_identity(raw[0], email=account.get("email"), subject=account["auth_subject"])
+            results.append(assemble_desktop(label, *raw))
+        except (AuthExpired, RateLimited, DesktopSessionError, AccountsError) as exc:
+            failed += 1
+            results.append({"label": label, "error": str(exc)})
+        except Exception:
+            failed += 1
+            results.append({"label": label, "error": "查询失败，请稍后重试"})
+    return results, failed
+
+
 def main():
     ap = argparse.ArgumentParser(description="查询 Cursor 账号额度")
     ap.add_argument("-c", "--config", help="读取指定的旧版 JSON 账号文件")
@@ -74,20 +103,7 @@ def main():
     if not accounts:
         sys.exit("账号库为空，请先在 Web 面板添加账号")
 
-    results, failed = [], 0
-    for acc in accounts:
-        client = CursorClient(acc["cookie"], acc.get("label", ""))
-        try:
-            results.append(collect(client))
-        except AuthExpired as e:
-            failed += 1
-            results.append({"label": client.label, "error": str(e)})
-        except RateLimited as e:
-            failed += 1
-            results.append({"label": client.label, "error": str(e)})
-        except requests.RequestException as e:
-            failed += 1
-            results.append({"label": client.label, "error": f"请求失败: {e}"})
+    results, failed = asyncio.run(query_accounts(accounts, temporary=bool(args.config)))
 
     if args.json:
         print(json.dumps(results, ensure_ascii=False, indent=2))

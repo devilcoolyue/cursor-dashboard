@@ -67,6 +67,10 @@
         <div class="section-title">部门导航</div>
         <div class="dept-nav-list" id="department-tabs" role="tablist"></div>
       </div>
+      <a href="/admin" class="admin-menu-link" id="admin-menu-link" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11Z"/><path d="m9 12 2 2 4-4"/></svg>
+        <span>系统管理</span>
+      </a>
     </div>
 
     <div class="sidebar-footer">
@@ -197,7 +201,7 @@
     <label for="d-label">姓名</label>
     <input type="text" id="d-label" placeholder="自己的姓名，方便统计查看" autocomplete="off">
   </div>
-  <div class="f">
+  <div class="f" id="account-department-field">
     <label for="d-department">所属部门<span class="optional">（选填）</span></label>
     <select id="d-department"></select>
     <input type="text" id="d-department-new" class="new-department"
@@ -216,7 +220,7 @@
   <div class="row ui-dialog-actions">
     <span class="status" id="d-status" role="status" style="flex:1;text-align:left"></span>
     <button id="d-cancel" data-close-dialog="dlg">取消</button>
-    <button class="primary" id="d-save">校验并保存</button>
+    <button class="primary" id="d-save">授权并保存</button>
   </div>
 </dialog>
 
@@ -238,6 +242,39 @@
     <span class="status" id="department-status" role="status" style="flex:1;text-align:left"></span>
     <button id="department-cancel" data-close-dialog="department-dlg">取消</button>
     <button class="primary" id="department-save">保存分组</button>
+  </div>
+</dialog>
+
+<dialog id="switch-dlg">
+  <button class="dialog-close" data-close-dialog="switch-dlg" aria-label="关闭弹窗" title="关闭">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+      stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+  </button>
+  <h2>切换本机 Cursor 账号</h2>
+  <p id="switch-account"></p>
+  <p>请先保存工作。执行命令后会退出 Cursor、备份并切换账号，再重新打开。</p>
+  <div class="f">
+    <label for="switch-system">目标系统</label>
+    <select id="switch-system">
+      <option value="" disabled>请选择目标系统</option>
+      <option value="windows">Windows</option>
+      <option value="macos">macOS</option>
+    </select>
+  </div>
+  <div id="switch-result" hidden>
+    <label id="switch-shell" for="switch-command">终端命令</label>
+    <textarea id="switch-command" readonly spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+    <p class="hint-text">命令包含账号凭证，请勿转发。执行结果以本机 Cursor 显示为准。</p>
+    <details id="switch-audit">
+      <summary>查看脚本</summary>
+      <pre id="switch-script" tabindex="0"></pre>
+    </details>
+  </div>
+  <div id="switch-status" class="status" role="status" aria-live="polite"></div>
+  <div class="row ui-dialog-actions">
+    <button id="switch-generate">重新生成</button>
+    <button data-close-dialog="switch-dlg">关闭</button>
+    <button class="primary" id="switch-copy" disabled>复制命令</button>
   </div>
 </dialog>
 

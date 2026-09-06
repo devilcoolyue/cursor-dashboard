@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
+import json
 import time
 from collections import Counter
 from datetime import datetime, timedelta, timezone
@@ -18,6 +20,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from cursor_dashboard.desktop import DesktopSession, build_commands
 
 WEB = Path(__file__).resolve().parents[1] / "cursor_dashboard" / "web"
 app = FastAPI()
@@ -37,6 +40,7 @@ def make_account(index, label, department):
     email = f"account-{index + 1}@example.test"
     return {
         "id": email, "email": email, "label": label, "department": department,
+        "can_switch": True,
         "ok": True, "pending": False, "stale": False, "expired": False,
         "ok_at": now().isoformat(), "age": index * 60,
         "data": {
@@ -78,7 +82,13 @@ async def index():
 
 @app.get("/api/config")
 async def config():
-    return {"needs_token": False, "auto_refresh": False, "cycle_seconds": 0}
+    return {"needs_token": False, "is_admin": True, "auto_refresh": False, "cycle_seconds": 0}
+
+
+@app.get("/api/admin/session")
+async def admin_session():
+    return {"authenticated": True, "csrf_token": "preview-only",
+            "expires_at": int(time.time()) + 43200}
 
 
 @app.get("/api/accounts")
@@ -103,6 +113,18 @@ async def refresh(account_id: str):
     account["data"]["spend_usd"]["total"] = round(account["data"]["quota"]["overall"]["used_pct"] * 4.95, 2)
     account.update(ok_at=now().isoformat(), age=0)
     return {"account": account}
+
+
+@app.post("/api/accounts/{account_id}/switch-command")
+async def switch_command(account_id: str):
+    account = find(account_id)
+    await asyncio.sleep(.5)
+    expiry = int(time.time()) + 86400
+    subject = "auth0|user_preview"
+    claims = base64.urlsafe_b64encode(json.dumps({"sub": subject, "exp": expiry}).encode()).decode().rstrip("=")
+    session = DesktopSession(f"eyJhbGciOiJIUzI1NiJ9.{claims}.preview", subject, expiry)
+    result = build_commands(session, account["email"], preview=True)
+    return {**result, "label": account["label"], "email": account["email"]}
 
 
 @app.get("/api/accounts/{account_id}/usage-detail")

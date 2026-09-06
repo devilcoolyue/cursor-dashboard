@@ -105,7 +105,7 @@ class StoreTest(unittest.TestCase):
             "SELECT name FROM sqlite_master WHERE type = 'table'"
         )}
         conn.close()
-        self.assertEqual(version, "3")
+        self.assertEqual(version, "4")
         self.assertIn("snapshots", tables)
 
     def test_updates_department_without_changing_cookie(self) -> None:

@@ -3,8 +3,9 @@
     cursor-panel                                        # 本机 :8787
     PANEL_TOKEN=xxx cursor-panel --host 0.0.0.0 --no-open   # 部署
 
-账号怎么进来：用户在页面粘贴 WorkosCursorSessionToken，服务端验活后落盘。
-服务端本身不碰浏览器，可以跑在无桌面的服务器上，且从不把 cookie 回传给前端。
+账号怎么进来：用户粘贴 WorkosCursorSessionToken，服务端换取并保存桌面 AT/RT。
+服务端本身不碰浏览器，可以跑在无桌面的服务器上。常规接口不返回凭证；
+桌面切换命令接口按次返回所选账号的本地脚本。
 
 **页面读的是快照，不是实时回源。** 回源由 scheduler 在后台一个一个账号慢慢做，
 页面只负责把最后一次统计结果显示出来。原因见 scheduler 的模块注释。
@@ -27,12 +28,13 @@ from datetime import datetime, timezone
 import uvicorn
 import requests
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import pools, snapshot
-from .client import ENDPOINTS, AuthExpired, RateLimited, fetch_one
+from . import admin, pools, snapshot, sessions
+from .client import DESKTOP_ENDPOINTS, AuthExpired, RateLimited, fetch_one
 from .config import (
     DATABASE_PATH,
     DETAIL_TTL,
@@ -55,7 +57,8 @@ from .store import (
     update_account_department,
     upsert_account,
 )
-from .usage import assemble, assemble_detail, iso_to_dt
+from .usage import assemble_desktop, assemble_detail, iso_to_dt
+from .desktop import DesktopSessionError, build_commands
 
 
 # ---------- 出站节流 ----------
@@ -114,13 +117,13 @@ def _classify(errors: list[BaseException]) -> tuple[str, str]:
     if any(isinstance(e, RateLimited) for e in errors):
         return "rate_limited", "Cursor 暂时限制了请求，稍后会自动重试"
     if any(isinstance(e, AuthExpired) for e in errors):
-        return "expired", "会话已失效，请重新粘贴 cookie"
+        return "expired", "桌面授权已失效，请重新粘贴有效 Cookie 授权"
     if any(isinstance(e, requests.Timeout) for e in errors):
         return "network", "连接 Cursor 超时，稍后会自动重试"
     if any(isinstance(e, requests.ConnectionError) for e in errors):
         return "network", "暂时无法连接 Cursor，稍后会自动重试"
     first = errors[0]
-    return "error", f"{type(first).__name__}: {first}"
+    return "error", f"{type(first).__name__}: 暂时无法更新账号，请稍后重试"
 
 
 async def refresh_account(acc: dict) -> str | None:
@@ -130,18 +133,24 @@ async def refresh_account(acc: dict) -> str | None:
     cookie = acc["cookie"]
 
     async with snapshot.lock_for(ident):
-        # return_exceptions：让 5 个接口都跑完再判定，否则先抛出的那个说了算，
-        # 混合错误时容易把限流认成失效
-        raw = await asyncio.gather(
-            *(fetch_cursor(cookie, label, name) for name in ENDPOINTS),
-            return_exceptions=True,
-        )
-        errors = [item for item in raw if isinstance(item, BaseException)]
+        try:
+            acc = await sessions.ensure_account(acc, fetch_cursor)
+            cookie = acc["cookie"]
+            label = acc.get("label") or "unnamed"
+            raw = await asyncio.gather(
+                *(sessions.request_account(acc, fetch_cursor, name) for name in DESKTOP_ENDPOINTS),
+                return_exceptions=True,
+            )
+            errors = [item for item in raw if isinstance(item, BaseException)]
+            if not errors:
+                sessions.verify_identity(raw[0], email=acc.get("email"), subject=acc["auth_subject"])
+        except Exception as exc:
+            errors = [exc]
         if errors:
             kind, message = _classify(errors)
             snapshot.record_failure(ident, cookie, kind, message)
             return kind
-        snapshot.record_success(ident, cookie, assemble(label, *raw))
+        snapshot.record_success(ident, cookie, assemble_desktop(label, *raw))
         return None
 
 
@@ -200,6 +209,9 @@ _scheduler: Scheduler | None = None
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     global _request_slots, _pace_lock, _next_slot, _scheduler
+    initial_password = await asyncio.to_thread(admin.initialize_admin)
+    if initial_password:
+        print(f"管理员初始密码（仅显示一次）: {initial_password}", flush=True)
     # N 账号 × 4 接口打平成一个任务集，共用这一个池。不要改成嵌套线程池——线程数会乘起来。
     pool = ThreadPoolExecutor(max_workers=MAX_WORKERS, thread_name_prefix="probe")
     asyncio.get_running_loop().set_default_executor(pool)
@@ -223,6 +235,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Cursor 额度面板", lifespan=lifespan)
+ADMIN_COOKIE = "cursor_panel_admin"
 
 # 页面全是同源调用，不开 CORS
 
@@ -230,9 +243,33 @@ app = FastAPI(title="Cursor 额度面板", lifespan=lifespan)
 @app.middleware("http")
 async def mark_active(request: Request, call_next):
     """有人在看面板就告诉调度器，别掉进降速档。"""
+    is_api = request.url.path.startswith("/api/")
+    if is_api and request.method not in {"GET", "HEAD", "OPTIONS"}:
+        origin = request.headers.get("origin")
+        expected = f"{request.url.scheme}://{request.url.netloc}"
+        if ((origin and origin != expected)
+                or request.headers.get("sec-fetch-site") == "cross-site"):
+            return JSONResponse(status_code=403, content={"detail": "不允许跨站操作"},
+                                headers={"Cache-Control": "no-store"})
+    raw_session = request.cookies.get(ADMIN_COOKIE, "")
+    request.state.admin_session = (
+        await asyncio.to_thread(admin.check_session, raw_session) if raw_session and is_api else None
+    )
+    if (is_api and request.method not in {"GET", "HEAD", "OPTIONS"}
+            and request.url.path != "/api/admin/login" and request.state.admin_session
+            and not secrets.compare_digest(request.headers.get("x-admin-csrf", ""),
+                                           request.state.admin_session["csrf_token"])):
+        return JSONResponse(status_code=403, content={"detail": "登录校验已变更，请刷新页面后重试"},
+                            headers={"Cache-Control": "no-store"})
     if _scheduler is not None and request.url.path.startswith("/api/"):
         _scheduler.touch()
-    return await call_next(request)
+    response = await call_next(request)
+    if is_api:
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    return response
 
 
 @app.exception_handler(AccountsError)
@@ -240,9 +277,43 @@ async def handle_accounts_error(_req: Request, exc: AccountsError):
     return JSONResponse(status_code=500, content={"detail": str(exc)})
 
 
-def require_token(x_panel_token: str | None = Header(default=None)) -> None:
+@app.exception_handler(RequestValidationError)
+async def handle_validation_error(_req: Request, exc: RequestValidationError):
+    # Validation errors must not echo submitted passwords or account credentials.
+    return JSONResponse(status_code=422, content={"detail": [
+        {key: error[key] for key in ("loc", "msg", "type")} for error in exc.errors()
+    ]})
+
+
+def is_admin(request: Request | None) -> bool:
+    return bool(request and getattr(request.state, "admin_session", None))
+
+
+def require_admin(request: Request) -> dict:
+    if not is_admin(request):
+        raise HTTPException(401, "请先登录管理员账号")
+    return request.state.admin_session
+
+
+def require_token(x_panel_token: str | None = Header(default=None), request: Request = None) -> None:
+    if is_admin(request):
+        return
     if PANEL_TOKEN and not secrets.compare_digest(x_panel_token or "", PANEL_TOKEN):
         raise HTTPException(401, "口令不对")
+
+
+def public_account_view(acc: dict, request: Request | None, snap: dict | None = None,
+                        policy: dict | None = None) -> dict:
+    result = snapshot.view(acc, account_id(acc), snap)
+    result.pop("auth", None)
+    result["can_switch"] = admin.switch_allowed(acc, policy if policy is not None else admin.get_policy(),
+                                                is_admin=is_admin(request))
+    return result
+
+
+def require_switch(request: Request | None, acc: dict) -> None:
+    if not admin.switch_allowed(acc, admin.get_policy(), is_admin=is_admin(request)):
+        raise HTTPException(403, "此账号暂未开放本地切换")
 
 
 class SaveReq(BaseModel):
@@ -262,13 +333,15 @@ def accounts_for_department(accounts: list[dict], department: str | None) -> lis
     return [acc for acc in accounts if (acc.get("department") or "") == wanted]
 
 
-def account_index(accounts: list[dict]) -> list[dict]:
+def account_index(accounts: list[dict], request: Request | None = None) -> list[dict]:
+    policy = admin.get_policy()
     return [
         {
             "id": account_id(acc),
             "label": acc.get("label") or "unnamed",
             "email": acc.get("email"),
             "department": acc.get("department") or "",
+            "can_switch": admin.switch_allowed(acc, policy, is_admin=is_admin(request)),
         }
         for acc in accounts
     ]
@@ -294,7 +367,11 @@ def find_account(account_key: str) -> dict:
 
 @app.get("/")
 def index():
-    html = WEB_INDEX.read_text(encoding="utf-8")
+    return render_page(WEB_INDEX)
+
+
+def render_page(page):
+    html = page.read_text(encoding="utf-8")
     revision = hashlib.sha256(html.encode("utf-8"))
     # 每次读取当前文件内容，静态文件部署后无需重启也能换资源地址。
     for asset in sorted(WEB_DIR.rglob("*")):
@@ -305,6 +382,119 @@ def index():
         html.replace("__ASSET_VERSION__", revision.hexdigest()[:16]),
         headers={"Cache-Control": "no-cache"},
     )
+
+
+@app.get("/admin")
+@app.get("/admin/", include_in_schema=False)
+def admin_index():
+    return render_page(WEB_DIR / "admin.html")
+
+
+class AdminLoginReq(BaseModel):
+    password: str = Field(min_length=1, max_length=1024)
+
+
+class SwitchPolicyReq(BaseModel):
+    all_accounts: bool = Field(default=False, strict=True)
+    departments: list[str] = Field(default_factory=list, max_length=1000)
+    account_ids: list[int] = Field(default_factory=list, max_length=10000)
+
+
+@app.get("/api/admin/session")
+def api_admin_session(request: Request):
+    session = getattr(request.state, "admin_session", None)
+    return {"authenticated": True, **session} if session else {"authenticated": False}
+
+
+@app.post("/api/admin/login")
+def api_admin_login(req: AdminLoginReq, request: Request):
+    try:
+        session = admin.login(req.password, request.client.host if request.client else "unknown")
+    except admin.InvalidPassword:
+        raise HTTPException(401, "管理员密码不正确") from None
+    except admin.LoginThrottled as exc:
+        raise HTTPException(429, "尝试次数过多，请稍后重试",
+                            headers={"Retry-After": str(exc.retry_after)}) from None
+    old_session = request.cookies.get(ADMIN_COOKIE)
+    if old_session:
+        admin.delete_session(old_session)
+    response = JSONResponse({"authenticated": True, "csrf_token": session["csrf_token"],
+                             "expires_at": session["expires_at"]})
+    response.set_cookie(ADMIN_COOKIE, session["token"], httponly=True, samesite="strict",
+                        secure=request.url.scheme == "https", path="/",
+                        max_age=max(0, int(session["expires_at"] - time.time())))
+    return response
+
+
+@app.post("/api/admin/logout", dependencies=[Depends(require_admin)])
+def api_admin_logout(request: Request):
+    admin.delete_session(request.cookies.get(ADMIN_COOKIE, ""))
+    response = JSONResponse({"authenticated": False})
+    response.delete_cookie(ADMIN_COOKIE, path="/", httponly=True, samesite="strict",
+                           secure=request.url.scheme == "https")
+    return response
+
+
+def switch_source(acc: dict, policy: dict) -> str:
+    if policy["all_accounts"]:
+        return "all"
+    if (acc.get("department") or "") in policy["departments"]:
+        return "department"
+    if acc["db_id"] in policy["account_ids"]:
+        return "account"
+    return "disabled"
+
+
+@app.get("/api/admin/accounts", dependencies=[Depends(require_admin)])
+def api_admin_accounts(q: str = Query(default="", max_length=256),
+                       page: int = Query(default=1, ge=1),
+                       page_size: int = Query(default=20, ge=1, le=100),
+                       department: str | None = Query(default=None, max_length=64)):
+    all_accounts = load_accounts()
+    selected = accounts_for_department(all_accounts, department)
+    query = q.strip().casefold()
+    if query:
+        selected = [acc for acc in selected if any(
+            query in str(acc.get(field) or "").casefold() for field in ("label", "email", "department")
+        )]
+    total = len(selected)
+    pages = max(1, (total + page_size - 1) // page_size)
+    page = min(page, pages)
+    policy = admin.get_policy()
+    return {
+        "accounts": [{"id": account_id(acc), "db_id": acc["db_id"], "label": acc["label"],
+                      "email": acc.get("email"), "department": acc.get("department") or "",
+                      "auth": admin.credential_view(acc),
+                      "switch_enabled": admin.switch_allowed(acc, policy),
+                      "switch_source": switch_source(acc, policy)}
+                     for acc in selected[(page - 1) * page_size:page * page_size]],
+        "total": total, "page": page, "page_size": page_size, "pages": pages,
+        "departments": department_counts(all_accounts),
+    }
+
+
+@app.get("/api/admin/switch-policy", dependencies=[Depends(require_admin)])
+def api_admin_switch_policy():
+    accounts = load_accounts()
+    return {"policy": admin.get_policy(), "departments": department_counts(accounts),
+            "accounts": [{"id": account_id(acc), "db_id": acc["db_id"], "label": acc["label"],
+                          "email": acc.get("email"), "department": acc.get("department") or ""}
+                         for acc in accounts]}
+
+
+@app.put("/api/admin/switch-policy", dependencies=[Depends(require_admin)])
+def api_save_switch_policy(req: SwitchPolicyReq):
+    accounts = load_accounts()
+    departments = {acc.get("department") or "" for acc in accounts}
+    account_ids = {acc["db_id"] for acc in accounts}
+    if any(dept not in departments for dept in req.departments):
+        raise HTTPException(400, "所选部门已变更，请刷新后重试")
+    if any(ident not in account_ids or ident <= 0 for ident in req.account_ids):
+        raise HTTPException(400, "所选账号已变更，请刷新后重试")
+    policy = {"all_accounts": req.all_accounts,
+              "departments": list(dict.fromkeys(req.departments)),
+              "account_ids": list(dict.fromkeys(req.account_ids))}
+    return {"policy": admin.save_policy(policy)}
 
 
 class RevalidatingStaticFiles(StaticFiles):
@@ -321,11 +511,12 @@ app.mount("/static", RevalidatingStaticFiles(directory=WEB_DIR), name="static")
 
 
 @app.get("/api/config")
-def api_config():
+def api_config(request: Request):
     """不鉴权：页面得先知道要不要问口令。"""
     status = _scheduler.status() if _scheduler else {}
     return {
-        "needs_token": bool(PANEL_TOKEN),
+        "needs_token": bool(PANEL_TOKEN) and not is_admin(request),
+        "is_admin": is_admin(request),
         "auto_refresh": bool(status.get("enabled")),
         "cycle_seconds": status.get("cycle_seconds", 0),
     }
@@ -341,48 +532,56 @@ def api_status():
 
 @app.get("/api/account-index", dependencies=[Depends(require_token)])
 def api_account_index(
+    request: Request,
     department: str | None = Query(default=None, max_length=64),
 ):
     """只要卡片索引和部门人数，不带额度数据。"""
     all_accounts = load_accounts()
     selected = accounts_for_department(all_accounts, department)
     return {
-        "accounts": account_index(selected),
+        "accounts": account_index(selected, request),
         "departments": department_counts(all_accounts),
         "total": len(all_accounts),
     }
 
 
 @app.get("/api/accounts", dependencies=[Depends(require_token)])
-def api_accounts(department: str | None = Query(default=None, max_length=64)):
+def api_accounts(request: Request, department: str | None = Query(default=None, max_length=64)):
     """一次返回整组卡片，全部读快照，不访问 cursor.com。"""
     all_accounts = load_accounts()
     selected = accounts_for_department(all_accounts, department)
+    policy = admin.get_policy()
     return {
-        "accounts": [snapshot.view(acc, account_id(acc)) for acc in selected],
+        "accounts": [public_account_view(acc, request, policy=policy) for acc in selected],
         "departments": department_counts(all_accounts),
         "total": len(all_accounts),
     }
 
 
 @app.get("/api/accounts/{account_key}", dependencies=[Depends(require_token)])
-def api_account_one(account_key: str):
+def api_account_one(account_key: str, request: Request):
     acc = find_account(account_key)
-    return {"account": snapshot.view(acc, account_key)}
+    return {"account": public_account_view(acc, request)}
 
 
 @app.post("/api/accounts", dependencies=[Depends(require_token)])
-async def api_save(req: SaveReq):
-    """粘贴进来的 cookie 先验活再落盘。"""
+async def api_save(req: SaveReq, request: Request = None):
+    """Exchange the submitted cookie and validate desktop queries before committing."""
     cookie = req.cookie.strip()
     if not cookie:
         raise HTTPException(400, "cookie 为空")
     label = req.label or ""
-    raw = await asyncio.gather(
-        *(fetch_cursor(cookie, label, name) for name in ENDPOINTS),
-        return_exceptions=True,
-    )
-    errors = [item for item in raw if isinstance(item, BaseException)]
+    try:
+        session, email = await sessions.exchange_cookie(cookie, label, fetch_cursor)
+        raw = await asyncio.gather(
+            *(fetch_cursor("", label, name, session.token) for name in DESKTOP_ENDPOINTS),
+            return_exceptions=True,
+        )
+        errors = [item for item in raw if isinstance(item, BaseException)]
+        if not errors:
+            sessions.verify_identity(raw[0], email=email, subject=session.subject)
+    except Exception as exc:
+        errors = [exc]
     if errors:
         kind, message = _classify(errors)
         if kind == "rate_limited":
@@ -390,14 +589,20 @@ async def api_save(req: SaveReq):
             raise HTTPException(503, "Cursor 暂时限制了请求，等一两分钟再保存；cookie 可能是好的")
         if kind == "expired":
             raise HTTPException(400, "这个 cookie 是失效的，请在浏览器重新登录 cursor.com 后再回填")
-        raise HTTPException(400, f"校验失败：{message}")
+        raise HTTPException(400, "无法完成桌面授权或额度校验，请稍后重试。")
 
-    data = assemble(label, *raw)
-    acc = await asyncio.to_thread(
-        upsert_account, cookie, data.get("email"), req.label, req.department
-    )
-    # 顺手把刚拿到的数据存成快照，不用等后台轮到它
-    snapshot.record_success(account_id(acc), cookie, data)
+    data = assemble_desktop(label, *raw)
+    async with snapshot.lock_for(email):
+        if request is not None:
+            request.state.admin_session = await asyncio.to_thread(
+                admin.check_session, request.cookies.get(ADMIN_COOKIE, "")
+            )
+            require_token(request.headers.get("x-panel-token"), request)
+        acc = await asyncio.to_thread(
+            upsert_account, cookie, email, req.label,
+            req.department, session=session
+        )
+        snapshot.record_success(account_id(acc), cookie, data)
     return {
         "ok": True,
         "label": acc["label"],
@@ -406,22 +611,56 @@ async def api_save(req: SaveReq):
     }
 
 
+@app.post("/api/accounts/{account_key}/switch-command", dependencies=[Depends(require_token)])
+async def api_switch_command(account_key: str, request: Request = None):
+    acc = find_account(account_key)
+    require_switch(request, acc)
+    if not take_manual_token():
+        raise HTTPException(429, "操作太频繁，请稍后再生成命令。")
+    try:
+        acc = await sessions.ensure_account(acc, fetch_cursor)
+        me = await sessions.request_account(acc, fetch_cursor, "desktop_me")
+        acc = await sessions.ensure_account(acc, fetch_cursor)
+        email = sessions.verify_identity(me, email=acc.get("email"), subject=acc["auth_subject"])
+    except AuthExpired:
+        raise HTTPException(400, "桌面授权已失效，请先重新授权这个账号。") from None
+    except DesktopSessionError as exc:
+        raise HTTPException(400, str(exc)) from None
+    except RateLimited:
+        raise HTTPException(503, "Cursor 暂时限制了请求，请稍后再生成命令。") from None
+    except Exception:
+        raise HTTPException(502, "无法验证桌面会话，请稍后重试。") from None
+    # A network round trip may outlive an admin session or a permission change.
+    if request is not None:
+        request.state.admin_session = await asyncio.to_thread(
+            admin.check_session, request.cookies.get(ADMIN_COOKIE, "")
+        )
+        require_token(request.headers.get("x-panel-token"), request)
+    require_switch(request, find_account(account_key))
+    try:
+        result = build_commands(sessions.session_from_account(acc), email)
+    except DesktopSessionError as exc:
+        raise HTTPException(400, str(exc)) from None
+    result.update(label=acc.get("label") or email, email=email)
+    return JSONResponse(result, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
+
+
 @app.post("/api/accounts/{account_key}/refresh", dependencies=[Depends(require_token)])
-async def api_refresh_one(account_key: str):
+async def api_refresh_one(account_key: str, request: Request):
     """卡片上的刷新按钮：立刻回源一次，但要过冷却和令牌桶。"""
     acc = find_account(account_key)
     snap = snapshot.get(account_key, acc["cookie"])
 
     if (snap["ok_at"] and not snap["error"]
             and time.time() - snap["attempted_at"] < MANUAL_COOLDOWN):
-        return {"account": snapshot.view(acc, account_key, snap),
+        return {"account": public_account_view(acc, request, snap),
                 "notice": "刚更新过，显示的就是最新数据"}
     if not take_manual_token():
-        return {"account": snapshot.view(acc, account_key, snap),
+        return {"account": public_account_view(acc, request, snap),
                 "notice": "刷新太频繁了，等几秒再点；后台本来也在自动更新"}
 
     await refresh_account(acc)
-    return {"account": snapshot.view(acc, account_key)}
+    return {"account": public_account_view(find_account(account_key), request)}
 
 
 @app.get("/api/accounts/{account_key}/usage-detail",
@@ -448,16 +687,15 @@ async def api_usage_detail(account_key: str):
 
     now = datetime.now(timezone.utc)
     try:
-        raw = await fetch_cursor(cookie, acc.get("label") or "unnamed",
-                                 "aggregated_usage",
+        raw = await sessions.request_account(acc, fetch_cursor, "desktop_aggregated",
                                  int(start.timestamp() * 1000),
                                  int(now.timestamp() * 1000))
     except AuthExpired:
-        raise HTTPException(400, "会话已失效，点卡片右上角的钥匙图标重新粘贴 cookie")
+        raise HTTPException(400, "桌面授权已失效，点钥匙图标重新粘贴有效 Cookie 授权")
     except RateLimited:
         raise HTTPException(503, "Cursor 暂时限制了请求，等一会儿再看；cookie 可能是好的")
-    except requests.RequestException as exc:
-        raise HTTPException(502, f"连接 Cursor 失败：{exc}")
+    except (requests.RequestException, DesktopSessionError, AccountsError):
+        raise HTTPException(502, "连接 Cursor 或更新桌面凭证失败，请稍后重试。") from None
 
     detail = assemble_detail(raw)
     detail.update({

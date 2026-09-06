@@ -1,6 +1,6 @@
 """SQLite 账号库读写。
 
-cookie 仍是等同登录态的会话 token，所以数据库文件保持 0600。SQLite 的事务和
+Cookie、AT/RT 都是等同登录态的凭证，所以数据库文件保持 0600。SQLite 的事务和
 唯一约束负责处理多人同时登记；首次启动会把旧 accounts.json 导入一次。
 """
 
@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import secrets
 import sqlite3
 import threading
 import time
@@ -160,6 +161,21 @@ def _ensure_database() -> None:
                     "ALTER TABLE accounts ADD COLUMN department TEXT NOT NULL DEFAULT ''"
                 )
 
+            for name, definition in {
+                "access_token": "TEXT NOT NULL DEFAULT ''",
+                "refresh_token": "TEXT NOT NULL DEFAULT ''",
+                "token_expires_at": "INTEGER NOT NULL DEFAULT 0",
+                "auth_subject": "TEXT NOT NULL DEFAULT ''",
+                "auth_generation": "TEXT NOT NULL DEFAULT ''",
+                "auth_invalid": "INTEGER NOT NULL DEFAULT 0",
+                "auth_refreshed_at": "INTEGER NOT NULL DEFAULT 0",
+            }.items():
+                if name not in columns:
+                    conn.execute(f"ALTER TABLE accounts ADD COLUMN {name} {definition}")
+            conn.execute("""CREATE TABLE IF NOT EXISTS auth_leases (
+                account_key TEXT PRIMARY KEY, owner TEXT NOT NULL, expires_at REAL NOT NULL
+            )""")
+
             migrated = conn.execute(
                 "SELECT 1 FROM metadata WHERE key = 'legacy_json_migrated'"
             ).fetchone()
@@ -171,7 +187,7 @@ def _ensure_database() -> None:
                 )
             conn.execute(
                 """
-                INSERT INTO metadata (key, value) VALUES ('schema_version', '3')
+                INSERT INTO metadata (key, value) VALUES ('schema_version', '4')
                 ON CONFLICT(key) DO UPDATE SET value = excluded.value
                 """
             )
@@ -198,11 +214,14 @@ def _connect() -> sqlite3.Connection:
 
 def _row_to_account(row: sqlite3.Row) -> dict:
     return {
+        "db_id": row["id"],
         "label": row["label"],
         "cookie": row["cookie"],
         "email": row["email"],
         "department": row["department"],
         "updated_at": row["updated_at"],
+        **{key: row[key] for key in ("access_token", "refresh_token", "token_expires_at",
+                                    "auth_subject", "auth_generation", "auth_invalid", "auth_refreshed_at")},
     }
 
 
@@ -211,7 +230,7 @@ def load_accounts() -> list[dict]:
     try:
         conn = _connect()
         rows = conn.execute(
-            "SELECT label, cookie, email, department, updated_at FROM accounts ORDER BY id"
+            "SELECT * FROM accounts ORDER BY id"
         ).fetchall()
         return [_row_to_account(row) for row in rows]
     except AccountsError:
@@ -228,6 +247,7 @@ def upsert_account(
     email: str | None,
     label: str | None,
     department: str | None = None,
+    *, session=None,
 ) -> dict:
     """按 email 原子去重：同一账号重新回填只更新已有记录。"""
     email = (email or "").strip() or None
@@ -278,9 +298,14 @@ def upsert_account(
             )
             account_id_value = cursor.lastrowid
 
+        conn.execute("""UPDATE accounts SET access_token=?, refresh_token=?, token_expires_at=?,
+            auth_subject=?, auth_generation=?, auth_invalid=0, auth_refreshed_at=? WHERE id=?""",
+            (session.token if session else "", session.refresh_token if session else "",
+             session.expires_at if session else 0, session.subject if session else "",
+             secrets.token_hex(16), now if session else 0, account_id_value))
         saved = conn.execute(
             """
-            SELECT label, cookie, email, department, updated_at
+            SELECT *
             FROM accounts WHERE id = ?
             """,
             (account_id_value,),
@@ -323,7 +348,7 @@ def update_account_department(account_key: str, department: str) -> dict | None:
         )
         saved = conn.execute(
             """
-            SELECT label, cookie, email, department, updated_at
+            SELECT *
             FROM accounts WHERE id = ?
             """,
             (row["id"],),
@@ -373,9 +398,65 @@ def delete_account(account_key: str) -> bool:
             conn.close()
 
 
+def renew_auth_lease(account_key: str, owner: str) -> None:
+    conn = _connect()
+    try:
+        with conn:
+            conn.execute("UPDATE auth_leases SET expires_at=? WHERE account_key=? AND owner=?",
+                         (time.time() + 300, account_key, owner))
+    finally:
+        conn.close()
+
+
 def account_id(acc: dict) -> str:
     """卡片和快照的账号标识：优先 email，没有就退回 label。"""
     return acc.get("email") or acc.get("label") or "unnamed"
+
+
+def get_account(account_key: str) -> dict | None:
+    return next((acc for acc in load_accounts() if account_id(acc) == account_key), None)
+
+
+def update_session(account: dict, session=None, *, invalid=False) -> bool:
+    """CAS prevents a completed refresh from replacing a later reauthorization."""
+    conn = _connect()
+    try:
+        with conn:
+            cursor = conn.execute("""UPDATE accounts SET access_token=?, refresh_token=?,
+                token_expires_at=?, auth_subject=?, auth_invalid=?, auth_refreshed_at=?
+                WHERE id=? AND auth_generation=? AND refresh_token=? AND cookie=?""",
+                (session.token if session else account["access_token"],
+                 session.refresh_token if session else account["refresh_token"],
+                 session.expires_at if session else account["token_expires_at"],
+                 session.subject if session else account["auth_subject"], int(invalid),
+                 int(time.time()) if session else account["auth_refreshed_at"],
+                 account["db_id"], account["auth_generation"], account["refresh_token"], account["cookie"]))
+        return cursor.rowcount == 1
+    except sqlite3.Error as exc:
+        raise AccountsError("保存桌面凭证失败") from exc
+    finally:
+        conn.close()
+
+
+def claim_auth_lease(account_key: str, owner: str) -> bool:
+    conn = _connect()
+    try:
+        with conn:
+            cursor = conn.execute("""INSERT INTO auth_leases VALUES (?, ?, ?)
+                ON CONFLICT(account_key) DO UPDATE SET owner=excluded.owner, expires_at=excluded.expires_at
+                WHERE auth_leases.expires_at < ?""", (account_key, owner, time.time() + 300, time.time()))
+        return cursor.rowcount == 1
+    finally:
+        conn.close()
+
+
+def release_auth_lease(account_key: str, owner: str) -> None:
+    conn = _connect()
+    try:
+        with conn:
+            conn.execute("DELETE FROM auth_leases WHERE account_key=? AND owner=?", (account_key, owner))
+    finally:
+        conn.close()
 
 
 # ---------- 刷新结果快照 ----------

@@ -4,8 +4,33 @@ PanelUI.init();
 const openModal = (dialog, options) => PanelUI.open(dialog, options);
 
 let token = localStorage.getItem('panelToken') || '';
-const headers = () => token ? { 'X-Panel-Token': token } : {};
+let isAdmin = false;
+let adminCsrf = '';
+let adminSessionRequest = null;
+const headers = () => ({ ...(token ? { 'X-Panel-Token': token } : {}),
+  ...(isAdmin && adminCsrf ? { 'X-Admin-CSRF': adminCsrf } : {}) });
 const jsonHeaders = () => ({ 'Content-Type': 'application/json', ...headers() });
+
+async function syncAdminSession() {
+  if (adminSessionRequest) return adminSessionRequest;
+  adminSessionRequest = (async () => {
+    let state = null;
+    try {
+      const response = await fetch('/api/admin/session', { cache: 'no-store' });
+      if (response.ok) state = await response.json();
+    } catch { /* Hide administrative controls until the session can be verified. */ }
+    const previous = isAdmin;
+    isAdmin = state?.authenticated === true;
+    adminCsrf = isAdmin ? state.csrf_token || '' : '';
+    $('#admin-menu-link').hidden = !isAdmin;
+    if (previous && !isAdmin) {
+      accounts.forEach(account => { account.can_switch = false; });
+      if (switchDlg.open) PanelUI.close(switchDlg);
+    }
+    if (previous !== isAdmin && accounts.length) render();
+  })().finally(() => { adminSessionRequest = null; });
+  return adminSessionRequest;
+}
 
 const ALL_DEPARTMENTS = '__all_departments__';
 const NEW_DEPARTMENT = '__new_department__';
@@ -207,6 +232,8 @@ const ICON = {
   refresh: SVG('<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>'),
   chevron: SVG('<path d="m9 18 6-6-6-6"/>'),
   external: SVG('<path d="M7 17 17 7"/><path d="M9 7h8v8"/>'),
+  switchAccount: SVG('<path d="M7 7h14l-4-4M17 17H3l4 4M21 7l-4 4M3 17l4-4"/>'),
+  copy: SVG('<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>'),
   trash: SVG('<path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M18 6v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V6"/>'),
 };
 
@@ -272,12 +299,14 @@ function identityMeta(department, email) {
 
 function actions(a) {
   return `<div class="acts">
+    ${a.can_switch === true ? `<button class="icon-btn tip below" data-switch-id="${esc(a.id)}" aria-label="切换账号"
+      data-tip="切换本机 Cursor 账号">${ICON.switchAccount}</button>` : ''}
     <button class="icon-btn tip below" data-dept-id="${esc(a.id)}" data-label="${esc(a.label)}"
       data-department="${esc(a.department)}" aria-label="调整分组"
       data-tip="调整所属部门">${ICON.department}</button>
     <button class="icon-btn tip below" data-edit="${esc(a.id)}" data-label="${esc(a.label)}"
       data-department="${esc(a.department)}" aria-label="重新授权"
-      data-tip="重新授权 · 粘贴新的 cookie">${ICON.key}</button>
+      data-tip="重新授权 · 更新桌面会话">${ICON.key}</button>
     <button class="icon-btn tip below" data-one="${esc(a.id)}" aria-label="刷新账号"
       data-tip="刷新这个账号的额度">${ICON.refresh}</button>
     <button class="icon-btn tip below right danger" data-del="${esc(a.id)}" aria-label="删除账号"
@@ -327,7 +356,7 @@ function card(a) {
         <div class="name-line"><span class="label">${esc(a.label)}</span></div>
         ${identityMeta(a.department, a.email)}
       </div>
-      <div class="err">${a.expired ? '会话已失效，点右上角钥匙图标重新粘贴 cookie' : esc(a.error)}</div>
+      <div class="err">${a.expired ? '桌面授权已失效，点钥匙图标重新粘贴有效 Cookie 授权' : esc(a.error)}</div>
       ${shows('statTime') && a.ok_at ? `<div class="meta"><div><span>最后统计</span>
         <b>${esc(statTime(a.ok_at))}</b></div></div>` : ''}
     </div>`;
@@ -615,7 +644,7 @@ function stamp() {
 // ---------- 拉数据 ----------
 // 页面只读服务端快照，永远不触发对 cursor.com 的回源——回源是后台调度器的事。
 // 所以这里一个请求就能把整组卡片拿回来，不再需要多个 worker 逐卡请求。
-async function load({ silent = false, arrival = false, addedId = null } = {}) {
+async function load({ silent = false, arrival = false, addedId = null, adminChecked = false } = {}) {
   if (silent && (inFlight || refreshingAccounts.size)) return;
   const generation = ++loadGeneration;
   if (loadController) loadController.abort();
@@ -628,6 +657,8 @@ async function load({ silent = false, arrival = false, addedId = null } = {}) {
     showSkeletons(accounts.length || Number(localStorage.getItem(lastCountKey) || 1));
   }
   try {
+    if (!adminChecked) await syncAdminSession();
+    if (generation !== loadGeneration) return;
     let payload = null;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const params = new URLSearchParams();
@@ -659,6 +690,9 @@ async function load({ silent = false, arrival = false, addedId = null } = {}) {
     if (!payload || generation !== loadGeneration) return;
 
     accounts = payload.accounts.map((account, order) => ({ ...account, _order: order }));
+    if (switchDlg.open && !accounts.some(account => account.id === switchAccountId && account.can_switch === true)) {
+      PanelUI.close(switchDlg);
+    }
     localStorage.setItem(lastCountKey, accounts.length);
     render();
     if (addedId) {
@@ -677,11 +711,15 @@ async function load({ silent = false, arrival = false, addedId = null } = {}) {
 }
 
 // 后台在错开刷新，页面开着就定期把快照捞回来，不用人去点
+async function pollAccounts() {
+  await syncAdminSession();
+  if (!document.hidden) load({ silent: true, adminChecked: true });
+}
 setInterval(() => {
-  if (!document.hidden && accounts.length) load({ silent: true });
+  if (!document.hidden) pollAccounts();
 }, POLL_INTERVAL);
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && accounts.length) load({ silent: true });
+  if (!document.hidden) pollAccounts();
 });
 
 function findAccountCard(id) {
@@ -716,6 +754,7 @@ function replaceAccountCard(id) {
 async function refreshOne(id) {
   const original = accounts.find((account) => account.id === id);
   if (!original || refreshingAccounts.has(id)) return;
+  const requestAdminCsrf = adminCsrf;
   const current = findAccountCard(id);
   const widths = [...(current?.querySelectorAll('.fill') || [])].map((fill) => fill.style.width);
   // 骨架没有按钮，焦点会掉到 body；记下来，等真卡回来再放回刷新按钮上
@@ -730,6 +769,7 @@ async function refreshOne(id) {
     if (r.status === 401) { openModal($('#auth')); return; }
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || '刷新失败');
+    if (requestAdminCsrf !== adminCsrf) d.account.can_switch = false;
     // The department may have changed while this request was in flight.
     const index = accounts.findIndex((account) => account.id === id);
     if (index >= 0) accounts[index] = { ...d.account, _order: accounts[index]._order };
@@ -887,7 +927,7 @@ function toast(text) {
 view.addEventListener('click', async (e) => {
   const btn = e.target.closest('button');
   if (!btn) return;
-  const { del, one, edit, deptId, detail, group, label, department } = btn.dataset;
+  const { del, one, edit, deptId, switchId, detail, group, label, department } = btn.dataset;
   if (btn.dataset.showAll !== undefined) {
     selectDepartment(ALL_DEPARTMENTS);
     return;
@@ -917,6 +957,8 @@ view.addEventListener('click', async (e) => {
       },
     });
     if (removed) { await load(); toast('已删除账号'); }
+  } else if (switchId !== undefined) {
+    openSwitchDialog(switchId);
   } else if (one !== undefined) {
     refreshOne(one);
   } else if (detail !== undefined) {
@@ -1308,7 +1350,7 @@ $('#d-save').onclick = async () => {
     return say('请输入新部门名称，或选择未分组', 'bad');
   }
   $('#d-save').disabled = true;
-  say('校验中…', 'busy');
+  say('正在获取桌面凭证并验证额度…', 'busy');
   try {
     const r = await fetch('/api/accounts', {
       method: 'POST', headers: jsonHeaders(),
@@ -1390,6 +1432,117 @@ $('#department-save').onclick = async () => {
 $('#department-input').onchange = () =>
   toggleNewDepartment($('#department-input'), $('#department-new'));
 
+// ---------- 本机账号切换 ----------
+const switchDlg = $('#switch-dlg');
+let switchAccountId = '';
+let switchCommands = null;
+let switchRequest = 0;
+let switchController = null;
+
+function detectedDesktop() {
+  const platform = navigator.userAgentData?.platform || navigator.platform || navigator.userAgent;
+  if (/win/i.test(platform)) return 'windows';
+  if (/mac/i.test(platform) && navigator.maxTouchPoints < 2) return 'macos';
+  return '';
+}
+
+function renderSwitchCommand() {
+  const system = $('#switch-system').value;
+  const item = switchCommands?.[system];
+  $('#switch-shell').textContent = system === 'windows' ? 'PowerShell 命令' : '终端命令';
+  $('#switch-command').value = item?.command || '';
+  $('#switch-script').textContent = item?.script || '';
+  $('#switch-result').hidden = !item;
+  $('#switch-copy').disabled = !item;
+  $('#switch-copy').innerHTML = `${ICON.copy}<span>复制命令</span>`;
+}
+
+async function generateSwitchCommand() {
+  if (!accounts.some(account => account.id === switchAccountId && account.can_switch === true)) {
+    if (switchDlg.open) PanelUI.close(switchDlg);
+    return;
+  }
+  const generation = ++switchRequest;
+  switchController?.abort();
+  switchController = new AbortController();
+  switchCommands = null;
+  renderSwitchCommand();
+  const status = $('#switch-status');
+  status.className = 'status busy';
+  status.textContent = '正在检查并续期桌面会话…';
+  $('#switch-generate').disabled = true;
+  try {
+    const response = await fetch(`/api/accounts/${encodeURIComponent(switchAccountId)}/switch-command`, {
+      method: 'POST', headers: jsonHeaders(), body: '{}',
+      cache: 'no-store', signal: switchController.signal,
+    });
+    const data = await response.json();
+    if (generation !== switchRequest || !switchDlg.open) return;
+    if (response.status === 401) openModal($('#auth'));
+    if (!response.ok) throw new Error(response.status === 401
+      ? '面板口令已失效，请重新输入后重试。' : data.detail || '生成命令失败');
+    switchCommands = data.commands;
+    $('#switch-account').textContent = `${data.label} · ${data.email}`;
+    status.className = 'status good';
+    status.textContent = '桌面会话验证通过，命令已生成。';
+    renderSwitchCommand();
+  } catch (error) {
+    if (error.name === 'AbortError' || generation !== switchRequest || !switchDlg.open) return;
+    status.className = 'status bad';
+    status.textContent = error.message;
+  } finally {
+    if (generation === switchRequest) $('#switch-generate').disabled = false;
+  }
+}
+
+function openSwitchDialog(id) {
+  const account = accounts.find(item => item.id === id);
+  if (account?.can_switch !== true) return;
+  switchAccountId = id;
+  $('#switch-account').textContent = `${account?.label || id} · ${account?.email || id}`;
+  $('#switch-system').value = detectedDesktop();
+  PanelUI.select.refresh($('#switch-system'));
+  $('#switch-audit').open = false;
+  switchCommands = null;
+  renderSwitchCommand();
+  openModal(switchDlg);
+  generateSwitchCommand();
+}
+
+switchDlg.addEventListener('close', () => {
+  ++switchRequest;
+  switchController?.abort();
+  switchCommands = null;
+  switchAccountId = '';
+  renderSwitchCommand();
+});
+$('#switch-system').onchange = renderSwitchCommand;
+$('#switch-generate').onclick = generateSwitchCommand;
+$('#switch-copy').onclick = async () => {
+  const command = $('#switch-command');
+  if (!command.value) return;
+  const copied = command.value;
+  const generation = switchRequest;
+  try {
+    if (navigator.clipboard?.writeText && window.isSecureContext) {
+      await navigator.clipboard.writeText(copied);
+    } else {
+      command.focus();
+      command.select();
+      if (!document.execCommand('copy')) throw new Error('请选中命令后手动复制。');
+    }
+    if (generation === switchRequest && switchDlg.open && command.value === copied) {
+      $('#switch-copy').innerHTML = `${ICON.copy}<span>已复制</span>`;
+    }
+  } catch {
+    if (generation !== switchRequest || !switchDlg.open) return;
+    command.focus();
+    command.select();
+    $('#switch-status').className = 'status';
+    $('#switch-status').textContent = '无法自动复制，命令已选中，请手动复制。';
+  }
+};
+
 // ---------- 口令 ----------
 $('#a-ok').onclick = async () => {
   token = $('#a-token').value.trim();
@@ -1404,7 +1557,7 @@ $('#a-ok').onclick = async () => {
   load();
 };
 
-fetch('/api/config').then(r => r.json()).then(c => {
+Promise.all([fetch('/api/config', { cache: 'no-store' }).then(r => r.json()), syncAdminSession()]).then(([c]) => {
   autoRefreshCycle = c.auto_refresh ? (c.cycle_seconds || 0) : 0;
-  if (c.needs_token && !token) openModal($('#auth')); else load();
+  if (c.needs_token && !token && !isAdmin) openModal($('#auth')); else load({ adminChecked: true });
 }).catch(() => load());

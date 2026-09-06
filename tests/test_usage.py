@@ -5,7 +5,37 @@
 
 import unittest
 
-from cursor_dashboard.usage import assemble, assemble_detail, pool_limits
+from cursor_dashboard.usage import assemble, assemble_desktop, assemble_detail, pool_limits
+
+
+class DesktopUsageTest(unittest.TestCase):
+    def test_desktop_fields_keep_quota_math_and_billing_period(self):
+        data = assemble_desktop('Test', {'email':'test@example.test','authId':'auth0|user_test'},
+            {'planInfo':{'planName':'Pro','includedAmountCents':2000}}, {'membershipType':'pro'},
+            {'billingCycleStart':'1787369791000','billingCycleEnd':'1790048191000',
+             'planUsage':{'totalSpend':25437,'autoPercentUsed':48.52666666666667,
+                          'apiPercentUsed':80,'totalPercentUsed':51.38787878787878}},
+            {}, {'noUsageBasedAllowed':True})
+        self.assertEqual(data['quota']['overall']['limit_usd'], 495)
+        self.assertEqual(data['quota']['cursor_models']['limit_usd'], 450)
+        self.assertEqual(data['cycle']['start'], '2026-08-22T03:36:31+00:00')
+        self.assertEqual(data['user_id'], 'auth0|user_test')
+        self.assertFalse(data['on_demand']['enabled'])
+
+    def test_grok_uses_explicit_reset_and_free_account_has_no_fabricated_quota(self):
+        data = assemble_desktop('Free', {}, {}, {'membershipType':'free'}, {},
+            {'usagePercent':0,'hasNonZeroIncludedLimit':True,'currentPeriodStart':'2026-09-05T18:22:04Z',
+             'nextResetTimestampUtc':'2026-09-10T10:04:51Z'}, {'noUsageBasedAllowed':True})
+        self.assertEqual(data['grok_weekly']['reset_at'], '2026-09-10T10:04:51+00:00')
+        data = assemble_desktop('Free', {}, {}, {}, {}, {'includedLimitZero':True}, {})
+        self.assertIsNone(data['grok_weekly'])
+
+    def test_on_demand_maps_cents_and_respects_organization_block(self):
+        period = {'spendLimitUsage':{'totalSpend':456,'overallLimit':10000}}
+        enabled = assemble_desktop('Test', {}, {}, {}, period, {}, {'hardLimit':100})
+        blocked = assemble_desktop('Test', {}, {}, {}, period, {}, {'onDemandSpendDisabledByOrganization':True})
+        self.assertEqual(enabled['on_demand'], {'enabled':True,'used_usd':4.56,'limit_usd':100})
+        self.assertFalse(blocked['on_demand']['enabled'])
 
 
 class PoolLimitsTest(unittest.TestCase):

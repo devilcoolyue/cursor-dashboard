@@ -176,6 +176,26 @@ def collect(client: CursorClient) -> dict:
                     client.usage_summary(), client.period_usage(), client.grok_status())
 
 
+def assemble_desktop(label, me, plan, profile, period, grok, hard_limit):
+    """Adapt desktop RPC JSON to the existing quota calculation contract."""
+    spend = period.get("spendLimitUsage") or {}
+    limit = spend.get("overallLimit")
+    if limit is None and (hard_limit.get("hardLimit") or 0) > 0:
+        limit = hard_limit["hardLimit"] * 100
+    summary = {
+        "membershipType": profile.get("membershipType"),
+        "individualUsage": {"onDemand": {
+            "enabled": not hard_limit.get("noUsageBasedAllowed", False)
+                       and not hard_limit.get("onDemandSpendDisabledByOrganization", False),
+            "used": spend.get("totalSpend", 0), "limit": limit,
+        }},
+    }
+    for key in ("billingCycleStart", "billingCycleEnd"):
+        date = ms_to_dt(period.get(key))
+        summary[key] = date.isoformat() if date else None
+    return assemble(label, {**me, "sub": me.get("authId")}, plan, summary, period, grok)
+
+
 def assemble(label: str, me, plan_info, usage_summary, period_usage, grok_status) -> dict:
     """纯计算，不发请求。"""
     plan    = (plan_info or {}).get("planInfo", {}) or {}
@@ -193,10 +213,12 @@ def assemble(label: str, me, plan_info, usage_summary, period_usage, grok_status
 
     # 无额度账号也返回周期和升级提示，不能把缺失用量当成剩余 100%。
     grok_usage = grok.get("usagePercent")
-    has_grok_quota = not grok.get("includedLimitZero") and grok_usage not in (None, "")
+    has_grok_quota = (not grok.get("includedLimitZero") and grok.get("hasNonZeroIncludedLimit") is not False
+                      and grok_usage not in (None, ""))
     # Grok Bot 是按周结算的独立池子，接口只给周期起点，重置时间自己 +7 天
     grok_start = iso_to_dt(grok.get("currentPeriodStart")) if has_grok_quota else None
-    grok_reset = grok_start + timedelta(days=7) if grok_start else None
+    grok_reset = (iso_to_dt(grok.get("nextResetTimestampUtc"))
+                  or (grok_start + timedelta(days=7) if grok_start else None)) if has_grok_quota else None
 
     auto_pool, api_pool, total_pool = pool_limits(
         pu.get("totalSpend"), pu.get("autoPercentUsed"),

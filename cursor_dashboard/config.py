@@ -62,6 +62,9 @@ REFRESH_IDLE_FACTOR = max(1.0, _positive_float("REFRESH_IDLE_FACTOR", "4"))
 # 撞上限流后间隔翻倍，最多放大到这个倍数；连续成功再慢慢收回来。
 REFRESH_MAX_BACKOFF = max(1.0, _positive_float("REFRESH_MAX_BACKOFF", "8"))
 
+# Renew comfortably before the next idle/backoff cycle; short-lived tokens use a smaller margin.
+TOKEN_REFRESH_MARGIN = max(30.0, _positive_float("TOKEN_REFRESH_MARGIN", "86400"))
+
 # ---------- 手动刷新 ----------
 # 单卡刷新保留，但要拦住"狂点一片卡片"这种新的洪峰入口。
 MANUAL_COOLDOWN = _positive_float("MANUAL_COOLDOWN", "60")

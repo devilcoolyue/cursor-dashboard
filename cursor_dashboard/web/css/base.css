@@ -213,6 +213,13 @@ body::before {
 }
 .prefs-btn:hover { background: var(--btn-hover-bg); color: var(--fg); }
 .prefs-btn svg { width: 12px; height: 12px; }
+.admin-menu-link {
+  display: flex; align-items: center; gap: 9px; padding: 9px 10px;
+  color: var(--dim); font-size: 13px; text-decoration: none; border-radius: var(--radius-ctl);
+}
+.admin-menu-link:hover { color: var(--fg); background: var(--card-hi); }
+.admin-menu-link svg { width: 16px; height: 16px; }
+.admin-menu-link[hidden], #account-department-field[hidden] { display: none; }
 
 /* 右侧主面板 */
 .main-wrapper {
@@ -405,7 +412,7 @@ button.primary:hover:not(:disabled) {
 
 /* 名字始终盖在丝带和燃尽水印上面——丝带是背景装饰，不该顶开卡片布局 */
 .card-head { min-height: 40px; position: relative; z-index: 1; }
-.name-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-right: 124px; }
+.name-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-right: 154px; }
 .label { font-size: 15px; font-weight: 600; }
 .identity-meta { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 4px 8px; margin-top: 2px; min-width: 0; }
 .email {
@@ -622,6 +629,21 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .hint-text { color: var(--dimmer); font-size: 11.5px; line-height: 1.75; margin: 7px 0 0; }
 .hint-text code { background: var(--code-bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
 
+#switch-dlg { width: min(620px, calc(100vw - 32px)); }
+#switch-account { color: var(--fg); font-weight: 600; }
+#switch-command { height: 126px; min-height: 126px; overflow-wrap: anywhere; word-break: break-all; }
+#switch-result[hidden] { display: none; }
+#switch-result .hint-text { margin: 8px 0 12px; }
+#switch-audit { margin-bottom: 16px; font-size: 12px; }
+#switch-audit summary { cursor: pointer; color: var(--dim); }
+#switch-script {
+  max-height: 220px; padding: 12px; overflow: auto; white-space: pre-wrap;
+  overflow-wrap: anywhere; background: var(--input-bg); border: 1px solid var(--line);
+  border-radius: var(--radius-ctl); font-size: 11px; line-height: 1.6;
+}
+#switch-copy { display: inline-flex; justify-content: center; align-items: center; gap: 6px; min-width: 106px; }
+#switch-copy svg { width: 15px; height: 15px; flex-shrink: 0; }
+
 /* ---------- 卡片显示项 ---------- */
 #prefs-dlg {
   width: min(720px, calc(100vw - 32px));
@@ -826,7 +848,7 @@ a { color: var(--accent); }
   .card-head { padding-top: 30px; }
   .name-line { padding-right: 0; }
   .acts { opacity: 1; }
-  .cycle-ring { top: 5px; right: 130px; }
+  .cycle-ring { top: 5px; right: 160px; }
   .card:hover .cycle-ring, .card:has(:focus-visible) .cycle-ring { opacity: 1; }
   .row { flex-wrap: wrap; }
   .row .status { width: 100%; }

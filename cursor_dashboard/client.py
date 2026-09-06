@@ -1,7 +1,7 @@
 """cursor.com 内部接口的薄封装。
 
 这些接口非官方公开（是网页 dashboard 自己调的），字段随时可能变。
-认证只靠一个 cookie：WorkosCursorSessionToken，等同登录态。
+初次授权使用 WorkosCursorSessionToken；常规请求使用桌面 Bearer 凭证。
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from .config import (
 )
 
 BASE = "https://cursor.com"
+DESKTOP_BASE = "https://api2.cursor.sh"
 COOKIE_NAME = "WorkosCursorSessionToken"
 TIMEOUT = 20
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -28,6 +29,8 @@ UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
 # **aggregated_usage 刻意不在这里**：它是点开卡片才拉的按需明细，加进来会让
 # 后台轮询的出站量再涨一档，而按 IP 限流是这个项目最大的风险。
 ENDPOINTS = ("me", "plan_info", "usage_summary", "period_usage", "grok_status")
+DESKTOP_ENDPOINTS = ("desktop_me", "desktop_plan", "desktop_profile", "desktop_period", "desktop_grok", "desktop_limit")
+AUTH_CLIENT_ID = "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB"
 RETRYABLE_STATUS = {500, 502, 504}
 # 被挡住时的状态码。429 是标准限流；403 只有在返回 HTML 时才算（见 _call）；
 # 503 通常是边缘节点在挡，不是接口真的挂了。
@@ -67,7 +70,8 @@ class CursorClient:
     def __init__(self, cookie: str, label: str = ""):
         self.label = label or "unnamed"
         self.s = requests.Session()
-        self.s.cookies.set(COOKIE_NAME, cookie, domain="cursor.com", path="/")
+        if cookie:
+            self.s.cookies.set(COOKIE_NAME, cookie, domain="cursor.com", path="/")
         self.s.headers.update({
             "User-Agent": UA,
             "Accept": "application/json, text/plain, */*",
@@ -75,10 +79,10 @@ class CursorClient:
             "Referer": f"{BASE}/dashboard/spending",
         })
 
-    def _call(self, method: str, path: str, payload=None):
+    def _call(self, method: str, path: str, payload=None, *, base=BASE, params=None, headers=None, read_json=True):
         # 不跟跳转：cookie 失效时接口不返回 401，而是 307 去 WorkOS 登录页，
         # 跟过去只会拿到一个和本次请求无关的 404
-        r = self.s.request(method, BASE + path, json=payload, timeout=TIMEOUT,
+        r = self.s.request(method, base + path, json=payload, params=params, headers=headers, timeout=TIMEOUT,
                            allow_redirects=False)
         if r.status_code == 401:
             raise AuthExpired(f"[{self.label}] 会话已失效，请重新登录")
@@ -101,9 +105,54 @@ class CursorClient:
                 raise AuthExpired(f"[{self.label}] 会话已失效，请重新登录")
             raise RuntimeError(f"[{self.label}] {path} 意外跳转: {loc}")
         r.raise_for_status()
-        return r.json() if r.content else {}
+        return r.json() if r.content and read_json else {}
 
     def me(self):             return self._call("GET",  "/api/auth/me")
+
+    def desktop_callback(self, flow: str, challenge: str):
+        return self._call("POST", "/api/auth/loginDeepCallbackControl", {
+            "uuid": flow, "challenge": challenge,
+        }, read_json=False)
+
+    def desktop_poll(self, flow: str, verifier: str):
+        return self._call("GET", "/auth/poll", base=DESKTOP_BASE,
+                          params={"uuid": flow, "verifier": verifier},
+                          headers={"x-cursor-client-type": "ide"})
+
+    def desktop_profile(self, token: str):
+        return self._call("GET", "/auth/full_stripe_profile", base=DESKTOP_BASE,
+                          headers={"Authorization": f"Bearer {token}", "x-cursor-client-type": "ide"})
+
+    def desktop_refresh(self, refresh_token: str):
+        return self._call("POST", "/oauth/token", base=DESKTOP_BASE,
+                          headers={"x-cursor-client-type": "ide"}, payload={
+                              "grant_type": "refresh_token", "client_id": AUTH_CLIENT_ID,
+                              "refresh_token": refresh_token,
+                          })
+
+    def _rpc(self, token: str, method: str, payload=None):
+        return self._call("POST", "/aiserver.v1.DashboardService/" + method, payload or {},
+                          base=DESKTOP_BASE, headers={"Authorization": f"Bearer {token}",
+                          "x-cursor-client-type": "ide", "Connect-Protocol-Version": "1"})
+
+    def desktop_me(self, token): return self._rpc(token, "GetMe")
+    def desktop_plan(self, token): return self._rpc(token, "GetPlanInfo")
+    def desktop_period(self, token): return self._rpc(token, "GetCurrentPeriodUsage")
+    def desktop_limit(self, token): return self._rpc(token, "GetHardLimit")
+
+    def desktop_grok(self, token):
+        try:
+            return self._rpc(token, "GetSandUsageStatus")
+        except (AuthExpired, RateLimited):
+            raise
+        except Exception:
+            return {}
+
+    def desktop_aggregated(self, token, start_ms, end_ms):
+        return self._rpc(token, "GetAggregatedUsageEvents", {
+            "teamId": 0, "userId": 0, "startDate": int(start_ms), "endDate": int(end_ms),
+        })
+
     def plan_info(self):      return self._call("POST", "/api/dashboard/get-plan-info", {})
     def usage_summary(self):  return self._call("GET",  "/api/usage-summary")
     def period_usage(self):   return self._call("POST", "/api/dashboard/get-current-period-usage", {})

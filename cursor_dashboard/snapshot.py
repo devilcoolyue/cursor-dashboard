@@ -150,6 +150,12 @@ def view(acc: dict, ident: str, snap: dict | None = None) -> dict:
         "label": acc.get("label") or "unnamed",
         "email": (data or {}).get("email") or acc.get("email"),
         "department": acc.get("department") or "",
+        "auth": {
+            "mode": "desktop" if acc.get("refresh_token") else "legacy_cookie",
+            "expires_at": _iso(acc.get("token_expires_at", 0)),
+            "refreshed_at": _iso(acc.get("auth_refreshed_at", 0)),
+            "needs_reauthorization": bool(acc.get("auth_invalid")),
+        },
         "ok": bool(data) and not expired,
         "data": data,
         # 数据是什么时候统计出来的——卡片上显示的就是这个，不是"页面打开时间"

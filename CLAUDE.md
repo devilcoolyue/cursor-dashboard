@@ -46,6 +46,23 @@ node --check cursor_dashboard/web/js/app.js                               # 页�
 
 ## 架构
 
+`/admin` 是独立管理页，`admin.py` 保存 scrypt 密码哈希、12 小时管理员会话和切换开放范围。
+`ADMIN_PASSWORD` 可在启动时重置；随机初始密码只显示一次。管理员 API 只接受管理会话，
+不能用 `PANEL_TOKEN` 替代。管理会话的修改请求必须校验 CSRF，所有 API 禁止缓存。
+普通卡片响应通过 `public_account_view()` 移除凭证时间信息并附加 `can_switch`，
+默认仅管理员可切换；开放范围按全部/部门/稳定数据库账号 id 合并。命令接口在出站前和
+返回前检查权限，前端隐藏按钮不能替代服务端检查。原有部门调整、删除和授权时选择部门
+沿用 `PANEL_TOKEN` 访问规则，不要求管理员登录；部门切换权限按账号当前部门判断。凭证列表仅在管理员 API 中输出
+时间和状态，永不返回 Cookie/AT/RT；`auth_refreshed_at` 仅记录成功保存/续期，标记撤销不得更新。
+
+桌面凭证已成为主认证路径：`POST /api/accounts` 用 Cookie 经 PKCE 换取 AT/RT，验证身份
+和桌面额度接口后原子保存。`sessions.py` 管理旧账号迁移、按需续期和撤销状态，数据库
+`auth_leases` 串行化同账号续期，`auth_generation` + 旧 RT 比较防止覆盖重新授权。
+所有常规额度/明细/切换请求使用桌面凭证，不得退回 Cookie 取数；只有初次授权和没有 RT 的
+旧账号迁移使用 Cookie。`DESKTOP_ENDPOINTS` 是六个请求，`assemble_desktop` 适配数据后沿用
+原额度计算；Grok 优先使用明确的重置时间。续期必须保持快照 fingerprint 稳定，任何常规
+API 响应都不得包含 AT/RT。`TOKEN_REFRESH_MARGIN` 默认最多提前一天，覆盖空闲和退避周期。
+
 ```
 cursor_dashboard/
 ├── client.py     接口封装、AuthExpired、RateLimited、ENDPOINTS、fetch_one
@@ -110,6 +127,8 @@ cursor_dashboard/
 `GET /api/accounts/{id}/usage-detail`（本周期按模型明细，**唯一一个页面点了才回源的读接口**）、
 `POST /api/accounts`（新增/续期，同一入口，成功后直接写快照）、
 `PATCH /api/accounts/{id}/department`（只改部门，不碰 cookie）、
+`POST /api/accounts/{id}/switch-command`（验活后生成本地 Windows/macOS 命令，凭证仅在此
+鉴权接口按次下发，响应必须 `Cache-Control: no-store`；服务端绝不执行命令）、
 `POST /api/accounts/{id}/refresh`（单卡刷新，走冷却 + 令牌桶）、
 `DELETE /api/accounts/{id}`。
 `store.AccountsError` 由 `server.handle_accounts_error` 转成 500 + `detail`，

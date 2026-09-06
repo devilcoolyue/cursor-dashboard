@@ -228,7 +228,7 @@ class RefreshAccountTest(unittest.IsolatedAsyncioTestCase):
         async def blocked(*_args):
             raise RateLimited("挡住")
 
-        with patch.object(server, "fetch_cursor", side_effect=blocked), \
+        with patch.object(server.sessions, "ensure_account", side_effect=blocked), \
              patch.object(snapshot, "save_snapshot"):
             kind = await server.refresh_account(self.acc)
 

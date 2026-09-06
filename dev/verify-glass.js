@@ -211,7 +211,7 @@ async (page) => {
   const previewLabel = `Motion Preview ${Date.now()}`;
   await page.getByRole('textbox', { name: '姓名', exact: true }).fill(previewLabel);
   await page.getByRole('textbox', { name: 'Cookie', exact: true }).fill('demo');
-  await page.getByRole('button', { name: '校验并保存', exact: true }).click();
+  await page.getByRole('button', { name: '授权并保存', exact: true }).click();
   const added = page.locator('.card').filter({ has: page.locator('.label', { hasText: previewLabel }) });
   await added.waitFor();
   check(await added.locator('.glass-card-surface').count() === 1, 'A saved account condenses into its new card');
