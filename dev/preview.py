@@ -1,7 +1,8 @@
-"""Isolated UI preview with synthetic accounts; no database or outbound requests.
+"""Legacy synthetic UI fixture; no database or outbound requests.
 
-Run: python dev/preview.py --port 8789
-Use "demo" as the cookie when adding or renewing a preview account.
+The standalone page does not inject the current admin fragment and cannot finish
+initializing. See docs/maintenance.md; preview-admin.py still reuses its data helpers.
+The legacy form handlers accept "demo" as the cookie.
 """
 
 from __future__ import annotations

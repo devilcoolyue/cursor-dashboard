@@ -7,8 +7,8 @@
 服务端本身不碰浏览器，可以跑在无桌面的服务器上。常规接口不返回凭证；
 桌面切换命令接口按次返回所选账号的本地脚本。
 
-**页面读的是快照，不是实时回源。** 回源由 scheduler 在后台一个一个账号慢慢做，
-页面只负责把最后一次统计结果显示出来。原因见 scheduler 的模块注释。
+额度列表只读快照，scheduler 在后台逐账号更新；授权、手动刷新、明细和切换另有
+按需回源。请求链路与权限边界见 docs/maintenance.md。
 """
 
 from __future__ import annotations
@@ -69,7 +69,7 @@ _next_slot = 0.0
 
 
 async def _pace() -> None:
-    """给每个出站请求分配一个时槽，保证任意两次之间至少隔 REQUEST_MIN_INTERVAL。
+    """给出站任务分配相隔 REQUEST_MIN_INTERVAL 的时槽，内部重试不重新排队。
 
     信号量限的是并发，不是速率——接口够快时 3 个并发照样能打出几十 QPS，而边缘
     防护看的就是速率。所以真正的闸门在这里。锁内只算时槽、锁外再睡，避免把等待
@@ -97,7 +97,7 @@ def _pacer_lock() -> asyncio.Lock:
 
 
 async def fetch_cursor(cookie: str, label: str, name: str, *args):
-    """所有访问 cursor.com 的路径都过这里：先排队拿时槽，再占并发名额。"""
+    """服务端 Cursor 请求入口：先排队拿时槽，再占并发名额。"""
     await _pace()
     if _request_slots is None:
         return await asyncio.to_thread(fetch_one, cookie, label, name, *args)
@@ -176,9 +176,7 @@ def take_manual_token() -> bool:
 
 
 # ---------- 按模型明细 ----------
-# 明细是点开卡片才拉的，不进后台轮询——42 个账号全量拉一遍就是又一次 42 个请求的
-# 洪峰，正是 CLAUDE.md 里反复交代不能造的那种。这里只挡住"同一张卡连点几下"，
-# 保证每次点开拿到的都是刚从 cursor.com 取回来的数。
+# 明细不进后台轮询；同账号在 DETAIL_TTL 内复用结果，Cookie 改变使缓存失效。
 _details: dict[str, tuple[float, dict]] = {}
 _details_lock = threading.Lock()
 
@@ -212,7 +210,7 @@ async def lifespan(_app: FastAPI):
     initial_password = await asyncio.to_thread(admin.initialize_admin)
     if initial_password:
         print(f"管理员初始密码（仅显示一次）: {initial_password}", flush=True)
-    # N 账号 × 4 接口打平成一个任务集，共用这一个池。不要改成嵌套线程池——线程数会乘起来。
+    # 同账号的桌面请求共用线程池；后台逐账号处理，不为每个账号嵌套创建线程池。
     pool = ThreadPoolExecutor(max_workers=MAX_WORKERS, thread_name_prefix="probe")
     asyncio.get_running_loop().set_default_executor(pool)
     _request_slots = asyncio.Semaphore(REQUEST_CONCURRENCY)

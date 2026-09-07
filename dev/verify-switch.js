@@ -1,4 +1,4 @@
-// Run with playwright-cli run-code --filename dev/verify-switch.js against :8790 preview.
+// Legacy :8790 preview fixture needs template adaptation; see docs/maintenance.md.
 async (page) => {
   await page.unroute('**/switch-command');
   const checks = [];

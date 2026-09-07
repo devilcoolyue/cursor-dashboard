@@ -1,4 +1,4 @@
-// Run with playwright-cli run-code --filename dev/verify-glass.js against dev/preview.py.
+// Legacy dev/preview.py fixture needs template adaptation; see docs/maintenance.md.
 async (page) => {
   const checks = [];
   const errors = [];

@@ -1,6 +1,6 @@
-"""把 5 个接口的原始返回拼成面板 / CLI 共用的结构。
+"""将桌面及旧网页响应组装为面板 / CLI 共用的数据口径。
 
-这里全是纯计算，不发请求——面板和命令行共用同一份口径，改字段只需要改这一处。
+assemble 系列与额度计算不发请求；collect 仅保留旧网页串行取数兼容入口。
 """
 
 from __future__ import annotations
@@ -45,26 +45,10 @@ def _int(v) -> int:
 
 
 # ---------- 额度池 ----------
-# 「Cursor Models 一共有多少额度」不是接口里的字段，但能从官方百分比反解出来。
-# totalPercentUsed 是两个池按容量加权的平均数：
-#     totalPct·(A+B) = autoPct·A + apiPct·B
-# 于是
-#     总池   T = totalSpend / totalPct
-#     池之比 k = A/B = (apiPct − totalPct) / (totalPct − autoPct)
-# 实测某 Pro 账号解出 A=$450、B=$45、T=$495 三个整数，且在两个不同时刻都成立
-# （autoPct·A + apiPct·B 精确等于 totalSpend）。
-#
-# **这和「不要拿美元金额去算百分比」那条不冲突**：那条禁的是拿 totalSpend 去除
-# includedAmountCents（$20），两者压根不是一个尺度；这里是反过来，用官方百分比
-# 去标定池子有多大，百分比仍然是唯一的事实来源。
-#
-# 三个百分比互相贴得太近时 k 会退化成 0/0（比如刚开始用、或者两类用量比例恰好
-# 等于池的比例），这时只报总池，不猜分池——宁可不显示，也不能显示一个瞎猜的数。
+# 假设总百分比为两池的容量加权平均，反解美元上限；百分比仍使用上游口径。
+# 三个百分比过近时分池方程退化，只保留可解的总池。公式及估算边界见维护文档。
 POOL_MIN_GAP = 0.05          # 百分点
-# 百分比被服务端截顶在 100：一个真用到 110% 的账号照样报 100.00，代进方程就是假数据。
-# 42 个账号的实测里，张琛 auto=98.03 / api=100.00 解出 $402 / $93（真值 $450 / $45），
-# 全用满的账号解出的"总池"其实是消费额（$495.32），会随着继续消费一直变大。
-# 所以任何一档触顶就不用它：**别为了"这样每张卡都能显示金额"把这道闸去掉。**
+# 上游百分比可能截顶；综合触顶时丢弃全部估算，分档触顶时仅丢弃分池。
 PCT_CEILING = 99.99
 
 
@@ -78,7 +62,7 @@ def pool_limits(total_spend_cents, auto_pct, api_pct, total_pct):
 
     auto_pct = float(auto_pct or 0)
     api_pct = float(api_pct or 0)
-    # 综合没触顶但某一档触顶：总池仍然可信（实测唐永林、张琛都解出 $495），分池不可信
+    # 综合没触顶但某一档触顶：保留总池估算，不反解分池。
     if auto_pct >= PCT_CEILING or api_pct >= PCT_CEILING:
         return (None, None, cents(total_pool))
     # total_pct 一定落在 auto_pct 和 api_pct 之间（它是两者的加权平均）
@@ -171,7 +155,7 @@ def assemble_detail(aggregated) -> dict:
 # ---------- 组装 ----------
 
 def collect(client: CursorClient) -> dict:
-    """串行取数，CLI 用。服务端不走它（走 fetch_one + assemble 并发取）。"""
+    """保留的网页串行取数入口；当前 CLI 和服务端均走桌面凭证路径。"""
     return assemble(client.label, client.me(), client.plan_info(),
                     client.usage_summary(), client.period_usage(), client.grok_status())
 
@@ -215,7 +199,7 @@ def assemble(label: str, me, plan_info, usage_summary, period_usage, grok_status
     grok_usage = grok.get("usagePercent")
     has_grok_quota = (not grok.get("includedLimitZero") and grok.get("hasNonZeroIncludedLimit") is not False
                       and grok_usage not in (None, ""))
-    # Grok Bot 是按周结算的独立池子，接口只给周期起点，重置时间自己 +7 天
+    # 优先使用明确重置时间，缺失时按周期起点加 7 天。
     grok_start = iso_to_dt(grok.get("currentPeriodStart")) if has_grok_quota else None
     grok_reset = (iso_to_dt(grok.get("nextResetTimestampUtc"))
                   or (grok_start + timedelta(days=7) if grok_start else None)) if has_grok_quota else None

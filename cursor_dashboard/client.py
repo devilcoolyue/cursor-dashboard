@@ -1,6 +1,6 @@
-"""cursor.com 内部接口的薄封装。
+"""Cursor 网页授权与 api2.cursor.sh 桌面内部接口的薄封装。
 
-这些接口非官方公开（是网页 dashboard 自己调的），字段随时可能变。
+这些接口不是公开 API 契约，字段随时可能变。
 初次授权使用 WorkosCursorSessionToken；常规请求使用桌面 Bearer 凭证。
 """
 
@@ -25,10 +25,9 @@ TIMEOUT = 20
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 
-# 一个账号常规要打的 5 个接口。服务端按这个粒度并发，CLI 仍按顺序串行。
-# **aggregated_usage 刻意不在这里**：它是点开卡片才拉的按需明细，加进来会让
-# 后台轮询的出站量再涨一档，而按 IP 限流是这个项目最大的风险。
+# 保留的旧网页接口集合；当前面板和 CLI 使用下面的 DESKTOP_ENDPOINTS。
 ENDPOINTS = ("me", "plan_info", "usage_summary", "period_usage", "grok_status")
+# 常规桌面取数为 6 项；模型明细按需查询，不加入后台刷新集合。
 DESKTOP_ENDPOINTS = ("desktop_me", "desktop_plan", "desktop_profile", "desktop_period", "desktop_grok", "desktop_limit")
 AUTH_CLIENT_ID = "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB"
 RETRYABLE_STATUS = {500, 502, 504}
@@ -39,11 +38,11 @@ RETRY_AFTER_CAP = 120
 
 
 class AuthExpired(RuntimeError):
-    """会话 Cookie 失效，需要重新导出"""
+    """远端拒绝认证；调用方据凭证类型决定续期或要求重新授权。"""
 
 
 class RateLimited(RuntimeError):
-    """被 Cursor / Vercel 临时挡住，cookie 本身没问题，退避后重试即可。
+    """被 Cursor / Vercel 临时限制，退避后重试；不能据此判定凭证失效。
 
     **不要把它并进 AuthExpired**：限流返回的是 403 + HTML 安全拦截页，
     过去一律当成失效，结果整屏卡片变红、用户重新粘贴 cookie 还是红的。

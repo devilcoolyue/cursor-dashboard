@@ -1,12 +1,8 @@
 """后台刷新调度器：一个账号一个账号地慢慢刷，把请求摊平在时间轴上。
 
-面板打开时不再回源，所有常规的 cursor.com 访问都从这里发出。之所以要这样：
-过去"刷新全部"会在几秒内打出 N×5 个请求（42 个账号就是 210 个），瞬时几十 QPS，
-Vercel 边缘防护直接回 403 HTML 拦截页。摊到 REFRESH_INTERVAL 里之后，同样的账号
-数只有 0.2 QPS 左右，差三个数量级。
-
-节奏是自适应的：撞到限流就把间隔翻倍，连续成功再慢慢收回来；长时间没人看面板
-就降速——没人看的时候不值得持续打 cursor.com。
+额度列表只读快照；每账号常规取数为 6 个桌面接口，完成后再等待分摊间隔。
+实际整轮耗时还包括取数、抖动与退避，REFRESH_INTERVAL 是目标值。
+遇到限流加倍等待，累计成功后收紧；长时间没有 API 活动时降速。
 """
 
 from __future__ import annotations
@@ -25,7 +21,7 @@ from .config import (
 )
 from .store import AccountsError, account_id, load_accounts
 
-# 连续成功这么多次才把退避收紧一档，避免刚被限流就急着加速
+# 上次限流后累计成功这么多次才收紧退避；其他错误不会清零该计数。
 RECOVERY_STREAK = 10
 RECOVERY_FACTOR = 0.7
 EMPTY_RETRY = 30.0
@@ -88,7 +84,7 @@ class Scheduler:
     # ---------- 节奏 ----------
 
     def _cycle(self) -> float:
-        """当前实际的整轮周期，前端用它显示"后台每 X 分钟更新一次"。"""
+        """含空闲和退避倍数的目标周期，不含请求耗时、间隔下限与抖动。"""
         cycle = REFRESH_INTERVAL * self._backoff
         return cycle * REFRESH_IDLE_FACTOR if self.idle else cycle
 

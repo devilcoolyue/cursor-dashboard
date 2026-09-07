@@ -1,4 +1,4 @@
-// Focused motion QA: freeze the real dialog at known times and inspect its geometry.
+// Legacy dev/preview.py fixture needs template adaptation; see docs/maintenance.md.
 async (page) => {
   const checks = [];
   const check = (condition, label) => {

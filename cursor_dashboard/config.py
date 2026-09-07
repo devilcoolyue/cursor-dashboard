@@ -20,7 +20,8 @@ DATABASE_PATH = Path(
     os.environ.get("DATABASE_PATH") or LEGACY_ACCOUNTS_PATH.with_suffix(".db")
 )
 
-# 非空则所有 /api/* 需要带 X-Panel-Token。公网部署务必设置：
+# 普通 API 在非空时检查 X-Panel-Token，有效管理员会话可直接访问；管理 API 独立鉴权。
+# /api/config 和 /api/admin/session 为公开引导接口。公网部署务必设置口令：
 # 这个服务存的是等同登录态的会话 token，裸奔等于把账号送人。
 PANEL_TOKEN = os.environ.get("PANEL_TOKEN", "").strip()
 
@@ -37,7 +38,7 @@ def _positive_float(name: str, default: str) -> float:
 # 限并发不等于限速率：10 个并发在接口够快时依然是每秒几十个请求，而 Cursor 的边缘
 # 防护看的是单位时间请求数。所以并发压到很小，真正的闸门是下面的最小间隔。
 REQUEST_CONCURRENCY = max(1, int(os.environ.get("REQUEST_CONCURRENCY", "3")))
-# 任意两个出站请求之间的最小间隔（秒）。所有访问 cursor.com 的路径都过这道闸。
+# 服务端出站任务的排队间隔（秒）；fetch_one 内部重试不重新排队，CLI 单独等待。
 REQUEST_MIN_INTERVAL = _positive_float("REQUEST_MIN_INTERVAL", "0.5")
 
 REQUEST_RETRIES = max(0, int(os.environ.get("REQUEST_RETRIES", "2")))
@@ -47,26 +48,24 @@ RATE_LIMIT_RETRIES = max(0, int(os.environ.get("RATE_LIMIT_RETRIES", "3")))
 RATE_LIMIT_BASE_DELAY = _positive_float("RATE_LIMIT_BASE_DELAY", "2.0")
 
 # ---------- 后台刷新 ----------
-# 页面不再回源，只读快照；回源由后台调度器一个一个账号慢慢做。
+# 额度列表只读快照；后台逐账号刷新，手动刷新、明细、授权和切换另有按需请求。
 REFRESH_ENABLED = os.environ.get("REFRESH_ENABLED", "1").strip() not in ("0", "false", "no")
-# 每个账号的目标刷新周期（秒）。调度器把它均摊成账号之间的间隔：
-# 42 个账号 / 900 秒 = 每 21 秒刷一个，平均 0.24 QPS。
-# **别往下调到几分钟**：错开只降瞬时密度，周期越短长期总量越大，
-# 同一个 IP 上 24 小时不停打，反而会招来更严的封禁。额度是月度数据，不需要秒级新鲜。
+# 目标整轮周期（秒），按账号数分摊等待；实际周期还包含取数耗时。
+# 常规每账号 6 个接口，缩短周期会增加长期请求量，部署估算见 docs/operations.md。
 REFRESH_INTERVAL = max(60.0, _positive_float("REFRESH_INTERVAL", "900"))
-# 两次回源之间的绝对下限，防止账号数很多时把间隔压没了。
+# 账号间等待的下限基数；调度器随后仍会乘 0.85 至 1.15 的抖动。
 REFRESH_MIN_GAP = _positive_float("REFRESH_MIN_GAP", "2.0")
 # 这么久没人访问面板就降速，没人看的时候不值得持续打 cursor.com。
 REFRESH_IDLE_AFTER = _positive_float("REFRESH_IDLE_AFTER", "1800")
 REFRESH_IDLE_FACTOR = max(1.0, _positive_float("REFRESH_IDLE_FACTOR", "4"))
-# 撞上限流后间隔翻倍，最多放大到这个倍数；连续成功再慢慢收回来。
+# 撞上限流后间隔翻倍，最多放大到这个倍数；累计成功后再收紧。
 REFRESH_MAX_BACKOFF = max(1.0, _positive_float("REFRESH_MAX_BACKOFF", "8"))
 
 # Renew comfortably before the next idle/backoff cycle; short-lived tokens use a smaller margin.
 TOKEN_REFRESH_MARGIN = max(30.0, _positive_float("TOKEN_REFRESH_MARGIN", "86400"))
 
 # ---------- 手动刷新 ----------
-# 单卡刷新保留，但要拦住"狂点一片卡片"这种新的洪峰入口。
+# 单卡刷新、未缓存的模型明细和切换命令共用操作令牌桶。
 MANUAL_COOLDOWN = _positive_float("MANUAL_COOLDOWN", "60")
 MANUAL_BURST = max(1, int(os.environ.get("MANUAL_BURST", "5")))
 # 按模型明细的缓存寿命。明细只在点开卡片时才回源，这道缓存挡的是"同一张卡连点几下"，
