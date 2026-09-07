@@ -218,8 +218,11 @@ body::before {
   color: var(--dim); font-size: 13px; text-decoration: none; border-radius: var(--radius-ctl);
 }
 .admin-menu-link:hover { color: var(--fg); background: var(--card-hi); }
+.admin-menu-link[aria-current="page"] { color: var(--accent); background: var(--accent-bg); font-weight: 550; }
 .admin-menu-link svg { width: 16px; height: 16px; }
 .admin-menu-link[hidden], #account-department-field[hidden] { display: none; }
+#quota-workspace[hidden], #admin-workspace[hidden], .topbar-right[hidden],
+#account-total-badge[hidden], #open-prefs[hidden] { display: none; }
 
 /* 右侧主面板 */
 .main-wrapper {

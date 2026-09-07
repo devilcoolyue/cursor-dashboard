@@ -34,6 +34,7 @@
 <link rel="stylesheet" href="/static/css/tokens.css?v=__ASSET_VERSION__">
 <link rel="stylesheet" href="/static/css/base.css?v=__ASSET_VERSION__">
 <link rel="stylesheet" href="/static/css/ui.css?v=__ASSET_VERSION__">
+<link rel="stylesheet" href="/static/css/admin.css?v=__ASSET_VERSION__">
 <link rel="stylesheet" href="/static/css/skins/glass.css?v=__ASSET_VERSION__">
 <link rel="stylesheet" href="/static/css/skins/cyberpunk.css?v=__ASSET_VERSION__">
 <link rel="stylesheet" href="/static/css/skins/graphite.css?v=__ASSET_VERSION__">
@@ -67,7 +68,7 @@
         <div class="section-title">部门导航</div>
         <div class="dept-nav-list" id="department-tabs" role="tablist"></div>
       </div>
-      <a href="/admin" class="admin-menu-link" id="admin-menu-link" hidden>
+      <a href="#admin" class="admin-menu-link" id="admin-menu-link" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11Z"/><path d="m9 12 2 2 4-4"/></svg>
         <span>系统管理</span>
       </a>
@@ -146,6 +147,11 @@
         </div>
       </div>
 
+      <div id="admin-session" class="admin-session" hidden>
+        <span id="session-expiry"></span>
+        <button type="button" class="icon-button" id="logout" aria-label="退出管理员登录" title="退出管理员登录" data-icon="logout"></button>
+      </div>
+
       <div class="topbar-right">
         <div class="search-wrap">
           <div class="search-field">
@@ -183,10 +189,15 @@
     </header>
 
     <main class="main-content">
-      <div class="filter-stat-row" id="filter-stat-wrap" hidden>
-        <div class="filter-stat" id="filter-stat" hidden></div>
+      <div id="quota-workspace">
+        <div class="filter-stat-row" id="filter-stat-wrap" hidden>
+          <div class="filter-stat" id="filter-stat" hidden></div>
+        </div>
+        <div id="view"></div>
       </div>
-      <div id="view"></div>
+      <section id="admin-workspace" aria-label="系统管理" hidden>
+        __ADMIN_CONTENT__
+      </section>
     </main>
   </div>
 </div>
@@ -340,6 +351,7 @@
 </dialog>
 <script src="/static/js/ui.js?v=__ASSET_VERSION__"></script>
 <script src="/static/js/glass-motion.js?v=__ASSET_VERSION__"></script>
+<script src="/static/js/admin.js?v=__ASSET_VERSION__"></script>
 <script src="/static/js/app.js?v=__ASSET_VERSION__"></script>
 </body>
 </html>

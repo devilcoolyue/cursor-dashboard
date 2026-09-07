@@ -1,89 +1,54 @@
-<!doctype html>
-<html lang="zh-CN" data-skin="classic" data-theme="light">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="icon" href="data:,">
-<title>系统管理 · Cursor 额度</title>
-<script>
-  (function () {
-    try {
-      var el = document.documentElement;
-      el.dataset.skin = localStorage.getItem('panelSkin') || 'classic';
-      var mode = localStorage.getItem('panelTheme') || 'system';
-      el.dataset.theme = mode === 'dark' || (mode === 'system'
-        && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
-    } catch (e) {}
-  })();
-</script>
-<link rel="stylesheet" href="/static/css/tokens.css?v=__ASSET_VERSION__">
-<link rel="stylesheet" href="/static/css/admin.css?v=__ASSET_VERSION__">
-</head>
-<body>
-<main id="login-view" class="login-view">
-  <form id="login-form" class="login-form">
-    <a class="login-brand" href="/">Cursor 额度</a>
-    <div class="login-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></svg></div>
-    <h1>管理员登录</h1>
+<div id="login-view" class="login-view">
+  <form id="login-form" class="login-form" aria-labelledby="admin-login-title">
+    <h2 id="admin-login-title">管理员登录</h2>
     <label for="admin-password">管理员密码</label>
     <div class="password-field">
-      <input id="admin-password" name="password" type="password" autocomplete="current-password" required maxlength="512" disabled>
+      <input id="admin-password" name="password" type="password" autocomplete="current-password" aria-describedby="login-status" required maxlength="512" disabled>
       <button id="password-visibility" class="icon-button" type="button" aria-label="显示密码" title="显示密码" aria-pressed="false" disabled data-icon="eye"></button>
     </div>
     <p id="login-status" class="status" role="status">正在检查登录状态…</p>
-    <button id="login-submit" class="primary login-submit" type="submit" disabled><span>登录</span><span data-icon="arrowRight" aria-hidden="true"></span></button>
-    <a class="back-link" href="/">返回额度面板</a>
+    <div class="login-actions">
+      <a class="back-link" href="#quota" data-admin-back><span data-icon="arrowLeft" aria-hidden="true"></span>返回额度面板</a>
+      <button id="login-submit" class="primary login-submit" type="submit" disabled><span>登录</span><span data-icon="arrowRight" aria-hidden="true"></span></button>
+    </div>
   </form>
-</main>
+</div>
 
 <div id="admin-view" class="admin-layout" hidden>
-  <aside class="admin-sidebar">
-    <a class="admin-brand" href="/"><span data-icon="grid" aria-hidden="true"></span><span>Cursor 额度</span></a>
-    <div class="nav-label">系统菜单</div>
-    <nav class="admin-nav" aria-label="系统菜单">
-      <button type="button" data-page="accounts" aria-current="page"><span data-icon="key" aria-hidden="true"></span>账号凭证</button>
-      <button type="button" data-page="policy"><span data-icon="switchAccount" aria-hidden="true"></span>切换权限</button>
-    </nav>
-    <div class="sidebar-bottom">
-      <a href="/" class="nav-link"><span data-icon="arrowLeft" aria-hidden="true"></span>额度面板</a>
-      <div class="admin-identity"><span class="status-dot" aria-hidden="true"></span>管理员<button type="button" class="icon-button" id="logout" aria-label="退出登录" title="退出登录" data-icon="logout"></button></div>
+  <div class="admin-workspace-header">
+    <div class="admin-tabs" role="tablist" aria-label="系统管理">
+      <button id="accounts-tab" type="button" role="tab" data-page="accounts" aria-selected="true" aria-controls="accounts-page" tabindex="0"><span data-icon="key" aria-hidden="true"></span>账号凭证</button>
+      <button id="policy-tab" type="button" role="tab" data-page="policy" aria-selected="false" aria-controls="policy-page" tabindex="-1"><span data-icon="switchAccount" aria-hidden="true"></span>切换权限</button>
     </div>
-  </aside>
+  </div>
 
-  <main class="admin-main">
-    <header class="admin-topbar"><span>系统管理</span><span id="session-expiry" class="subtle"></span></header>
+  <section id="accounts-page" role="tabpanel" aria-labelledby="accounts-tab" tabindex="0">
+    <div class="table-toolbar">
+      <div class="search-field"><span data-icon="search" aria-hidden="true"></span><input id="account-search" type="search" aria-label="搜索姓名、邮箱或部门" placeholder="搜索姓名、邮箱或部门" autocomplete="off"></div>
+      <select id="account-department" aria-label="按部门筛选"><option value="__all__">全部部门</option></select>
+      <span id="local-timezone" class="subtle timezone-label"></span>
+      <button type="button" class="icon-button" id="reload-accounts" aria-label="刷新凭证列表" title="刷新凭证列表" data-icon="refresh"></button>
+    </div>
+    <p id="accounts-status" class="status" role="status" hidden></p>
+    <div class="table-scroll" tabindex="0" role="region" aria-label="账号凭证列表">
+      <table class="credentials-table">
+        <thead><tr><th scope="col">账号</th><th scope="col">部门</th><th scope="col">凭证状态</th><th scope="col">AT 到期</th><th scope="col"><span class="help-label" tabindex="0" data-tip="RT 中声明的到期时间；实际可续期时长和撤销状态由 Cursor 服务端决定。">RT 声明到期 <span data-icon="info" aria-hidden="true"></span></span></th><th scope="col">最近凭证更新</th><th scope="col"><span class="help-label" tabindex="0" data-tip="进入此时间窗口后，在下一次额度查询或后台刷新时尝试续期。">进入续期窗口 <span data-icon="info" aria-hidden="true"></span></span></th><th scope="col">普通用户切换</th></tr></thead>
+        <tbody id="account-rows"><tr><td colspan="8" class="empty-cell">正在读取…</td></tr></tbody>
+      </table>
+    </div>
+    <footer class="pagination">
+      <span id="page-range" class="subtle">0 条</span>
+      <div class="page-controls"><label for="page-size">每页</label><select id="page-size"><option value="10">10 条</option><option value="20" selected>20 条</option><option value="50">50 条</option><option value="100">100 条</option></select><button type="button" class="icon-button" id="previous-page" aria-label="上一页" title="上一页" disabled data-icon="chevronLeft"></button><span id="page-number" class="page-number">1 / 1</span><button type="button" class="icon-button" id="next-page" aria-label="下一页" title="下一页" disabled data-icon="chevronRight"></button></div>
+    </footer>
+  </section>
 
-    <section id="accounts-page" aria-labelledby="accounts-title">
-      <div class="page-heading"><div><h1 id="accounts-title">账号凭证</h1><span id="accounts-count" class="subtle">正在读取…</span></div><button type="button" class="icon-button" id="reload-accounts" aria-label="刷新凭证列表" title="刷新凭证列表" data-icon="refresh"></button></div>
-      <div class="table-toolbar">
-        <div class="search-field"><span data-icon="search" aria-hidden="true"></span><input id="account-search" type="search" aria-label="搜索姓名、邮箱或部门" placeholder="搜索姓名、邮箱或部门" autocomplete="off"></div>
-        <select id="account-department" aria-label="按部门筛选"><option value="__all__">全部部门</option></select>
-        <span id="local-timezone" class="subtle timezone-label"></span>
-      </div>
-      <p id="accounts-status" class="status" role="status" hidden></p>
-      <div class="table-scroll" tabindex="0" role="region" aria-label="账号凭证列表">
-        <table class="credentials-table">
-          <thead><tr><th scope="col">账号</th><th scope="col">部门</th><th scope="col">凭证状态</th><th scope="col">AT 到期</th><th scope="col"><span class="help-label" tabindex="0" data-tip="RT 中声明的到期时间；实际可续期时长和撤销状态由 Cursor 服务端决定。">RT 声明到期 <span data-icon="info" aria-hidden="true"></span></span></th><th scope="col">最近凭证更新</th><th scope="col"><span class="help-label" tabindex="0" data-tip="进入此时间窗口后，在下一次额度查询或后台刷新时尝试续期。">进入续期窗口 <span data-icon="info" aria-hidden="true"></span></span></th><th scope="col">普通用户切换</th></tr></thead>
-          <tbody id="account-rows"><tr><td colspan="8" class="empty-cell">正在读取…</td></tr></tbody>
-        </table>
-      </div>
-      <footer class="pagination">
-        <span id="page-range" class="subtle">0 条</span>
-        <div class="page-controls"><label for="page-size">每页</label><select id="page-size"><option value="10">10 条</option><option value="20" selected>20 条</option><option value="50">50 条</option><option value="100">100 条</option></select><button type="button" class="icon-button" id="previous-page" aria-label="上一页" title="上一页" disabled data-icon="chevronLeft"></button><span id="page-number" class="page-number">1 / 1</span><button type="button" class="icon-button" id="next-page" aria-label="下一页" title="下一页" disabled data-icon="chevronRight"></button></div>
-      </footer>
-    </section>
-
-    <section id="policy-page" aria-labelledby="policy-title" hidden>
-      <div class="page-heading"><div><h1 id="policy-title">切换权限</h1><span class="subtle">管理员始终可切换全部账号</span></div><button type="button" class="primary" id="save-policy" disabled><span data-icon="save" aria-hidden="true"></span>保存设置</button></div>
-      <p id="policy-status" class="status" role="status" hidden></p>
-      <div class="policy-global"><div><h2>向普通用户全量开放</h2><p id="policy-summary" class="subtle">正在读取…</p></div><label class="toggle"><input id="allow-all" type="checkbox" role="switch" aria-label="向普通用户全量开放" disabled><span class="toggle-track"></span></label></div>
-      <div id="policy-selectors" class="policy-selectors">
-        <fieldset><legend>按部门开放 <span id="department-selection-count" class="selection-count">0</span></legend><div class="search-field"><span data-icon="search" aria-hidden="true"></span><input id="department-search" type="search" aria-label="搜索部门" placeholder="搜索部门" autocomplete="off"></div><div id="department-choices" class="choice-list" aria-label="允许切换的部门"></div></fieldset>
-        <fieldset><legend>按人员 / 账号开放 <span id="account-selection-count" class="selection-count">0</span></legend><div class="search-field"><span data-icon="search" aria-hidden="true"></span><input id="policy-account-search" type="search" aria-label="搜索可开放的账号" placeholder="搜索姓名、邮箱或部门" autocomplete="off"></div><div id="account-choices" class="choice-list" aria-label="允许切换的账号"></div></fieldset>
-      </div>
-    </section>
-  </main>
+  <section id="policy-page" role="tabpanel" aria-labelledby="policy-tab" tabindex="0" hidden>
+    <div class="page-heading"><div><h2 id="policy-title">切换权限</h2><span class="subtle">管理员始终可切换全部账号</span></div><button type="button" class="primary" id="save-policy" disabled><span data-icon="save" aria-hidden="true"></span>保存设置</button></div>
+    <p id="policy-status" class="status" role="status" hidden></p>
+    <div class="policy-global"><div><h3>向普通用户全量开放</h3><p id="policy-summary" class="subtle">正在读取…</p></div><label class="toggle"><input id="allow-all" type="checkbox" role="switch" aria-label="向普通用户全量开放" disabled><span class="toggle-track"></span></label></div>
+    <div id="policy-selectors" class="policy-selectors">
+      <fieldset><legend>按部门开放 <span id="department-selection-count" class="selection-count">0</span></legend><div class="search-field"><span data-icon="search" aria-hidden="true"></span><input id="department-search" type="search" aria-label="搜索部门" placeholder="搜索部门" autocomplete="off"></div><div id="department-choices" class="choice-list" aria-label="允许切换的部门"></div></fieldset>
+      <fieldset><legend>按人员 / 账号开放 <span id="account-selection-count" class="selection-count">0</span></legend><div class="search-field"><span data-icon="search" aria-hidden="true"></span><input id="policy-account-search" type="search" aria-label="搜索可开放的账号" placeholder="搜索姓名、邮箱或部门" autocomplete="off"></div><div id="account-choices" class="choice-list" aria-label="允许切换的账号"></div></fieldset>
+    </div>
+  </section>
 </div>
-<script src="/static/js/admin.js?v=__ASSET_VERSION__"></script>
-</body>
-</html>

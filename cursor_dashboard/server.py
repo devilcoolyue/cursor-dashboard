@@ -372,6 +372,8 @@ def index():
 
 def render_page(page):
     html = page.read_text(encoding="utf-8")
+    if "__ADMIN_CONTENT__" in html:
+        html = html.replace("__ADMIN_CONTENT__", (WEB_DIR / "admin.html").read_text(encoding="utf-8"))
     revision = hashlib.sha256(html.encode("utf-8"))
     # 每次读取当前文件内容，静态文件部署后无需重启也能换资源地址。
     for asset in sorted(WEB_DIR.rglob("*")):
@@ -387,7 +389,7 @@ def render_page(page):
 @app.get("/admin")
 @app.get("/admin/", include_in_schema=False)
 def admin_index():
-    return render_page(WEB_DIR / "admin.html")
+    return render_page(WEB_INDEX)
 
 
 class AdminLoginReq(BaseModel):

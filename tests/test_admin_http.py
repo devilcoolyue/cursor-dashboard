@@ -8,6 +8,7 @@ import time
 import unittest
 from dataclasses import dataclass
 from datetime import datetime
+from html.parser import HTMLParser
 from http.cookies import SimpleCookie
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -24,6 +25,16 @@ class Response:
 
     def json(self):
         return json.loads(self.text)
+
+
+class PageMarkup(HTMLParser):
+    def __init__(self, text):
+        super().__init__()
+        self.elements = []
+        self.feed(text)
+
+    def handle_starttag(self, tag, attrs):
+        self.elements.append((tag, dict(attrs)))
 
 
 def credential(marker: str, expires: int) -> desktop.DesktopSession:
@@ -148,6 +159,33 @@ class AdminHTTPTest(unittest.IsolatedAsyncioTestCase):
             for key in ("cookie", "access_token", "refresh_token"):
                 if account[key]:
                     self.assertNotIn(account[key], response.text)
+
+    async def test_admin_routes_share_quota_shell_and_controls(self):
+        homepage = await self.request("GET", "/")
+        for path in ("/", "/admin", "/admin/"):
+            with self.subTest(path=path):
+                response = await self.request("GET", path)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.text, homepage.text)
+                self.assert_no_credentials(response)
+                self.assertNotIn("__ADMIN_CONTENT__", response.text)
+                self.assertNotIn("__ASSET_VERSION__", response.text)
+                elements = PageMarkup(response.text).elements
+                for tag in ("html", "head", "body"):
+                    self.assertEqual(sum(name == tag for name, _ in elements), 1, tag)
+                ids = [attrs["id"] for _, attrs in elements if "id" in attrs]
+                self.assertEqual(len(ids), len(set(ids)), "Merged shell must not duplicate element IDs")
+                for element_id in ("sidebar", "admin-menu-link", "admin-workspace", "login-view",
+                                   "admin-view", "account-department", "page-size"):
+                    self.assertIn(element_id, ids)
+                menu = next(attrs for _, attrs in elements if attrs.get("id") == "admin-menu-link")
+                self.assertEqual(menu.get("href"), "#admin")
+                self.assertIn("hidden", menu)
+                assets = {urlsplit(attrs.get("src") or attrs.get("href") or "").path
+                          for tag, attrs in elements if tag in ("script", "link")}
+                for asset in ("/static/css/base.css", "/static/css/ui.css", "/static/css/admin.css",
+                              "/static/js/ui.js", "/static/js/app.js", "/static/js/admin.js"):
+                    self.assertIn(asset, assets)
 
     async def test_login_cookie_logout_and_replay(self):
         shell = await self.request("GET", "/admin")

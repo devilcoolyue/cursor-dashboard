@@ -7,6 +7,7 @@ let token = localStorage.getItem('panelToken') || '';
 let isAdmin = false;
 let adminCsrf = '';
 let adminSessionRequest = null;
+let activeWorkspace = 'quota';
 const headers = () => ({ ...(token ? { 'X-Panel-Token': token } : {}),
   ...(isAdmin && adminCsrf ? { 'X-Admin-CSRF': adminCsrf } : {}) });
 const jsonHeaders = () => ({ 'Content-Type': 'application/json', ...headers() });
@@ -14,23 +15,32 @@ const jsonHeaders = () => ({ 'Content-Type': 'application/json', ...headers() })
 async function syncAdminSession() {
   if (adminSessionRequest) return adminSessionRequest;
   adminSessionRequest = (async () => {
-    let state = null;
-    try {
-      const response = await fetch('/api/admin/session', { cache: 'no-store' });
-      if (response.ok) state = await response.json();
-    } catch { /* Hide administrative controls until the session can be verified. */ }
-    const previous = isAdmin;
-    isAdmin = state?.authenticated === true;
-    adminCsrf = isAdmin ? state.csrf_token || '' : '';
-    $('#admin-menu-link').hidden = !isAdmin;
-    if (previous && !isAdmin) {
-      accounts.forEach(account => { account.can_switch = false; });
-      if (switchDlg.open) PanelUI.close(switchDlg);
-    }
-    if (previous !== isAdmin && accounts.length) render();
+    await AdminWorkspace.checkSession();
+    applyAdminSession(AdminWorkspace.session);
   })().finally(() => { adminSessionRequest = null; });
   return adminSessionRequest;
 }
+
+function applyAdminSession(state) {
+  const previous = isAdmin;
+  isAdmin = state?.authenticated === true;
+  adminCsrf = isAdmin ? state.csrf_token || '' : '';
+  $('#admin-menu-link').hidden = !isAdmin;
+  if (previous && !isAdmin) {
+    accounts.forEach(account => { account.can_switch = false; });
+    if (switchDlg.open) PanelUI.close(switchDlg);
+  }
+  if (previous !== isAdmin && accounts.length) render();
+}
+
+document.addEventListener('panel:admin-session', event => {
+  applyAdminSession(event.detail);
+  // Invalidate in-flight quota responses when their administrator identity changes.
+  ++loadGeneration;
+  loadController?.abort();
+  inFlight = false;
+  if (isAdmin || activeWorkspace === 'quota') load({ adminChecked: true });
+});
 
 const ALL_DEPARTMENTS = '__all_departments__';
 const NEW_DEPARTMENT = '__new_department__';
@@ -433,7 +443,7 @@ function renderDepartmentTabs() {
     departmentTabsKey = tabsKey;
     tabsEl.innerHTML = tabs.map(([department, name, count]) => {
       const isAll = department === ALL_DEPARTMENTS;
-      const isSelected = department === selectedDepartment;
+      const isSelected = activeWorkspace === 'quota' && department === selectedDepartment;
       return `
       <button class="dept-nav-item" type="button" role="tab"
         data-department-filter="${esc(department)}"
@@ -450,13 +460,15 @@ function renderDepartmentTabs() {
     }).join('');
   }
   tabsEl?.querySelectorAll('[data-department-filter]').forEach((button) => {
-    button.setAttribute('aria-selected', String(button.dataset.departmentFilter === selectedDepartment));
+    button.setAttribute('aria-selected', String(activeWorkspace === 'quota'
+      && button.dataset.departmentFilter === selectedDepartment));
   });
   GlassMotion.selection(tabsEl, tabsEl?.querySelector('[aria-selected="true"]'));
 
   const titleEl = $('#current-view-title');
   if (titleEl) {
-    titleEl.textContent = selectedDepartment === ALL_DEPARTMENTS ? '全部账号' : departmentName(selectedDepartment);
+    titleEl.textContent = activeWorkspace === 'admin' ? '系统管理'
+      : selectedDepartment === ALL_DEPARTMENTS ? '全部账号' : departmentName(selectedDepartment);
   }
 }
 
@@ -667,8 +679,9 @@ async function load({ silent = false, arrival = false, addedId = null, adminChec
       }
       const suffix = params.size ? '?' + params.toString() : '';
       const r = await fetch('/api/accounts' + suffix, { headers: headers(), signal });
+      if (generation !== loadGeneration) return;
       if (r.status === 401) {
-        if (!$('#auth').open) openModal($('#auth'));
+        if (activeWorkspace === 'quota' && !$('#auth').open) openModal($('#auth'));
         view.innerHTML = '';
         return;
       }
@@ -713,7 +726,7 @@ async function load({ silent = false, arrival = false, addedId = null, adminChec
 // 后台在错开刷新，页面开着就定期把快照捞回来，不用人去点
 async function pollAccounts() {
   await syncAdminSession();
-  if (!document.hidden) load({ silent: true, adminChecked: true });
+  if (!document.hidden && activeWorkspace === 'quota') load({ silent: true, adminChecked: true });
 }
 setInterval(() => {
   if (!document.hidden) pollAccounts();
@@ -766,7 +779,10 @@ async function refreshOne(id) {
   try {
     const r = await fetch(`/api/accounts/${encodeURIComponent(id)}/refresh`,
                           { method: 'POST', headers: headers() });
-    if (r.status === 401) { openModal($('#auth')); return; }
+    if (r.status === 401) {
+      if (activeWorkspace === 'quota' && requestAdminCsrf === adminCsrf) openModal($('#auth'));
+      return;
+    }
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || '刷新失败');
     if (requestAdminCsrf !== adminCsrf) d.account.can_switch = false;
@@ -981,8 +997,11 @@ function openMobileSidebar() {
 }
 
 function selectDepartment(department) {
+  const wasAdmin = activeWorkspace === 'admin';
+  if (wasAdmin) setWorkspace('quota');
   if (department === selectedDepartment) {
     closeMobileSidebar();
+    if (wasAdmin) load({ silent: true });
     return;
   }
   selectedDepartment = department;
@@ -995,6 +1014,49 @@ function selectDepartment(department) {
 $('#mobile-menu-btn')?.addEventListener('click', openMobileSidebar);
 $('#mobile-close-btn')?.addEventListener('click', closeMobileSidebar);
 $('#sidebar-backdrop')?.addEventListener('click', closeMobileSidebar);
+
+function setWorkspace(next, updateHistory = true) {
+  const changed = activeWorkspace !== next;
+  activeWorkspace = next;
+  const admin = next === 'admin';
+  document.body.classList.toggle('admin-workspace-active', admin);
+  $('#quota-workspace').hidden = admin;
+  $('#admin-workspace').hidden = !admin;
+  $('.topbar-right').hidden = admin;
+  $('#account-total-badge').hidden = admin;
+  $('#open-prefs').hidden = admin;
+  if (admin) $('#admin-menu-link').setAttribute('aria-current', 'page');
+  else $('#admin-menu-link').removeAttribute('aria-current');
+  document.title = admin ? '系统管理 · Cursor 额度' : 'Cursor 额度面板';
+  if (updateHistory && location.hash !== `#${next}`) history.pushState(null, '', `#${next}`);
+  renderDepartmentTabs();
+  closeMobileSidebar();
+  if (changed) window.scrollTo({ top: 0, behavior: 'instant' });
+  AdminWorkspace.setActive(admin);
+  if (admin && $('#auth').open) PanelUI.close($('#auth'));
+}
+
+function workspaceFromLocation() {
+  return location.hash === '#admin' || (!location.hash && /^\/admin\/?$/.test(location.pathname))
+    ? 'admin' : 'quota';
+}
+
+$('#admin-menu-link').addEventListener('click', event => {
+  if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return;
+  event.preventDefault();
+  setWorkspace('admin');
+});
+$('#admin-workspace').addEventListener('click', event => {
+  const back = event.target.closest('[data-admin-back]');
+  if (!back) return;
+  event.preventDefault();
+  setWorkspace('quota');
+  load({ silent: true });
+});
+window.addEventListener('popstate', () => {
+  setWorkspace(workspaceFromLocation(), false);
+  if (activeWorkspace === 'quota') load({ silent: true });
+});
 
 // ---------- 界面风格 ----------
 // 这张表是皮肤的唯一事实来源，地位跟下面的 CARD_OPTIONS 一样：侧边栏的切换按钮
@@ -1311,7 +1373,7 @@ if (searchClearBtn) {
   searchClearBtn.addEventListener('click', clearSearch);
 }
 window.addEventListener('keydown', (e) => {
-  if (e.key === '/' && !document.querySelector('dialog[open]')
+  if (e.key === '/' && activeWorkspace === 'quota' && !document.querySelector('dialog[open]')
       && document.activeElement?.getAttribute('role') !== 'combobox'
       && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) {
     e.preventDefault();
@@ -1557,7 +1619,10 @@ $('#a-ok').onclick = async () => {
   load();
 };
 
+setWorkspace(workspaceFromLocation(), false);
 Promise.all([fetch('/api/config', { cache: 'no-store' }).then(r => r.json()), syncAdminSession()]).then(([c]) => {
   autoRefreshCycle = c.auto_refresh ? (c.cycle_seconds || 0) : 0;
-  if (c.needs_token && !token && !isAdmin) openModal($('#auth')); else load({ adminChecked: true });
+  if (c.needs_token && !token && !isAdmin) {
+    if (activeWorkspace === 'quota') openModal($('#auth'));
+  } else load({ adminChecked: true });
 }).catch(() => load());

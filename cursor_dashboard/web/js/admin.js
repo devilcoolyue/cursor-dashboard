@@ -1,6 +1,10 @@
 (() => {
   'use strict';
-  const $ = selector => document.querySelector(selector);
+  const workspace = document.querySelector('#admin-workspace');
+  const sessionTools = document.querySelector('#admin-session');
+  const sessionExpiry = sessionTools.querySelector('#session-expiry');
+  const logoutButton = sessionTools.querySelector('#logout');
+  const $ = selector => workspace.querySelector(selector);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   }[c]));
@@ -21,11 +25,12 @@
     chevronRight: '<path d="m9 18 6-6-6-6"/>',
     save: '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2Z"/><path d="M7 3v6h10V3M7 21v-8h10v8"/>',
   };
-  document.querySelectorAll('[data-icon]').forEach(node => {
+  [...workspace.querySelectorAll('[data-icon]'), ...sessionTools.querySelectorAll('[data-icon]')].forEach(node => {
     node.innerHTML = svg(icons[node.dataset.icon] || '');
   });
 
   let session = null;
+  let active = false;
   let authEpoch = 0;
   let sessionCheck = null;
   let activePage = 'accounts';
@@ -33,6 +38,7 @@
   let accountPages = 1;
   let accountLoading = false;
   let accountRequest = 0;
+  let accountQueryKey = '';
   let accountController;
   let searchTimer;
   let policyData = null;
@@ -73,6 +79,7 @@
   });
 
   function showLogin(message = '') {
+    const wasLoggedIn = !!session;
     ++authEpoch;
     session = null;
     clearTimeout(expiryTimer);
@@ -81,6 +88,7 @@
     ++policyRequest;
     accountController?.abort();
     accountLoading = false;
+    accountQueryKey = '';
     policyLoading = false;
     policySaving = false;
     policyData = null;
@@ -92,18 +100,24 @@
     $('#password-visibility').disabled = false;
     $('#login-submit').disabled = false;
     $('#admin-password').value = '';
+    $('#admin-password').type = 'password';
+    updatePasswordToggle(false);
     $('#account-rows').innerHTML = '';
     $('#department-choices').innerHTML = '';
     $('#account-choices').innerHTML = '';
     $('#account-department').innerHTML = '<option value="__all__">全部部门</option>';
-    $('#accounts-count').textContent = '';
+    PanelUI.select.refresh($('#account-department'));
     $('#page-range').textContent = '';
-    $('#session-expiry').textContent = '';
+    sessionExpiry.textContent = '';
+    sessionTools.hidden = true;
     status('#login-status', message, message ? 'error' : '');
     hideTooltip();
+    if (wasLoggedIn) document.dispatchEvent(new CustomEvent('panel:admin-session', { detail: null }));
   }
 
   function setSession(value) {
+    const changed = session?.csrf_token !== value.csrf_token;
+    if (changed) ++authEpoch;
     session = value;
     $('#login-view').hidden = true;
     $('#admin-view').hidden = false;
@@ -111,15 +125,18 @@
     $('#admin-password').type = 'password';
     updatePasswordToggle(false);
     const parts = dateParts(value.expires_at);
-    $('#session-expiry').textContent = parts ? `登录有效至 ${parts.join(' ')}` : '';
+    sessionExpiry.textContent = parts ? `登录有效至 ${parts.join(' ')}` : '';
+    sessionTools.hidden = !active;
     clearTimeout(expiryTimer);
     const remaining = dateValue(value.expires_at)?.getTime() - Date.now();
     if (Number.isFinite(remaining)) {
       expiryTimer = setTimeout(() => showLogin('管理员登录已过期，请重新登录。'), Math.max(0, remaining));
     }
+    if (changed) document.dispatchEvent(new CustomEvent('panel:admin-session', { detail: value }));
   }
 
   async function api(url, options = {}) {
+    const generation = authEpoch;
     const headers = { ...options.headers };
     if (session?.csrf_token && options.method && options.method !== 'GET') {
       headers['X-Admin-CSRF'] = session.csrf_token;
@@ -127,7 +144,7 @@
     if (options.body) headers['Content-Type'] = 'application/json';
     const response = await fetch(url, { ...options, headers, cache: 'no-store', credentials: 'same-origin' });
     const result = await response.json().catch(() => ({}));
-    if (response.status === 401 && url !== '/api/admin/login') {
+    if (response.status === 401 && url !== '/api/admin/login' && generation === authEpoch) {
       showLogin('管理员登录已过期，请重新登录。');
     }
     if (!response.ok) {
@@ -146,14 +163,14 @@
         const value = await api('/api/admin/session');
         if (generation !== authEpoch) return;
         if (!value.authenticated) {
-          showLogin(session ? '管理员登录已失效，请重新登录。' : '');
+          if (session || $('#admin-password').disabled) {
+            showLogin(session ? '管理员登录已失效，请重新登录。' : '');
+          }
           return;
         }
-        const wasLoggedIn = !!session;
         setSession(value);
-        if (initial || !wasLoggedIn) await showPage(activePage);
       } catch (error) {
-        if (initial && generation === authEpoch) showLogin(error.message);
+        if ((initial || $('#admin-password').disabled) && generation === authEpoch) showLogin(error.message);
       } finally {
         sessionCheck = null;
       }
@@ -197,9 +214,9 @@
       $('#login-submit').disabled = false;
     }
   });
-  $('#logout').addEventListener('click', async () => {
+  logoutButton.addEventListener('click', async () => {
     ++authEpoch;
-    $('#logout').disabled = true;
+    logoutButton.disabled = true;
     try {
       await api('/api/admin/logout', { method: 'POST' });
       showLogin();
@@ -207,7 +224,7 @@
     } catch (error) {
       status(activePage === 'accounts' ? '#accounts-status' : '#policy-status', error.message, 'error');
     } finally {
-      $('#logout').disabled = false;
+      logoutButton.disabled = false;
     }
   });
 
@@ -250,8 +267,9 @@
     });
     const department = $('#account-department').value;
     if (department !== '__all__') params.set('department', department);
+    const queryKey = params.toString();
     try {
-      const data = await api('/api/admin/accounts?' + params.toString(), { signal: accountController.signal });
+      const data = await api('/api/admin/accounts?' + queryKey, { signal: accountController.signal });
       if (generation !== accountRequest || !session) return;
       accountPages = Math.max(1, data.pages || Math.ceil(data.total / Number($('#page-size').value)) || 1);
       if (accountPage > accountPages) {
@@ -259,14 +277,18 @@
         return await loadAccounts();
       }
       accountPage = data.page;
+      const tableScroll = $('.table-scroll');
+      const scrollTop = queryKey === accountQueryKey ? tableScroll.scrollTop : 0;
       $('#account-rows').innerHTML = data.accounts.length ? data.accounts.map(accountRow).join('')
         : '<tr><td colspan="8" class="empty-cell">没有符合条件的账号</td></tr>';
-      $('#accounts-count').textContent = `共 ${data.total} 个账号`;
+      tableScroll.scrollTop = scrollTop;
+      accountQueryKey = queryKey;
       const start = data.total ? (accountPage - 1) * data.page_size + 1 : 0;
       $('#page-range').textContent = data.total ? `第 ${start} 至 ${start + data.accounts.length - 1} 条，共 ${data.total} 条` : '0 条';
       $('#account-department').innerHTML = '<option value="__all__">全部部门</option>'
         + (data.departments || []).map(item => `<option value="${esc(item.department)}">${esc(item.department || '未分组')} (${item.count})</option>`).join('');
       if ([...$('#account-department').options].some(item => item.value === department)) $('#account-department').value = department;
+      PanelUI.select.refresh($('#account-department'));
       status('#accounts-status', '');
     } catch (error) {
       if (error.name === 'AbortError' || generation !== accountRequest || !session) return;
@@ -370,17 +392,29 @@
     activePage = page;
     $('#accounts-page').hidden = page !== 'accounts';
     $('#policy-page').hidden = page !== 'policy';
-    document.querySelectorAll('[data-page]').forEach(button => {
-      if (button.dataset.page === page) button.setAttribute('aria-current', 'page');
-      else button.removeAttribute('aria-current');
+    workspace.querySelectorAll('[data-page]').forEach(button => {
+      const selected = button.dataset.page === page;
+      button.setAttribute('aria-selected', String(selected));
+      button.tabIndex = selected ? 0 : -1;
     });
     hideTooltip();
     if (page === 'accounts') await loadAccounts();
     else await loadPolicy();
   }
-  $('.admin-nav').addEventListener('click', event => {
+  $('.admin-tabs').addEventListener('click', event => {
     const button = event.target.closest('[data-page]');
     if (button) showPage(button.dataset.page);
+  });
+  $('.admin-tabs').addEventListener('keydown', event => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    const tabs = [...workspace.querySelectorAll('[data-page]')];
+    const index = tabs.indexOf(event.target.closest('[data-page]'));
+    if (index < 0) return;
+    event.preventDefault();
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
+      : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+    tabs[next].focus();
+    showPage(tabs[next].dataset.page);
   });
   $('#account-search').addEventListener('input', () => {
     clearTimeout(searchTimer);
@@ -426,7 +460,7 @@
     tooltip.style.left = `${Math.max(12, Math.min(rect.left, innerWidth - width - 12))}px`;
     tooltip.style.top = `${Math.max(12, Math.min(rect.bottom + 8, innerHeight - height - 12))}px`;
   }
-  document.querySelectorAll('[data-tip]').forEach(target => {
+  workspace.querySelectorAll('[data-tip]').forEach(target => {
     target.addEventListener('mouseenter', () => showTooltip(target));
     target.addEventListener('mouseleave', hideTooltip);
     target.addEventListener('focus', () => showTooltip(target));
@@ -441,15 +475,26 @@
     event.returnValue = '';
   });
   document.addEventListener('visibilitychange', async () => {
-    if (document.hidden) return;
+    if (document.hidden || !active) return;
     await checkSession();
     if (session) activePage === 'accounts' ? loadAccounts() : loadPolicy();
   });
   setInterval(async () => {
-    if (document.hidden) return;
+    if (document.hidden || !active) return;
     await checkSession();
     if (session && activePage === 'accounts' && !accountLoading) loadAccounts();
   }, 60000);
   $('#local-timezone').textContent = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  checkSession(true);
+  window.AdminWorkspace = {
+    get session() { return session; },
+    checkSession,
+    setActive(value) {
+      active = value;
+      sessionTools.hidden = !active || !session;
+      hideTooltip();
+      if (active) checkSession(true).then(() => {
+        if (active && session) showPage(activePage);
+      });
+    },
+  };
 })();

@@ -82,9 +82,9 @@ const GlassMotion = (() => {
   }
 
   function selection(container, target, animate = true) {
-    if (!container || !target) return;
+    if (!container) return;
     let state = tracks.get(container);
-    if (!enabled()) {
+    if (!target || !enabled()) {
       state?.stop?.();
       state?.surface.remove();
       container.classList.remove('glass-motion-track');
