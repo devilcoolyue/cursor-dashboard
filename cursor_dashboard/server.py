@@ -22,14 +22,14 @@ import threading
 import time
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timezone
 
 import uvicorn
 import requests
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -59,6 +59,7 @@ from .store import (
 )
 from .usage import assemble_desktop, assemble_detail, iso_to_dt
 from .desktop import DesktopSessionError, build_commands
+from .switch_links import SwitchLinks, credential_version, download_command
 
 
 # ---------- 出站节流 ----------
@@ -202,6 +203,13 @@ def store_detail(ident: str, detail: dict) -> dict:
 # ---------- HTTP ----------
 
 _scheduler: Scheduler | None = None
+_switch_links = SwitchLinks()
+
+
+async def expire_switch_links():
+    while True:
+        await asyncio.sleep(30)
+        _switch_links.prune()
 
 
 @asynccontextmanager
@@ -224,7 +232,14 @@ async def lifespan(_app: FastAPI):
     print(f"已载入 {restored} 份快照   "
           f"后台刷新: {'开启' if REFRESH_ENABLED else '关闭'}", flush=True)
 
-    yield
+    link_cleanup = asyncio.create_task(expire_switch_links())
+    try:
+        yield
+    finally:
+        link_cleanup.cancel()
+        with suppress(asyncio.CancelledError):
+            await link_cleanup
+        _switch_links.clear()
 
     await _scheduler.stop()
     _scheduler = None
@@ -612,7 +627,7 @@ async def api_save(req: SaveReq, request: Request = None):
 
 
 @app.post("/api/accounts/{account_key}/switch-command", dependencies=[Depends(require_token)])
-async def api_switch_command(account_key: str, request: Request = None):
+async def api_switch_command(account_key: str, request: Request):
     acc = find_account(account_key)
     require_switch(request, acc)
     if not take_manual_token():
@@ -636,13 +651,48 @@ async def api_switch_command(account_key: str, request: Request = None):
             admin.check_session, request.cookies.get(ADMIN_COOKIE, "")
         )
         require_token(request.headers.get("x-panel-token"), request)
-    require_switch(request, find_account(account_key))
+    current = find_account(account_key)
+    require_switch(request, current)
+    if credential_version(current) != credential_version(acc):
+        raise HTTPException(409, "账号授权已变更，请重新生成命令。")
     try:
         result = build_commands(sessions.session_from_account(acc), email)
     except DesktopSessionError as exc:
         raise HTTPException(400, str(exc)) from None
+    try:
+        token, expiry = _switch_links.issue(account_key, acc, result,
+            request.cookies.get(ADMIN_COOKIE, "") if is_admin(request) else "")
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from None
+    except OverflowError as exc:
+        raise HTTPException(429, str(exc)) from None
+    for platform, item in result["commands"].items():
+        url = str(request.url_for("api_switch_script", token=token, platform=platform))
+        item["command"] = download_command(url, platform)
+    result["download_expires_at"] = expiry
     result.update(label=acc.get("label") or email, email=email)
     return JSONResponse(result, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
+
+
+@app.get("/api/s/{token}/{platform}")
+def api_switch_script(token: str, platform: str):
+    # The random link is the download credential; terminal requests have no browser cookies.
+    entry = _switch_links.consume(token, platform)
+    if entry is None:
+        raise HTTPException(410, "下载链接已失效或已使用，请回到面板重新生成命令。")
+    account = find_account(entry.account_key)
+    if credential_version(account) != entry.version:
+        raise HTTPException(410, "账号授权已变更，请回到面板重新生成命令。")
+    administrator = bool(entry.admin_session and admin.check_session(entry.admin_session))
+    if ((entry.admin_session and not administrator)
+            or not admin.switch_allowed(account, admin.get_policy(), is_admin=administrator)):
+        raise HTTPException(403, "切换权限已失效，请回到面板重新生成命令。")
+    if entry.expires_at <= time.time():
+        raise HTTPException(410, "下载链接已过期，请回到面板重新生成命令。")
+    return PlainTextResponse(entry.scripts[platform], headers={
+        "Cache-Control": "no-store", "Pragma": "no-cache", "Referrer-Policy": "no-referrer",
+        "Content-Disposition": 'attachment; filename="switch-account.' + ("sh" if platform == "macos" else "ps1") + '"',
+    })
 
 
 @app.post("/api/accounts/{account_key}/refresh", dependencies=[Depends(require_token)])

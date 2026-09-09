@@ -9,6 +9,7 @@
 | [client.py](../cursor_dashboard/client.py) | 网页授权、桌面 RPC/套餐请求、错误分类与重试；每次尝试新建并关闭 Requests Session |
 | [sessions.py](../cursor_dashboard/sessions.py) | Cookie 交换、身份检查、旧账号迁移、桌面凭证续期 |
 | [desktop.py](../cursor_dashboard/desktop.py) | PKCE、Token 格式/时间检查、命令生成；不在服务器执行命令 |
+| [switch_links.py](../cursor_dashboard/switch_links.py) | 有界内存短链接、原子单次领取和下载命令包装 |
 | [scripts/](../cursor_dashboard/scripts/) | macOS/PowerShell 包装脚本与公共 SQLite 切换引擎 |
 | [usage.py](../cursor_dashboard/usage.py) | 桌面响应适配、额度池反解、卡片与模型明细组装；另保留旧 `collect()` 网络入口 |
 | [pools.py](../cursor_dashboard/pools.py) | 按套餐登记可反解的观测，以中位数补齐缺失上限 |
@@ -84,7 +85,8 @@
 | `DELETE /api/accounts/{id}` | 删除本地账号和快照，不调用 Cursor 撤销会话 |
 | `POST /api/accounts/{id}/refresh` | 单卡回源或返回冷却/操作配额提示 |
 | `GET /api/accounts/{id}/usage-detail` | 命中缓存或按需获取周期明细 |
-| `POST /api/accounts/{id}/switch-command` | 身份验证后同时返回 macOS/Windows 命令、脚本与到期时间 |
+| `POST /api/accounts/{id}/switch-command` | 身份验证后返回 macOS/Windows 短命令、完整脚本、凭证到期时间及 `download_expires_at` |
+| `GET /api/s/{token}/{platform}` | 用一次性链接领取对应平台的 UTF-8 脚本；不依赖浏览器 Cookie |
 | `GET /api/admin/session` | 当前管理员会话状态，登录后包含 CSRF 和到期时间 |
 | `POST /api/admin/login` | `{password}`，设置 Cookie 并返回会话元数据 |
 | `POST /api/admin/logout` | 删除当前管理员会话 |
@@ -95,6 +97,8 @@
 账号列表和索引支持 `department`：省略为全部，空串为未分组；部门人数和 `total` 仍按全库返回。管理员分页默认 20，每页最多 100。普通响应由 `public_account_view()` 移除授权时间信息，只附加切换能力；管理员列表也不返回凭证原文。
 
 切换命令使用普通 API 鉴权加开放策略，在出站前及返回前都检查；管理员修改请求还受 CSRF 约束。单卡刷新、未缓存的明细和切换共用令牌桶，默认容量 5、每秒补充 `5/60`。刷新用 notice 表示配额不足，明细和命令生成返回 429。
+
+短链接使用 24 字节随机数（192 位），进程内最多保存 128 组完整脚本。每组 macOS/Windows 共用一个票据，锁内原子领取；未知、已用、过期链接返回 410，错误系统和 HEAD 请求不会消耗有效链接。到期时间取生成后 300 秒与访问凭证到期时间的较早者，发行/领取时清理过期记录，服务另每 30 秒清理一次，退出时清空。下载再次比较数据库记录及凭证版本，检查生成者管理员会话或当前访客策略，权限撤销返回 403。下载响应及错误禁止缓存。`desktop.build_commands()` 保留自包含命令生成能力供离线测试和旧预览使用，线上接口将命令替换为下载包装；完整脚本内容保持一致。
 
 ## 前端约束
 

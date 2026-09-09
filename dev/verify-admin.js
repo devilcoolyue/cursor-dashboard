@@ -271,7 +271,7 @@ async page => {
   await page.locator('.card[data-account-id]').first().hover();
   await page.locator('[data-switch-id]').first().click();
   await page.waitForFunction(() => document.querySelector('#switch-status').textContent.includes('命令已生成'));
-  check((await page.locator('#switch-command').inputValue()).startsWith('printf %s '), 'Authenticated switch command request includes CSRF');
+  check((await page.locator('#switch-command').inputValue()).startsWith('(switch_script=$(curl '), 'Authenticated switch command request includes CSRF');
   await page.locator('#switch-dlg').getByRole('button', { name: '关闭', exact: true }).click();
   await page.locator('#admin-menu-link').click();
   await page.locator('#logout').click();

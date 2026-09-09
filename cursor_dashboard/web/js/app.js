@@ -1546,7 +1546,10 @@ async function generateSwitchCommand() {
     switchCommands = data.commands;
     $('#switch-account').textContent = `${data.label} · ${data.email}`;
     status.className = 'status good';
-    status.textContent = '桌面会话验证通过，命令已生成。';
+    const expiry = data.download_expires_at
+      ? `链接有效至 ${new Date(data.download_expires_at * 1000).toLocaleTimeString()}，仅可下载一次。`
+      : '';
+    status.textContent = `桌面会话验证通过，命令已生成。${expiry}`;
     renderSwitchCommand();
   } catch (error) {
     if (error.name === 'AbortError' || generation !== switchRequest || !switchDlg.open) return;

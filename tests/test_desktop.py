@@ -6,20 +6,23 @@ import json
 import os
 import re
 import shutil
+import signal
 import sqlite3
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 import requests
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 
 from cursor_dashboard import desktop, server, sessions
 from cursor_dashboard.client import AuthExpired, CursorClient, RateLimited
+from cursor_dashboard.switch_links import download_command
 
 
 def cookie_for(**claims):
@@ -227,6 +230,56 @@ while True:
         self.assertTrue((self.root / 'account-write').exists())
         self.assertTrue((self.root / 'reopened').exists())
 
+    @unittest.skipUnless(os.name == 'posix' and shutil.which('zsh') and shutil.which('curl'),
+                         'A POSIX terminal, zsh and curl are required')
+    def test_downloaded_script_with_terminal_animation_reopens_exactly_once(self):
+        import pty
+
+        # Exercise the copied command, system Bash and a real TTY. Captured stderr
+        # disables the spinner and misses Bash 3.2's seekable-stdin offset bug.
+        source = self.root / 'switch.sh'
+        source.write_text(self.script)
+        command = download_command(source.as_uri(), 'macos')
+        master, slave = pty.openpty()
+        chunks = []
+
+        def drain():
+            while True:
+                try:
+                    chunk = os.read(master, 65536)
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                except OSError:
+                    break
+
+        reader = threading.Thread(target=drain, daemon=True)
+        reader.start()
+        process = subprocess.Popen([shutil.which('zsh'), '-c', command],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=slave,
+            start_new_session=True, env={**os.environ, 'TERM': 'xterm',
+                'PATH': str(self.bin) + os.pathsep + os.environ['PATH'],
+                'QUIT_TEST_ROOT': str(self.root), 'QUIT_TEST_MODE': 'success'})
+        os.close(slave)
+        try:
+            process.wait(timeout=15)
+        finally:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.wait()
+            reader.join(timeout=2)
+            os.close(master)
+        output = b''.join(chunks).decode()
+        self.assertEqual(process.returncode, 0, output)
+        self.assertIn('\x1b[2K', output, 'The progress animation must be active')
+        for step in range(1, 6):
+            self.assertEqual(output.count(f'✓ [{step}/5]'), 1, output)
+        self.assertTrue((self.root / 'account-write').exists())
+        self.assertTrue((self.root / 'reopened').exists())
+        self.assertIn('切换步骤已完成', output)
+
     def test_native_failure_reports_current_step_and_preserves_error(self):
         self.running.unlink()
         for mode, step, message in (('runtime-fails', 2, '模拟 SQLite 加载失败'),
@@ -400,6 +453,10 @@ class DesktopClientTest(unittest.TestCase):
 
 class SwitchEndpointTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
+        self.request = Request({"type": "http", "scheme": "http", "server": ("testserver", 80),
+                                "path": "/", "headers": [], "router": server.app.router})
+        server._switch_links.clear()
+        self.addCleanup(server._switch_links.clear)
         session = valid_desktop_session()
         self.account = {"cookie": cookie_for(), "label": "Test", "email": "test@example.test",
                         "access_token": session.token, "refresh_token": session.refresh_token,
@@ -419,7 +476,7 @@ class SwitchEndpointTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_checks_selected_account_and_disables_caching(self):
         with patch.object(server, "fetch_cursor", return_value={"email": self.account["email"], "authId": "auth0|user_test"}) as fetch:
-            response = await server.api_switch_command("test@example.test")
+            response = await server.api_switch_command("test@example.test", self.request)
         fetch.assert_awaited_once_with('', 'Test', 'desktop_me', self.account['access_token'])
         self.assertEqual(response.headers["cache-control"], "no-store")
         self.assertEqual(set(json.loads(response.body)["commands"]), {"macos", "windows"})
@@ -441,20 +498,20 @@ class SwitchEndpointTest(unittest.IsolatedAsyncioTestCase):
                  patch.object(server, "fetch_cursor", side_effect=error), \
                  patch.object(server, "build_commands") as build, \
                  self.assertRaises(HTTPException) as raised:
-                await server.api_switch_command("test@example.test")
+                await server.api_switch_command("test@example.test", self.request)
             self.assertEqual(raised.exception.status_code, code)
             build.assert_not_called()
 
     async def test_mismatched_or_empty_identity_is_rejected(self):
         for result in ({}, {"email": "other@example.test"}, {"email": self.account["email"], "sub": "user_other"}):
             with patch.object(server, "fetch_cursor", return_value=result), self.assertRaises(HTTPException) as raised:
-                await server.api_switch_command("test@example.test")
+                await server.api_switch_command("test@example.test", self.request)
             self.assertEqual(raised.exception.status_code, 400)
 
     async def test_expired_web_cookie_does_not_block_desktop_switch(self):
         self.account["cookie"] = cookie_for(exp=1)
         with patch.object(server, "fetch_cursor", return_value={'email':self.account['email'], 'authId':'auth0|user_test'}) as fetch:
-            response = await server.api_switch_command("test@example.test")
+            response = await server.api_switch_command("test@example.test", self.request)
         self.assertEqual(response.status_code, 200)
         self.assertTrue(all(call.args[0] == '' for call in fetch.await_args_list))
 

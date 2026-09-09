@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import shlex
 import tempfile
 import time
 import unittest
@@ -70,6 +71,8 @@ class AdminHTTPTest(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(store._initialized.clear)
         self.addCleanup(snapshot._snapshots.clear)
         self.addCleanup(snapshot._inflight.clear)
+        server._switch_links.clear()
+        self.addCleanup(server._switch_links.clear)
         self.cookies: dict[str, str] = {}
         self.csrf = ""
         self.expiry = int(time.time()) + 7200
@@ -96,7 +99,7 @@ class AdminHTTPTest(unittest.IsolatedAsyncioTestCase):
                       authenticated: bool = True) -> Response:
         parsed = urlsplit(url)
         payload = json.dumps(data).encode() if data is not None else b""
-        request_headers = {"host": "testserver", **(headers or {})}
+        request_headers = {"host": parsed.netloc or "testserver", **(headers or {})}
         if data is not None:
             request_headers["content-type"] = "application/json"
         if authenticated and self.cookies:
@@ -120,7 +123,7 @@ class AdminHTTPTest(unittest.IsolatedAsyncioTestCase):
 
         scope = {
             "type": "http", "asgi": {"version": "3.0", "spec_version": "2.4"},
-            "http_version": "1.1", "method": method, "scheme": "http",
+            "http_version": "1.1", "method": method, "scheme": parsed.scheme or "http",
             "path": parsed.path, "raw_path": parsed.path.encode(),
             "query_string": parsed.query.encode(), "root_path": "",
             "headers": [(key.lower().encode(), value.encode()) for key, value in request_headers.items()],
@@ -153,6 +156,109 @@ class AdminHTTPTest(unittest.IsolatedAsyncioTestCase):
         return await self.request("PUT", "/api/admin/switch-policy", headers={"X-Admin-CSRF": self.csrf},
                                   data={"all_accounts": all_accounts, "departments": departments or [],
                                         "account_ids": account_ids or []})
+
+    async def make_switch_link(self, *, authenticated=True, base_url=""):
+        account = self.accounts[0]
+        with patch.object(server.sessions, "ensure_account", return_value=account), \
+             patch.object(server.sessions, "request_account",
+                          return_value={"email": account["email"], "authId": account["auth_subject"]}), \
+             patch.object(server, "take_manual_token", return_value=True):
+            response = await self.request("POST", base_url + "/api/accounts/alpha@example.test/switch-command",
+                headers={"X-Admin-CSRF": self.csrf}, authenticated=authenticated)
+        self.assertEqual(response.status_code, 200, response.text)
+        result = response.json()
+        # shlex extracts the URL without executing any generated script.
+        url = next(part for part in shlex.split(result["commands"]["macos"]["command"].split(")", 1)[0])
+                   if part.startswith(("http://", "https://")))
+        return result, url
+
+    async def test_short_link_download_is_exact_single_use_and_needs_no_browser_auth(self):
+        await self.login()
+        with patch.object(server, "PANEL_TOKEN", "private-panel-token"):
+            result, url = await self.make_switch_link()
+            for item in result["commands"].values():
+                self.assertLess(len(item["command"]), 400)
+                self.assertNotIn(self.accounts[0]["access_token"], item["command"])
+                self.assertNotIn("private-panel-token", item["command"])
+            self.assertLessEqual(result["download_expires_at"], time.time() + 300)
+            self.assertLessEqual(result["download_expires_at"], result["expires_at"])
+            head = await self.request("HEAD", url, authenticated=False)
+            self.assertEqual(head.status_code, 405)
+            bad = await self.request("GET", url.rsplit("/", 1)[0] + "/linux", authenticated=False)
+            self.assertEqual(bad.status_code, 410)
+            download = await self.request("GET", url, authenticated=False)
+            self.assertEqual(download.status_code, 200)
+            self.assertEqual(download.text, result["commands"]["macos"]["script"])
+            self.assertEqual(download.headers["cache-control"], "no-store")
+            self.assertIn("charset=utf-8", download.headers["content-type"])
+            for path in (url, url.rsplit("/", 1)[0] + "/windows"):
+                repeat = await self.request("GET", path, authenticated=False)
+                self.assertEqual(repeat.status_code, 410)
+                self.assert_no_credentials(repeat)
+
+    async def test_windows_download_matches_preview_and_consumes_mac_link(self):
+        await self.login()
+        result, url = await self.make_switch_link()
+        download = await self.request("GET", url.rsplit("/", 1)[0] + "/windows", authenticated=False)
+        self.assertEqual(download.status_code, 200)
+        self.assertEqual(download.text, result["commands"]["windows"]["script"])
+        self.assertEqual((await self.request("GET", url, authenticated=False)).status_code, 410)
+
+    async def test_concurrent_downloads_only_deliver_once(self):
+        await self.login()
+        _, url = await self.make_switch_link()
+        responses = await asyncio.gather(*(self.request("GET", url, authenticated=False) for _ in range(4)))
+        self.assertEqual(sorted(response.status_code for response in responses), [200, 410, 410, 410])
+
+    async def test_expired_and_restart_cleared_links_return_no_credentials(self):
+        await self.login()
+        result, url = await self.make_switch_link()
+        with patch("cursor_dashboard.switch_links.time.time", return_value=result["download_expires_at"]):
+            expired = await self.request("GET", url, authenticated=False)
+        self.assertEqual(expired.status_code, 410)
+        self.assert_no_credentials(expired)
+        _, url = await self.make_switch_link()
+        server._switch_links.clear()
+        cleared = await self.request("GET", url, authenticated=False)
+        self.assertEqual(cleared.status_code, 410)
+
+    async def test_download_rechecks_guest_policy_and_admin_session(self):
+        await self.login()
+        await self.save_policy(all_accounts=True)
+        _, guest_url = await self.make_switch_link(authenticated=False)
+        await self.save_policy()
+        denied = await self.request("GET", guest_url, authenticated=False)
+        self.assertEqual(denied.status_code, 403)
+        self.assert_no_credentials(denied)
+        _, admin_url = await self.make_switch_link()
+        await self.save_policy(all_accounts=True)
+        await self.request("POST", "/api/admin/logout", headers={"X-Admin-CSRF": self.csrf})
+        denied = await self.request("GET", admin_url, authenticated=False)
+        self.assertEqual(denied.status_code, 403)
+        self.assert_no_credentials(denied)
+
+    async def test_reauthorized_or_recreated_account_invalidates_download(self):
+        await self.login()
+        _, url = await self.make_switch_link()
+        store.upsert_account("new-cookie", "alpha@example.test", "Alpha", "Research",
+                             session=credential("new", self.expiry))
+        denied = await self.request("GET", url, authenticated=False)
+        self.assertEqual(denied.status_code, 410)
+        self.assert_no_credentials(denied)
+        self.accounts[0] = store.get_account("alpha@example.test")
+        _, url = await self.make_switch_link()
+        store.delete_account("alpha@example.test")
+        store.upsert_account("new-cookie", "alpha@example.test", "Alpha", "Research",
+                             session=credential("new", self.expiry))
+        denied = await self.request("GET", url, authenticated=False)
+        self.assertEqual(denied.status_code, 410)
+        self.assert_no_credentials(denied)
+
+    async def test_link_url_uses_external_host_protocol_and_port(self):
+        await self.login()
+        result, url = await self.make_switch_link(base_url="https://panel.example:9443")
+        self.assertTrue(url.startswith("https://panel.example:9443/api/s/"))
+        self.assertIn(url.rsplit("/", 1)[0] + "/windows", result["commands"]["windows"]["command"])
 
     def assert_no_credentials(self, response: Response):
         for account in self.accounts:
@@ -367,7 +473,7 @@ class AdminHTTPTest(unittest.IsolatedAsyncioTestCase):
     async def test_switch_requires_admin_csrf_and_guest_grant(self):
         await self.login()
         account = self.accounts[0]
-        fake_result = {"macos": {"command": "preview-macos"}, "windows": {"command": "preview-windows"}}
+        fake_result = desktop.build_commands(credential("alpha", self.expiry), account["email"], preview=True)
         with patch.object(server.sessions, "ensure_account", new_callable=AsyncMock, return_value=account), \
              patch.object(server.sessions, "request_account", new_callable=AsyncMock,
                           return_value={"email": account["email"], "authId": account["auth_subject"]}), \
