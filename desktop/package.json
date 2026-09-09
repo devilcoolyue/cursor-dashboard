@@ -1,0 +1,12 @@
+{
+  "name": "cursor-panel-desktop-p0",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "sidecar": "node scripts/build-sidecar.mjs",
+    "dev": "npm run sidecar && tauri dev",
+    "build": "npm run sidecar && tauri build",
+    "test": "uv run --project sidecar --frozen python -m unittest discover -s tests -v"
+  },
+  "devDependencies": { "@tauri-apps/cli": "2.11.4" }
+}

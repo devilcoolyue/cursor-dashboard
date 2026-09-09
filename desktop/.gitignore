@@ -1,0 +1,9 @@
+node_modules/
+src-tauri/target/
+src-tauri/binaries/
+src-tauri/gen/
+sidecar/.venv/
+sidecar/build/
+sidecar/dist/
+sidecar/*.spec
+output/

@@ -93,6 +93,7 @@ uv run --frozen cursor-quota -c other.json
 
 ## 维护资料
 
+- [V2 架构与实施计划](docs/plans/v2-architecture.md)：个人/团队空间、统一权限、服务端与桌面共用核心的目标设计及分阶段任务（待实施）。
 - [部署与运行](docs/operations.md)：启动参数、配置、权限边界、迁移、备份与排障。
 - [实现与维护](docs/maintenance.md)：模块、请求链路、接口、数据口径、前端约束和测试入口。
 - [阶段归档](docs/archive/2026-09-07.md)：本次核查依据、说明删减、验证结果与遗留问题。
