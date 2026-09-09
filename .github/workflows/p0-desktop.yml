@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
   push:
     branches: [feat/v2-p0]
-    paths: ['desktop/**', 'frontend/**', '.github/workflows/p0-desktop.yml', 'uv.lock']
+    paths: ['desktop/**', 'frontend/**', 'tests/test_desktop.py', '.github/workflows/p0-desktop.yml', 'uv.lock']
   pull_request:
-    paths: ['desktop/**', 'frontend/**', '.github/workflows/p0-desktop.yml']
+    paths: ['desktop/**', 'frontend/**', 'tests/test_desktop.py', '.github/workflows/p0-desktop.yml']
 
 permissions:
   contents: read
