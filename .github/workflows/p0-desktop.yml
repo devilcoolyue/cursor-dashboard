@@ -11,6 +11,9 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTHONUTF8: '1'
+
 jobs:
   packaged-smoke:
     strategy:

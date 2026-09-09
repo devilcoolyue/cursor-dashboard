@@ -93,7 +93,9 @@ def main():
             data["process_tree_cleaned"] = not survivors
             data["shell_killed"] = args.kill_shell
             data["exit_code"] = child.returncode
-            data["idle_process_tree_rss_bytes"] = observations[len(observations) // 2] if observations else None
+            data["idle_process_tree_rss_bytes"] = (
+                observations[len(observations) // 2] if observations and not args.kill_shell else None
+            )
             data["memory_scope"] = "shell + observed descendants; shared pages may be double-counted; OS-managed WebView processes may be excluded"
             args.output.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
             assert data["backend"]["frozen"], "Python was not bundled"
