@@ -4,13 +4,13 @@ const session = __SESSION_JSON__;
 const [appRoot, databasePath] = process.argv.slice(2);
 
 async function switchAccount() {
-  if (session.preview) throw new Error('Preview commands cannot switch accounts.');
-  if (Date.now() >= session.expiresAt * 1000) throw new Error('Token expired. Generate a new command.');
+  if (session.preview) throw new Error('预览命令不能切换账号。');
+  if (Date.now() >= session.expiresAt * 1000) throw new Error('登录凭证已过期，请回到面板重新生成命令。');
   const claims = JSON.parse(Buffer.from(session.token.split('.')[1], 'base64url').toString('utf8'));
   if (claims.type !== 'session' || !session.refreshToken) {
-    throw new Error('A verified desktop session is required. Generate a new command.');
+    throw new Error('缺少已验证的桌面登录凭证，请回到面板重新生成命令。');
   }
-  if (!fs.existsSync(databasePath)) throw new Error('Cursor database not found. Open Cursor once first.');
+  if (!fs.existsSync(databasePath)) throw new Error('未找到用户数据库，请先打开一次 Cursor。');
   const sqlite = require(path.join(appRoot, 'node_modules', '@vscode', 'sqlite3'));
   const db = await new Promise((resolve, reject) => {
     const opened = new sqlite.Database(databasePath, sqlite.OPEN_READWRITE,
@@ -23,13 +23,13 @@ async function switchAccount() {
     db.get(sql, (error, row) => error ? reject(error) : resolve(row)));
   try {
     const check = await get('PRAGMA quick_check');
-    if (!check || Object.values(check)[0] !== 'ok') throw new Error('Database integrity check failed.');
+    if (!check || Object.values(check)[0] !== 'ok') throw new Error('数据库完整性检查失败，已停止切换。');
     await get('SELECT key, value FROM ItemTable LIMIT 1');
     const backup = databasePath + '.cursor-panel-' + Date.now() + '-' + process.pid + '.bak';
     fs.writeFileSync(backup, '', { flag: 'wx', mode: 0o600 });
     // VACUUM INTO includes committed WAL data, unlike copying only state.vscdb.
     await run('VACUUM INTO ?', [backup]);
-    console.log('Backup: ' + backup);
+    console.log('备份位置：' + backup);
     await run('BEGIN IMMEDIATE');
     try {
       for (const [key, value] of [
@@ -50,13 +50,13 @@ async function switchAccount() {
       await run('ROLLBACK').catch(() => {});
       throw error;
     }
-    console.log('Local account updated: ' + session.email);
+    console.log('本地账号已更新：' + session.email);
   } finally {
     await new Promise((resolve, reject) => db.close(error => error ? reject(error) : resolve()));
   }
 }
 
 switchAccount().catch(error => {
-  console.error('Switch failed: ' + error.message);
+  console.error('切换失败：' + error.message);
   process.exitCode = 1;
 });

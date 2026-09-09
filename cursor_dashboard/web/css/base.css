@@ -634,7 +634,22 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 
 #switch-dlg { width: min(620px, calc(100vw - 32px)); }
 #switch-account { color: var(--fg); font-weight: 600; }
-#switch-command { height: 126px; min-height: 126px; overflow-wrap: anywhere; word-break: break-all; }
+.switch-command-field {
+  height: 126px; padding: 6px 2px 6px 6px; overflow: hidden;
+  background: var(--input-bg); border: 1px solid var(--line); border-radius: var(--radius-ctl);
+}
+#switch-dlg .switch-command-field:focus-within {
+  border-color: var(--accent); box-shadow: var(--ui-focus-shadow);
+}
+#switch-command {
+  display: block; height: 100%; min-height: 0; padding: 2px 2px 2px 5px; resize: none;
+  background: transparent; border: 0; border-radius: 0; box-shadow: none;
+  overflow: auto; overflow-wrap: anywhere; word-break: break-all; overscroll-behavior: contain;
+  scrollbar-width: thin; scrollbar-color: var(--line-popover) transparent;
+}
+#switch-command::-webkit-scrollbar { width: 6px; height: 6px; }
+#switch-command::-webkit-scrollbar-track, #switch-command::-webkit-scrollbar-corner { background: transparent; }
+#switch-command::-webkit-scrollbar-thumb { background: var(--line-popover); border-radius: 999px; }
 #switch-result[hidden] { display: none; }
 #switch-result .hint-text { margin: 8px 0 12px; }
 #switch-audit { margin-bottom: 16px; font-size: 12px; }

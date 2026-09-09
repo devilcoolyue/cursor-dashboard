@@ -274,7 +274,9 @@
   </div>
   <div id="switch-result" hidden>
     <label id="switch-shell" for="switch-command">终端命令</label>
-    <textarea id="switch-command" readonly spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+    <div class="switch-command-field">
+      <textarea id="switch-command" readonly spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+    </div>
     <p class="hint-text">命令包含账号凭证，请勿转发。执行结果以本机 Cursor 显示为准。</p>
     <details id="switch-audit">
       <summary>查看脚本</summary>

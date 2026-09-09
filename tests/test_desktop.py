@@ -8,6 +8,7 @@ import re
 import shutil
 import sqlite3
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -95,12 +96,283 @@ class CommandTest(unittest.TestCase):
     def test_preview_commands_exit_before_accessing_cursor(self):
         commands = desktop.build_commands(self.session, "preview@example.test", preview=True)["commands"]
         self.assertTrue(commands["macos"]["script"].startswith("exit 1"))
-        self.assertTrue(commands["windows"]["script"].startswith("throw 'Preview only'"))
+        self.assertTrue(commands["windows"]["script"].startswith("throw '仅供预览，不能执行切换'"))
 
     def test_web_cookie_can_never_be_written_as_desktop_credentials(self):
         web = desktop.parse_session(cookie_for())
         with self.assertRaises(desktop.DesktopSessionError):
             desktop.build_commands(web, 'test@example.test')
+
+
+@unittest.skipUnless(Path('/bin/bash').exists(), 'Bash is required for the macOS script tests')
+class MacQuitTest(unittest.TestCase):
+    """Run the generated shell script with isolated app/process stand-ins."""
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
+        self.bin = self.root / 'bin'
+        self.bin.mkdir()
+        app = self.root / 'Cursor.app'
+        self.write_executable(app / 'Contents/MacOS/Cursor', '''
+import os, sys
+from pathlib import Path
+root = Path(os.environ['QUIT_TEST_ROOT'])
+if sys.argv[1] == '-e' and os.environ['QUIT_TEST_MODE'] == 'runtime-fails':
+    print('模拟 SQLite 加载失败', file=sys.stderr)
+    sys.exit(2)
+if sys.argv[1] == '-':
+    sys.stdin.read()
+    if os.environ['QUIT_TEST_MODE'] == 'write-fails':
+        print('模拟数据库写入失败', file=sys.stderr)
+        sys.exit(2)
+    (root / 'account-write').touch()
+''')
+        cli = app / 'Contents/Resources/app/bin/cursor'
+        cli.parent.mkdir(parents=True)
+        cli.write_text('touch "$QUIT_TEST_ROOT/reopened"\n')
+        db = self.root / 'Library/Application Support/Cursor/User/globalStorage/state.vscdb'
+        db.parent.mkdir(parents=True)
+        db.touch()
+        self.running = self.root / 'running'
+        self.running.touch()
+        self.write_executable(self.bin / 'pgrep', '''
+import os, sys
+from pathlib import Path
+sys.exit(0 if (Path(os.environ['QUIT_TEST_ROOT']) / 'running').exists() else 1)
+''')
+        self.write_executable(self.bin / 'sleep', 'import time\ntime.sleep(0.01)\n')
+        self.write_executable(self.bin / 'osascript', '''
+import os, sys, time
+from pathlib import Path
+root = Path(os.environ['QUIT_TEST_ROOT'])
+(root / 'helper-pid').write_text(str(os.getpid()))
+mode = os.environ['QUIT_TEST_MODE']
+if mode == 'denied':
+    sys.exit(1)
+if mode in ('success', 'closed-but-helper-hangs'):
+    (root / 'running').unlink()
+if mode == 'success':
+    sys.exit(0)
+while True:
+    time.sleep(1)
+''')
+        self.addCleanup(self.stop_helper)
+        self.script = desktop.build_commands(valid_desktop_session(), 'test@example.test')['commands']['macos']['script']
+        self.script = self.script.replace("CURSOR_APP='/Applications/Cursor.app'", f"CURSOR_APP='{app}'")
+        self.script = self.script.replace('CURSOR_DB="$HOME/Library/Application Support/Cursor/User/globalStorage/state.vscdb"',
+                                          f"CURSOR_DB='{db}'")
+
+    def write_executable(self, path, source):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f'#!{sys.executable}\n' + source)
+        path.chmod(0o700)
+
+    def stop_helper(self):
+        pid_file = self.root / 'helper-pid'
+        if pid_file.exists():
+            try:
+                os.kill(int(pid_file.read_text()), 9)
+            except ProcessLookupError:
+                pass
+
+    def run_script(self, mode):
+        result = subprocess.run(['/bin/bash'], input=self.script, text=True, capture_output=True,
+                                timeout=10, env={**os.environ,
+                                'PATH': str(self.bin) + os.pathsep + os.environ['PATH'],
+                                'QUIT_TEST_ROOT': str(self.root), 'QUIT_TEST_MODE': mode})
+        pid_file = self.root / 'helper-pid'
+        if pid_file.exists():
+            with self.assertRaises(ProcessLookupError, msg='AppleScript helper must be reaped'):
+                os.kill(int(pid_file.read_text()), 0)
+        return result
+
+    def test_blocked_quit_request_times_out_without_writing_or_force_quitting(self):
+        result = self.run_script('hang')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('等待退出超过 30 秒', result.stderr)
+        self.assertIn('✗ [3/5]', result.stderr)
+        self.assertNotIn('\x1b', result.stderr)
+        self.assertTrue(self.running.exists())
+        self.assertFalse((self.root / 'account-write').exists())
+        self.assertFalse((self.root / 'reopened').exists())
+
+    def test_denied_quit_request_stops_without_writing(self):
+        result = self.run_script('denied')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('退出请求失败或已取消', result.stderr)
+        self.assertTrue(self.running.exists())
+        self.assertFalse((self.root / 'account-write').exists())
+        self.assertFalse((self.root / 'reopened').exists())
+
+    def test_successful_quit_updates_account_and_reopens(self):
+        for mode in ('success', 'closed-but-helper-hangs'):
+            with self.subTest(mode=mode):
+                self.running.touch()
+                for marker in ('account-write', 'reopened'):
+                    (self.root / marker).unlink(missing_ok=True)
+                result = self.run_script(mode)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertTrue((self.root / 'account-write').exists())
+                self.assertTrue((self.root / 'reopened').exists())
+                self.assertIn('✓ [5/5]', result.stderr)
+                self.assertNotIn('\x1b', result.stderr)
+
+    def test_already_closed_cursor_skips_quit_request(self):
+        self.running.unlink()
+        result = self.run_script('hang')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.root / 'helper-pid').exists())
+        self.assertTrue((self.root / 'account-write').exists())
+        self.assertTrue((self.root / 'reopened').exists())
+
+    def test_native_failure_reports_current_step_and_preserves_error(self):
+        self.running.unlink()
+        for mode, step, message in (('runtime-fails', 2, '模拟 SQLite 加载失败'),
+                                    ('write-fails', 4, '模拟数据库写入失败')):
+            with self.subTest(mode=mode):
+                result = self.run_script(mode)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(f'✗ [{step}/5]', result.stderr)
+                self.assertIn(message, result.stderr)
+                self.assertNotIn(f'✓ [{step}/5]', result.stderr)
+                self.assertNotIn('切换步骤已完成', result.stderr)
+                self.assertFalse((self.root / 'reopened').exists())
+
+
+@unittest.skipUnless(shutil.which('pwsh'), 'PowerShell is required')
+class PowerShellDiscoveryTest(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
+        self.install = self.root / '非默认安装 Cursor'
+        self.exe = self.install / 'Cursor.exe'
+        manifest = self.install / 'resources/app/package.json'
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text('{}')
+        self.exe.touch()
+        self.stale = self.root / 'stale/Cursor.exe'
+        self.stale.parent.mkdir()
+        self.stale.touch()
+
+    def run_discovery(self, setup='', running='@()', real_source=''):
+        helpers = desktop.SCRIPTS.joinpath('switch-windows.ps1').read_text().split('\ntry {\n', 1)[0]
+        script = helpers + f"\n$env:CURSOR_EXE = $null\n$env:LOCALAPPDATA = '{self.root}/missing'\n"
+        script += f"$env:ProgramFiles = '{self.root}/missing'\n${{env:ProgramFiles(x86)}} = '{self.root}/missing'\n"
+        for source in ('Path', 'Registry', 'Shortcut'):
+            if source != real_source:
+                script += f'function Get-Cursor{source}Candidates {{}}\n'
+        script += setup + f'''
+try {{
+    $found = Find-CursorExecutable -Running {running}
+    Write-Host "FOUND:$found"
+}} catch {{
+    Write-Host $_.Exception.Message
+    exit 1
+}}
+'''
+        encoded = base64.b64encode(script.encode()).decode()
+        command = ("& ([scriptblock]::Create([Text.Encoding]::UTF8.GetString("
+                   f"[Convert]::FromBase64String('{encoded}'))))")
+        return subprocess.run(['pwsh', '-NoLogo', '-NoProfile', '-Command', command],
+                              text=True, capture_output=True, timeout=20)
+
+    def assert_found(self, result):
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('FOUND:' + str(self.exe), result.stdout)
+
+    def test_running_custom_install_is_preferred(self):
+        self.assert_found(self.run_discovery(running=f"@([pscustomobject]@{{ Path = '{self.exe}' }})"))
+
+    def test_each_fallback_skips_stale_candidates(self):
+        for source in ('Path', 'Registry', 'Shortcut'):
+            with self.subTest(source=source):
+                self.assert_found(self.run_discovery(
+                    f"function Get-Cursor{source}Candidates {{ '{self.stale}'; '{self.exe}' }}"))
+
+    def test_manual_executable_or_directory_takes_priority(self):
+        for path in (f'"{self.exe}"', str(self.install)):
+            with self.subTest(path=path):
+                self.assert_found(self.run_discovery(f"$env:CURSOR_EXE = '{path}'"))
+        result = self.run_discovery(f"$env:CURSOR_EXE = '{self.stale}'",
+                                    running=f"@([pscustomobject]@{{ Path = '{self.exe}' }})")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('CURSOR_EXE 指定的路径无效', result.stdout)
+
+    def test_cli_path_resolves_editor_instead_of_executing_wrapper(self):
+        cli = self.install / 'resources/app/bin/cursor.cmd'
+        cli.parent.mkdir()
+        cli.touch()
+        self.assert_found(self.run_discovery(
+            f"function Get-Command {{ [pscustomobject]@{{ Source = '{cli}' }} }}", real_source='Path'))
+
+    def test_registry_icon_path_accepts_quotes_and_index(self):
+        self.assert_found(self.run_discovery(f'''
+function Get-Item {{
+    param($LiteralPath)
+    if ($LiteralPath -like 'HK*') {{ throw 'No App Paths entry' }}
+    Microsoft.PowerShell.Management\\Get-Item -LiteralPath $LiteralPath
+}}
+function Get-ItemProperty {{
+    [pscustomobject]@{{ DisplayName = 'Unrelated'; DisplayIcon = '{self.stale}' }}
+    [pscustomobject]@{{ DisplayName = 'Cursor (User)'; DisplayIcon = '"{self.exe}",0' }}
+}}
+''', real_source='Registry'))
+
+    def test_missing_install_explains_recovery_without_claiming_success(self):
+        result = self.run_discovery()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('快捷方式', result.stdout)
+        self.assertIn('$env:CURSOR_EXE', result.stdout)
+        self.assertNotIn('FOUND:', result.stdout)
+
+
+@unittest.skipUnless(shutil.which('pwsh') and shutil.which('node'), 'PowerShell and Node are required')
+class PowerShellProgressTest(unittest.TestCase):
+    def run_runtime(self, source):
+        helpers = desktop.SCRIPTS.joinpath('switch-windows.ps1').read_text().split('\ntry {\n', 1)[0]
+        node = shutil.which('node').replace("'", "''")
+        source_literal = source.replace("'", "''")
+        script = helpers + f'''
+$cursorExe = '{node}'
+try {{
+    Start-SwitchStep 4 '备份本地数据并写入账号'
+    Invoke-CursorRuntime -RuntimeArguments @('-', '中文 空格目录') -Source '{source_literal}'
+    Complete-SwitchStep
+}} catch {{
+    Write-Host $_.Exception.Message
+    exit 1
+}}
+'''
+        # Exercise the same nested scriptblock scope as the copied command.
+        encoded = base64.b64encode(script.encode()).decode()
+        command = ("& ([scriptblock]::Create([Text.Encoding]::UTF8.GetString("
+                   f"[Convert]::FromBase64String('{encoded}'))))")
+        return subprocess.run(['pwsh', '-NoLogo', '-NoProfile', '-Command', command],
+                              text=True, capture_output=True, timeout=20)
+
+    def test_utf8_input_and_arguments_survive_native_runtime(self):
+        # Exceed pipe buffers in both directions to catch synchronous-I/O deadlocks.
+        source = "// " + '中文' * 12000 + "\n" + '''
+process.stdout.write('输出'.repeat(12000));
+process.stderr.write('错误详情'.repeat(12000));
+console.log(process.argv[2]);
+'''
+        result = self.run_runtime(source)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('输出' * 12000, result.stdout)
+        self.assertIn('错误详情' * 12000, result.stdout)
+        self.assertIn('中文 空格目录', result.stdout)
+        self.assertIn('✓ [4/5]', result.stdout)
+        self.assertNotIn('\x1b', result.stdout)
+
+    def test_native_failure_is_not_marked_complete(self):
+        result = self.run_runtime("console.error('模拟写入失败'); process.exit(7);")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('模拟写入失败', result.stdout)
+        self.assertNotIn('✓ [4/5]', result.stdout)
 
 
 class DesktopClientTest(unittest.TestCase):
@@ -293,7 +565,7 @@ exports.Database = class {
         before = self.rows()
         result = self.run_engine(web_token=True)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn('desktop session is required', result.stderr)
+        self.assertIn('缺少已验证的桌面登录凭证', result.stderr)
         self.assertEqual(self.rows(), before)
         self.assertEqual(list(self.root.glob('*.bak')), [])
 

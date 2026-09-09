@@ -69,7 +69,11 @@ Grok Bot 周额度独立显示：无包含额度或缺少用量时隐藏，已�
 
 执行前保存工作。脚本检测 Cursor 安装，请求正常退出并等待最多约 30 秒，然后使用 Cursor 自带 Node/SQLite 创建包含已提交 WAL 数据的备份，在事务中更新登录字段，成功后重启 Cursor。备份或写入失败会停止；写入失败回滚。
 
-支持 macOS 的 `/Applications/Cursor.app`、`~/Applications/Cursor.app` 和 Windows 常规安装；Windows 也可从运行进程识别安装位置。仅处理默认用户数据目录，不支持 Linux 切换、便携版或自定义 `--user-data-dir`。依赖 Cursor 内部字段及自带 SQLite 模块，切换后需在客户端核对账号。
+命令以中文展示五个步骤：检查安装、检查运行环境、退出 Cursor、备份并写入账号、重新打开 Cursor。交互终端显示加载动画及等待时间，完成标记为 `✓`，失败标记为 `✗` 并保留错误详情；输出重定向时使用静态步骤日志。
+
+macOS 请使用系统「终端」运行，避免在即将退出的 Cursor 内置终端执行。若停在「等待 Cursor 安全退出」（旧命令为 `Closing Cursor`），请查看 Cursor 的保存确认及 macOS 的自动化授权弹窗；退出请求也包含在约 30 秒的等待期限内。超时会停止，不修改账号，也不强制关闭 Cursor。可先保存工作并用 `Cmd+Q` 完全退出 Cursor，再在系统终端重新执行。Windows 请使用独立 PowerShell 窗口。
+
+支持 macOS 的 `/Applications/Cursor.app`、`~/Applications/Cursor.app` 和 Windows 常规安装；Windows 依次从运行进程、默认目录、PATH、注册表和桌面/开始菜单的 Cursor 快捷方式识别安装位置，支持安装在其他盘符。找不到时，可先打开 Cursor 后重试，或在 PowerShell 设置 `$env:CURSOR_EXE = 'D:\软件\Cursor\Cursor.exe'`（替换为快捷方式属性中的实际目标路径），再执行切换命令；手动路径优先，且会检查安装目录是否完整。仅处理默认用户数据目录，不支持 Linux 切换、便携版或自定义 `--user-data-dir`。依赖 Cursor 内部字段及自带 SQLite 模块，切换后需在客户端核对账号。
 
 备份位于原库旁，文件名为 `state.vscdb.cursor-panel-时间戳-进程号.bak`。命令和备份含登录凭证，应按账号密钥保管。命令使用与面板相同的桌面会话，客户端退出或撤销该会话可能影响面板查询；收回切换权限不能撤回已复制的凭证。
 

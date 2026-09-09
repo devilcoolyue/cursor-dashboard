@@ -121,6 +121,7 @@ html[data-skin="glass"] #sort-order,
 html[data-skin="glass"] input[type=text],
 html[data-skin="glass"] input[type=password],
 html[data-skin="glass"] select,
+html[data-skin="glass"] .switch-command-field,
 html[data-skin="glass"] textarea {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12);
 }
@@ -129,6 +130,7 @@ html[data-skin="glass"][data-theme="light"] #sort-order,
 html[data-skin="glass"][data-theme="light"] input[type=text],
 html[data-skin="glass"][data-theme="light"] input[type=password],
 html[data-skin="glass"][data-theme="light"] select,
+html[data-skin="glass"][data-theme="light"] .switch-command-field,
 html[data-skin="glass"][data-theme="light"] textarea {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7);
 }

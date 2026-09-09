@@ -119,8 +119,8 @@ def build_commands(session: DesktopSession, email: str, *, preview: bool = False
         script = script.replace("__EXPIRES_AT__", str(session.expires_at))
         script = script.replace("__ENGINE__", engine)
         if preview:
-            script = ("exit 1 # Preview only\n" if platform == "macos"
-                      else "throw 'Preview only'\n") + script
+            script = ("exit 1 # 仅供预览，不能执行切换\n" if platform == "macos"
+                      else "throw '仅供预览，不能执行切换'\n") + script
         encoded = base64.b64encode(script.encode("utf-8")).decode("ascii")
         if platform == "macos":
             command = f"printf %s '{encoded}' | /usr/bin/openssl base64 -A -d | /bin/bash"
