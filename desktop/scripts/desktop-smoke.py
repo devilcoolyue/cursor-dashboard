@@ -107,8 +107,11 @@ def main():
             print(json.dumps(result, ensure_ascii=False, indent=2))
         finally:
             # Only the synthetic item created under this temporary directory.
-            if store.read() is not None:
+            from keyring.errors import PasswordDeleteError
+            try:
                 store.backend().delete_password(store.service, store.account)
+            except PasswordDeleteError:
+                pass
 
 
 if __name__ == '__main__':

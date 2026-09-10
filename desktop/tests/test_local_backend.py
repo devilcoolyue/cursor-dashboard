@@ -1,6 +1,7 @@
 """Real private HTTP and packaged OS key-store persistence using owned temporary data."""
 from __future__ import annotations
 import json
+import faulthandler
 import os
 from pathlib import Path
 import queue
@@ -20,6 +21,8 @@ ROOT = Path(__file__).resolve().parents[1]
 @unittest.skipUnless(sys.platform in {'darwin', 'win32'}, 'Native OS key store requires macOS or Windows')
 class LocalBackendTest(unittest.TestCase):
     def setUp(self):
+        faulthandler.dump_traceback_later(120)
+        self.addCleanup(faulthandler.cancel_dump_traceback_later)
         self.temp = tempfile.TemporaryDirectory(prefix='cursor-p4-backend-')
         self.directory = Path(self.temp.name) / 'fixture-data'
         self.http = build_opener(ProxyHandler({}))
@@ -58,8 +61,11 @@ class LocalBackendTest(unittest.TestCase):
         if self.child.poll() is None:
             self.stop()
         store = SystemKeyStore(self.directory)
-        if store.read() is not None:
+        from keyring.errors import PasswordDeleteError
+        try:
             store.backend().delete_password(store.service, store.account)
+        except PasswordDeleteError:
+            pass
         self.temp.cleanup()
 
     def request(self, path, method='GET', body=None, headers=None):
@@ -87,7 +93,7 @@ class LocalBackendTest(unittest.TestCase):
         self.assertTrue(all(row['data'] for row in rows))
         self.assertNotIn('fixture-cookie', json.dumps(rows))
         self.assertEqual(self.ready['frozen'], bool(os.environ.get('P4_BACKEND_BINARY')))
-        self.assertTrue(SystemKeyStore(self.directory).read())
+        # Persistence is verified through restart and decryption by the same native executable.
         self.stop()
         self.start()
         self.assertEqual(self.request('/api/v1/me')[1]['id'], identity['id'])

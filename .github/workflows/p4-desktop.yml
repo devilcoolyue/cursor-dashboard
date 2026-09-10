@@ -3,6 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [feat/v2-p4]
+    paths: ['cursor_dashboard/**', 'desktop/**', 'frontend/**', 'tests/**', '.github/workflows/p4-desktop.yml', 'uv.lock', 'pyproject.toml']
   pull_request:
     paths: ['cursor_dashboard/**', 'desktop/**', 'frontend/**', 'tests/**', '.github/workflows/p4-desktop.yml']
 permissions:
@@ -39,6 +40,7 @@ jobs:
       - name: Core desktop failure and recovery contracts
         run: uv run --frozen python -m unittest discover -s tests -p test_v2_desktop.py -v
       - name: Native backend and system key store
+        timeout-minutes: 5
         run: npm --prefix desktop test
       - name: Native Cursor adapter with isolated application
         run: uv run --project desktop/sidecar --frozen python desktop/scripts/verify-native.py
@@ -47,6 +49,7 @@ jobs:
       - name: Restricted Rust routes
         run: cargo test --manifest-path desktop/src-tauri/Cargo.toml --bin cursor-panel-desktop
       - name: Frozen runtime contracts
+        timeout-minutes: 5
         shell: python
         run: |
           import os, pathlib, subprocess, sys

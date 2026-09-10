@@ -145,6 +145,6 @@ try {
   if (backend.exitCode === null) backend.kill()
   server.close()
   try {
-    execFileSync('uv', ['run', '--project', 'desktop/sidecar', '--frozen', 'python', '-c', 'import sys; from pathlib import Path; from cursor_dashboard.local.keys import SystemKeyStore; s=SystemKeyStore(Path(sys.argv[1])); s.backend().delete_password(s.service,s.account) if s.read() else None', dataDir], { cwd: root, stdio: 'ignore' })
+    execFileSync('uv', ['run', '--project', 'desktop/sidecar', '--frozen', 'python', '-c', 'import sys; from pathlib import Path; from cursor_dashboard.local.keys import SystemKeyStore; s=SystemKeyStore(Path(sys.argv[1])); s.backend().delete_password(s.service,s.account)', dataDir], { cwd: root, stdio: 'ignore' })
   } finally { await rm(directory, { recursive: true, force: true }) }
 }
