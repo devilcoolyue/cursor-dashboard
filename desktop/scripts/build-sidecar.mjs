@@ -20,5 +20,9 @@ const suffix = process.platform === 'win32' ? '.exe' : ''
 const destination = join(desktop, 'src-tauri', 'runtime')
 mkdirSync(dirname(destination), { recursive: true })
 rmSync(destination, { recursive: true, force: true })
-cpSync(join(sidecar, 'dist', 'cursor-local'), destination, { recursive: true, preserveTimestamps: true })
+// Keep PyInstaller's framework links relative to the copied runtime. Node's
+// default rewrites them to the build directory, breaking relocation on macOS.
+cpSync(join(sidecar, 'dist', 'cursor-local'), destination, {
+  recursive: true, preserveTimestamps: true, verbatimSymlinks: true,
+})
 console.log(`Bundled desktop runtime for ${target}: ${destination}/cursor-local${suffix}`)
