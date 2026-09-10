@@ -4,7 +4,7 @@
 
 ## 启动与部署
 
-运行依赖为 Python 3.10+、FastAPI、Uvicorn、Requests；V2 核心另使用 SQLAlchemy、Alembic、cryptography，随同一个包安装。版本约束在 [pyproject.toml](../pyproject.toml)，解析结果在 `uv.lock`。在项目根目录执行 `uv sync --locked` 安装锁定依赖。本文描述现有 Web/CLI 兼容入口，新核心见[运行与迁移说明](core-operations.md)。
+运行依赖为 Python 3.10+、FastAPI、Uvicorn、Requests；V2 核心另使用 SQLAlchemy、Alembic、cryptography，随同一个包安装。版本约束在 [pyproject.toml](../pyproject.toml)，解析结果在 `uv.lock`。在项目根目录执行 `uv sync --locked` 安装锁定依赖。本文描述现有 Web/CLI 兼容入口，新核心见[运行与迁移说明](core-operations.md)，P2 独立认证 API 的初始化、启动和权限接口见 [V2 API 运行](v2-api-operations.md)。
 
 `cursor-panel` 参数：`--host` 默认 `127.0.0.1`，`--port` 默认 `8787`，`--no-open` 禁止自动打开浏览器。仅本机 host 会自动开浏览器。
 

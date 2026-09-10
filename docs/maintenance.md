@@ -2,7 +2,7 @@
 
 [返回 README](../README.md) · [部署与配置](operations.md) · [阶段归档](archive/2026-09-07.md)
 
-本文主要描述现有 `cursor-panel` / `cursor-quota` 兼容入口。P1 新增的 `cursor-core` 使用独立 V2 数据库与显式配置，运行、迁移和模块边界见[新核心运行文档](core-operations.md)及 [P1 报告](plans/p1-verification.md)。
+本文主要描述现有 `cursor-panel` / `cursor-quota` 兼容入口。P1 新增的 `cursor-core` 使用独立 V2 数据库与显式配置，运行、迁移和模块边界见[新核心运行文档](core-operations.md)及 [P1 报告](plans/p1-verification.md)。P2 新增独立 `cursor-api`、统一身份/权限与审计，见 [API 运行](v2-api-operations.md)、[P2 报告](plans/p2-verification.md)及 [ADR 0004](adr/0004-p2-identity-and-authorization.md)。
 
 ## 模块与入口
 

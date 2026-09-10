@@ -10,6 +10,7 @@ from sqlalchemy.dialects.sqlite import insert
 
 from ...domain.core import (AccountRef, AuthorizedAccount, Conflict, NotFound,
                             SecretError)
+from .policy import audit, authorize, capabilities, membership
 from .models import (Account, AccountTag, Credential, Grant, Lease, LegacyImport,
                      Membership, Metadata, Snapshot, Tag, User, Workspace, new_id)
 
@@ -63,27 +64,11 @@ class Repository:
             session.add(Membership(workspace_id=workspace.id, user_id=user.id, role="owner"))
             return {"user_id": user.id, "workspace_id": workspace.id}
 
-    @staticmethod
-    def _membership(session, actor, workspace_id):
-        user = session.get(User, actor.user_id)
-        member = session.get(Membership, (workspace_id, actor.user_id))
-        if user is None or not user.active or member is None:
-            raise NotFound("Workspace or account is unavailable")
-        return member
+    _membership = staticmethod(membership)
 
-    @classmethod
-    def require(cls, session, actor, workspace_id, account_id=None, action="view"):
-        member = cls._membership(session, actor, workspace_id)
-        account = session.get(Account, account_id) if account_id else None
-        if account_id and (account is None or account.workspace_id != workspace_id):
-            raise NotFound("Workspace or account is unavailable")
-        if member.role in {"owner", "admin"}:
-            return account
-        if account_id and action in {"view", "use"}:
-            grant = session.get(Grant, (workspace_id, account_id, actor.user_id))
-            if grant and (action == "view" or (member.role == "member" and grant.level == "use")):
-                return account
-        raise NotFound("Workspace or account is unavailable")
+    @staticmethod
+    def require(session, actor, workspace_id, account_id=None, action="view"):
+        return authorize(session, actor, action, workspace_id, account_id)
 
     def check_access(self, actor, workspace_id, account_id=None, action="view"):
         with self.db.transaction() as session:
@@ -153,6 +138,7 @@ class Repository:
                 now = int(time.time())
                 session.add(Snapshot(workspace_id=workspace_id, account_id=account.id, generation=ref.generation,
                                      data=data, ok_at=now, attempted_at=now))
+            audit(session, actor, "account.reauthorize" if expected else "account.create", workspace_id, account.id)
             session.flush()
             return self._authorized(session, account)
 
@@ -181,11 +167,14 @@ class Repository:
             if tags is not None:
                 self._set_tags(session, account, tags)
             account.updated_at = int(time.time())
+            audit(session, actor, "account.edit", workspace_id, account_id,
+                  changes={"fields": [name for name, value in (("label", label), ("tags", tags)) if value is not None]})
 
     def delete(self, actor, workspace_id, account_id):
         with self.db.transaction(write=True) as session:
             account = self.require(session, actor, workspace_id, account_id, "manage")
             session.delete(account)
+            audit(session, actor, "account.delete", workspace_id, account_id)
 
     def list_views(self, actor, workspace_id):
         with self.db.transaction() as session:
@@ -204,7 +193,8 @@ class Repository:
                     & (Tag.id == AccountTag.tag_id)).where(AccountTag.workspace_id == workspace_id,
                                                          AccountTag.account_id == account.id).order_by(Tag.name)))
                 result.append({"id": account.id, "workspace_id": workspace_id, "label": account.label,
-                    "email": account.email, "tags": tags, "authorization_generation": credential.generation,
+                    "email": account.email, "tags": tags,
+                    "capabilities": capabilities(session, actor, member, account.id), "authorization_generation": credential.generation,
                     "credential_version": credential.version, "auth_invalid": credential.invalid,
                     "expires_at": credential.expires_at, "refreshed_at": credential.refreshed_at,
                     "data": deepcopy(snapshot.data) if snapshot else None,
@@ -260,8 +250,10 @@ class Repository:
                 current.refreshed_at = int(time.time())
             return True
 
-    def record_snapshot(self, ref, *, data=None, error=None):
+    def record_snapshot(self, ref, *, data=None, error=None, actor=None):
         with self.db.transaction(write=True) as session:
+            if actor is not None:
+                self.require(session, actor, ref.workspace_id, ref.account_id, "use")
             current = session.get(Credential, (ref.workspace_id, ref.account_id))
             if current is None or current.generation != ref.generation:
                 return False
@@ -282,6 +274,9 @@ class Repository:
                 snapshot.ok_at = snapshot.attempted_at
                 snapshot.error_kind = snapshot.error_message = None
                 snapshot.failures = 0
+            if actor is not None:
+                audit(session, actor, "account.refresh", ref.workspace_id, ref.account_id,
+                      "failure" if error else "success")
             return True
 
     def verify(self):
@@ -294,6 +289,6 @@ class Repository:
             accounts = list(session.scalars(select(Account)))
             for account in accounts:
                 self._authorized(session, account)
-            return {"schema": "0001_core", "accounts": len(accounts), "credentials_decryptable": len(accounts),
+            return {"schema": "0002_identity", "accounts": len(accounts), "credentials_decryptable": len(accounts),
                     "workspaces": session.scalar(select(func.count()).select_from(Workspace)),
                     "imports": session.scalar(select(func.count()).select_from(LegacyImport))}

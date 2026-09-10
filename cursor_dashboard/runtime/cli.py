@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from dataclasses import replace
+import getpass
 import json
 from pathlib import Path
 import sys
@@ -24,6 +26,9 @@ def main(argv=None):
     parser.add_argument("--key-file", type=Path)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("keygen")
+    for name in ("server-init", "recover-password"):
+        sub = commands.add_parser(name)
+        sub.add_argument("--login", required=True)
     for name in ("init", "workspace"):
         sub = commands.add_parser(name)
         sub.add_argument("--owner", required=True, help="Local operator's future login identifier")
@@ -57,8 +62,21 @@ def main(argv=None):
                 raise CoreError("Supply both --data-dir and --key-file, or use both environment variables")
             config = (CoreConfig(args.data_dir, args.key_file) if args.data_dir and args.key_file
                       else CoreConfig.from_env())
-            with Core(config, initialize=args.command == "init", upgrade=args.command == "upgrade") as core:
-                if args.command in {"init", "workspace"}:
+            if args.command == "server-init":
+                config = replace(config, mode="server")
+            password = None
+            if args.command in {"server-init", "recover-password"}:
+                password = getpass.getpass("Password (12–256 characters): ")
+                if password != getpass.getpass("Repeat password: "):
+                    raise CoreError("Passwords do not match")
+            initialize = args.command == "init" or (args.command == "server-init" and not config.database.exists())
+            with Core(config, initialize=initialize, upgrade=args.command == "upgrade") as core:
+                if args.command == "server-init":
+                    result = core.identity.initialize_server(args.login, password)
+                elif args.command == "recover-password":
+                    core.identity.recover_password(args.login, password)
+                    result = {"password_changed": True, "sessions_revoked": True}
+                elif args.command in {"init", "workspace"}:
                     result = core.repository.create_workspace(args.owner, args.name, args.kind)
                 elif args.command in {"verify", "upgrade"}:
                     result = core.repository.verify()

@@ -4,6 +4,8 @@ import os
 
 from ..application.accounts import AccountService
 from ..application.credentials import CredentialService
+from ..application.identity import IdentityService, WorkspaceService
+from ..application.switching import SwitchService
 from ..domain.core import Conflict
 from ..infrastructure.persistence.database import Database
 from ..infrastructure.persistence.repository import Repository
@@ -13,7 +15,7 @@ from .lock import RuntimeLock
 
 
 class Core:
-    """Single-instance composition root. No HTTP listener until authenticated P2 routes exist."""
+    """Single-instance composition root shared by maintenance and authenticated API."""
     def __init__(self, config, *, keys=None, gateway=None, initialize=False, upgrade=False):
         self.config, self.db, self.lock = config, None, None
         keys = keys or FileKeyProvider(config.key_file)
@@ -43,6 +45,9 @@ class Core:
             gateway = gateway or CursorGateway(interval=config.request_interval, concurrency=config.request_concurrency)
             self.credentials = CredentialService(self.repository, gateway, config)
             self.accounts = AccountService(self.repository, self.credentials, gateway, config)
+            self.identity = IdentityService(self.repository)
+            self.workspaces = WorkspaceService(self.repository, self.identity)
+            self.switches = SwitchService(self.repository, self.credentials)
         except BaseException:
             if self.db:
                 self.db.close()

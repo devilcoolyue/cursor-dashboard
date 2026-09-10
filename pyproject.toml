@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.115",
+    "pydantic>=2.9,<3",
     "uvicorn>=0.30",
     "requests>=2.31",
     "sqlalchemy>=2.0,<3",
@@ -17,6 +18,7 @@ dependencies = [
 cursor-panel = "cursor_dashboard.server:main"
 cursor-quota = "cursor_dashboard.cli:main"
 cursor-core = "cursor_dashboard.runtime.cli:entrypoint"
+cursor-api = "cursor_dashboard.runtime.server:main"
 
 [build-system]
 requires = ["hatchling"]

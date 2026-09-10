@@ -2,7 +2,7 @@
 
 Cursor 多账号额度面板，Python 3.10+，FastAPI + SQLite，原生 HTML/CSS/JS。业务与使用说明见 [README](README.md)，实现和测试见[维护文档](docs/maintenance.md)，配置见[部署文档](docs/operations.md)。
 
-V2 核心逐步实施中：`domain/`、`application/`、`infrastructure/`、`runtime/` 为新分层，使用显式配置、SQLAlchemy/Alembic 和加密凭证。当前 `cursor-panel`/`cursor-quota` 保持原兼容入口，`cursor-core` 是独立本地运维入口；说明见 [新核心运行文档](docs/core-operations.md)。不要把旧共享鉴权直接接到 V2 数据库。
+V2 核心逐步实施中：`domain/`、`application/`、`infrastructure/`、`runtime/` 为新分层，使用显式配置、SQLAlchemy/Alembic 和加密凭证。当前 `cursor-panel`/`cursor-quota` 保持原兼容入口，`cursor-core` 是独立本地运维入口，P2 `cursor-api` 提供已认证 `/api/v1`（[运行说明](docs/v2-api-operations.md)）；说明见 [新核心运行文档](docs/core-operations.md)。不要把旧共享鉴权直接接到 V2 数据库。
 
 ## 工作约束
 
@@ -18,6 +18,8 @@ V2 核心逐步实施中：`domain/`、`application/`、`infrastructure/`、`run
 - 前端使用 `PanelUI`；保留异步响应代次校验、焦点恢复、弹窗滚动约束和用户文本转义。皮肤与明暗保持独立维度，修改默认皮肤需同步 HTML 引导脚本。
 - 不提交真实运行数据、截图缓存、生成命令和会话实验文件；不因文档归档删除业务功能或改版本号。
 - 新核心的账号查询必须带空间上下文，快照/明细使用 UUID 与授权代次；轮换增加凭证版本但不改变授权代次。凭证保存必须验证旧版本及有效租约，升级/运行必须持有数据目录锁；密钥不可用时拒绝操作，不自动换新或保存明文。
+
+- V2 HTTP 只能从已验证会话构造 Actor；角色/授权/会话变更必须实时生效，成功审计与业务变更同事务。切换票据由可信适配消费，P2 不提供浏览器裸凭证接口；Web 脚本与远程设备身份分别在 P3/P5 接入。
 
 ## 常用检查
 

@@ -12,11 +12,13 @@ from ..infrastructure.providers.cursor.authorization import exchange_cookie, ver
 from ..pools import fill_visible
 from ..usage import assemble_detail, iso_to_dt
 from .queries import QueryFailure, classify, collect_usage
+from .security import Limiter
 
 
 class AccountService:
     def __init__(self, repository, credentials, gateway, config):
         self.repo, self.credentials, self.gateway, self.config = repository, credentials, gateway, config
+        self.limiter = Limiter()
         self._locks = {}
         self._details = OrderedDict()
 
@@ -42,6 +44,21 @@ class AccountService:
             row["pending"] = row["data"] is None and row["error_kind"] is None
         return rows
 
+    def search(self, actor, workspace_id, *, query="", tag=None, offset=0, limit=50):
+        if not 1 <= limit <= 200 or offset < 0 or len(query) > 256:
+            raise Conflict("Invalid account pagination or search")
+        rows = self.list(actor, workspace_id)
+        query = query.strip().casefold()
+        rows = [r for r in rows if (not query or query in (r["label"] + " " + (r["email"] or "")).casefold())
+                and (tag is None or tag in r["tags"])]
+        tags = {}
+        for row in rows:
+            for name in row["tags"]:
+                tags[name] = tags.get(name, 0) + 1
+        return {"items": rows[offset:offset + limit], "total": len(rows), "tags": tags,
+                "stats": {"accounts": len(rows), "invalid": sum(bool(r["auth_invalid"]) for r in rows),
+                          "with_snapshot": sum(r["data"] is not None for r in rows)}}
+
     def get(self, actor, workspace_id, account_id):
         return next((row for row in self.list(actor, workspace_id) if row["id"] == account_id), None) or self._missing()
 
@@ -51,6 +68,7 @@ class AccountService:
 
     async def authorize(self, actor, workspace_id, cookie, *, label=None, tags=(), account_id=None):
         self.repo.check_access(actor, workspace_id, account_id, "manage")
+        self.limiter.manual(actor, workspace_id, account_id)
         expected = self.repo.authorized(workspace_id, account_id) if account_id else None
         session, email = await exchange_cookie(cookie, label or "Account", self.gateway,
                                                expected_email=expected.email if expected else None)
@@ -63,7 +81,9 @@ class AccountService:
 
     async def refresh(self, actor, workspace_id, account_id):
         self.repo.check_access(actor, workspace_id, account_id, "use")
+        self.limiter.manual(actor, workspace_id, account_id)
         async with self._account_lock((workspace_id, account_id)):
+            self.repo.check_access(actor, workspace_id, account_id, "use")
             account = self.repo.authorized(workspace_id, account_id)
             try:
                 account = await self.credentials.ensure(workspace_id, account_id)
@@ -73,16 +93,17 @@ class AccountService:
             except Exception as error:
                 errors = error.errors if isinstance(error, QueryFailure) else [error]
                 self.repo.check_access(actor, workspace_id, account_id, "use")
-                saved = self.repo.record_snapshot(account.ref, error=classify(errors))
+                saved = self.repo.record_snapshot(account.ref, error=classify(errors), actor=actor)
             else:
                 self.repo.check_access(actor, workspace_id, account_id, "use")
-                saved = self.repo.record_snapshot(account.ref, data=data)
+                saved = self.repo.record_snapshot(account.ref, data=data, actor=actor)
             if not saved:
                 raise Conflict("Authorization changed while refreshing; old result discarded")
             return self.get(actor, workspace_id, account_id)
 
     async def detail(self, actor, workspace_id, account_id):
         row = self.get(actor, workspace_id, account_id)
+        self.limiter.manual(actor, workspace_id, account_id)
         data = row["data"] or {}
         start_text = (data.get("cycle") or {}).get("start")
         start = iso_to_dt(start_text)

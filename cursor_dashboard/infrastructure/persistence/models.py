@@ -22,6 +22,7 @@ class User(Base):
     login: Mapped[str] = mapped_column(String(320), unique=True)
     password_hash: Mapped[str | None] = mapped_column(String)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    instance_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
 
 
 class Workspace(Base):
@@ -152,3 +153,58 @@ class LegacyMapping(Base):
     workspace_id: Mapped[str] = mapped_column(String(36))
     account_id: Mapped[str] = mapped_column(String(36))
     # Mapping is an immutable import receipt and remains after an imported account is deleted.
+
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    csrf_hash: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[float] = mapped_column(Float, default=time.time)
+    expires_at: Mapped[float] = mapped_column(Float)
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class Invitation(Base):
+    __tablename__ = "invitations"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    login: Mapped[str] = mapped_column(String(320))
+    role: Mapped[str] = mapped_column(String(16))
+    issuer_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    expires_at: Mapped[float] = mapped_column(Float)
+    used_at: Mapped[float | None] = mapped_column(Float)
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+    __table_args__ = (CheckConstraint("role IN ('admin','member','viewer')", name="invitation_role"),)
+
+
+class SwitchTicket(Base):
+    __tablename__ = "switch_tickets"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    workspace_id: Mapped[str] = mapped_column(String(36))
+    account_id: Mapped[str] = mapped_column(String(36))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    session_id: Mapped[str] = mapped_column(ForeignKey("user_sessions.id", ondelete="CASCADE"))
+    generation: Mapped[str] = mapped_column(String(36))
+    version: Mapped[int] = mapped_column(Integer)
+    expires_at: Mapped[float] = mapped_column(Float)
+    consumed_at: Mapped[float | None] = mapped_column(Float)
+    __table_args__ = (ForeignKeyConstraint(["workspace_id", "account_id"],
+                       ["accounts.workspace_id", "accounts.id"], ondelete="CASCADE"),)
+
+
+class AuditEvent(Base):
+    __tablename__ = "audit_events"
+    # Deliberately survives resource deletion. No payload, names or secrets.
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    actor_id: Mapped[str | None] = mapped_column(String(36))
+    workspace_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    resource_id: Mapped[str | None] = mapped_column(String(36))
+    action: Mapped[str] = mapped_column(String(64))
+    result: Mapped[str] = mapped_column(String(16), default="success")
+    created_at: Mapped[float] = mapped_column(Float, default=time.time)
+    request_id: Mapped[str | None] = mapped_column(String(36))
+    changes: Mapped[dict | None] = mapped_column(JSON)

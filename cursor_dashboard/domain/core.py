@@ -12,6 +12,18 @@ class NotFound(CoreError):
     pass
 
 
+class Forbidden(CoreError):
+    pass
+
+
+class Unauthenticated(CoreError):
+    pass
+
+
+class Throttled(CoreError):
+    pass
+
+
 class Conflict(CoreError):
     pass
 
@@ -27,6 +39,10 @@ class SecretError(CoreError):
 @dataclass(frozen=True)
 class Actor:
     user_id: str
+    # Only trusted local maintenance may omit a session. HTTP constructs this
+    # from a verified random ticket and rechecks it throughout each use case.
+    session_id: str | None = None
+    request_id: str | None = None
 
 
 @dataclass(frozen=True)

@@ -1,8 +1,8 @@
-# P1 新核心运行与迁移
+# V2 核心运行与迁移
 
-P1 提供本地运维 CLI 和可调用的业务核心，尚未提供 V2 用户登录或 HTTP 服务。当前面板继续使用原入口；本说明中的命令只操作显式指定的 V2 目录。
+P1 建立本地运维 CLI 和可调用核心；P2 已增加独立用户认证与 `cursor-api`，见 [P2 API 运行文档](v2-api-operations.md)。本说明覆盖本地运维及旧版导入，命令只操作显式指定的 V2 目录。
 
-`cursor-core` 是拥有文件访问权限的运维者入口。`--actor` 选择数据库中的操作者记录供业务规则检查；它不是远程登录凭证，不能将此命令直接包装为接受任意用户 ID 的公开 API。P2 将在入口认证后构造 Actor。
+`cursor-core` 是拥有文件访问权限的运维者入口。`--actor` 选择数据库中的操作者记录供业务规则检查；它不是远程登录凭证，不能将此命令直接包装为接受任意用户 ID 的公开 API。P2 HTTP 入口从已验证会话构造 Actor，并在业务操作中复查当前会话与权限。
 
 ## 初始化
 
@@ -16,9 +16,9 @@ uv run --frozen cursor-core --data-dir ./v2-data --key-file ./v2-secrets/master.
   init --owner owner@example.test --name '导入的共享账号' --kind team
 ```
 
-`init` 输出 `user_id` 和 `workspace_id`，后续命令使用这两个 ID。初始化创建没有登录密码的身份记录；登录初始化属于 P2。重复 `init` 或 `keygen` 会拒绝覆盖现有库或密钥。
+`init` 输出 `user_id` 和 `workspace_id`，后续命令使用这两个 ID。初始化创建没有登录密码的身份记录；需要登录时再运行 P2 `server-init --login 同一邮箱`，保留该用户及空间并设置密码。重复 `init` 或 `keygen` 会拒绝覆盖现有库或密钥。
 
-也可同时设置 `CURSOR_CORE_DATA_DIR` 和 `CURSOR_CORE_KEY_FILE`，命令省略路径参数。`CURSOR_CORE_MODE` 接受 `local`/`server`，P1 两种配置均不会启动 HTTP 服务。新核心不沿用旧 `DATABASE_PATH` 或 `ACCOUNTS_PATH`。
+也可同时设置 `CURSOR_CORE_DATA_DIR` 和 `CURSOR_CORE_KEY_FILE`，命令省略路径参数。`CURSOR_CORE_MODE` 接受 `local`/`server`，`cursor-core` 本身不监听 HTTP；`cursor-api` 要求显式 server 模式及已初始化认证。新核心不沿用旧 `DATABASE_PATH` 或 `ACCOUNTS_PATH`。
 
 文件结构：数据目录包含 `core.db`、SQLite WAL/SHM 和 `.core.lock`；密钥文件单独存放。POSIX 密钥文件必须限制为 owner 访问，SQLite 文件设为 0600。Windows 使用目录继承的 ACL，部署时将数据与密钥目录设为仅运行用户可访问；系统凭证库的正式接入仍在 P4。
 
