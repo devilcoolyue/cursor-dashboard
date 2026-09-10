@@ -1,6 +1,6 @@
 # 支持平台与验证边界
 
-当前版本 `1.4.0` / V2 preview。以下“通过”均指报告中的隔离合成测试，不等同于真实 Cursor 会话或所有干净设备验证。P6 当前运行结果见 [验证报告](plans/p6-verification.md)。
+当前版本 `1.4.0` / V2 preview。以下“通过”均指报告中的隔离合成测试，不等同于真实 Cursor 会话或所有干净设备验证。P6 当前运行结果见 [验证报告](plans/p6-verification.md)：提交 `1045956` 的 [CI 34475031575](https://github.com/devilcoolyue/cursor-dashboard/actions/runs/34475031575) 已通过 Linux amd64 Web/容器和 macOS arm64/x64、Windows x64 候选构建、恢复与安装检查；下表保留 P5 更完整页面/原生适配的历史依据。
 
 | 入口 / 平台 | 有记录的验证 | 当前边界 |
 | --- | --- | --- |

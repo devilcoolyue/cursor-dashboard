@@ -4,7 +4,7 @@
 
 当前包版本仍为 `1.4.0`，V2 按 [实施计划](docs/plans/v2-architecture.md) 分阶段推进。P0–P4 开发与阶段自动验证已完成，Web 与服务端交付的验证记录见 [P3 报告](docs/plans/p3-verification.md)。P4 已接入独立桌面，平台验证见 [P4 报告](docs/plans/p4-verification.md)，操作见 [桌面使用说明](docs/v2-desktop-operations.md)。P5 已实现远程连接、浏览器登录、设备会话与远程账号操作，并通过三平台自动验证，见 [连接使用说明](docs/v2-connected-operations.md) 和 [P5 报告](docs/plans/p5-verification.md)；真实 Cursor 续期竞争待验证，生产远程切换保持关闭。
 
-P6 已补充[候选产物与手动更新流程](docs/v2-release-operations.md)、[支持平台表](docs/supported-platforms.md)和[贡献指南](CONTRIBUTING.md)，实施与剩余验收见 [P6 报告](docs/plans/p6-verification.md)。候选包使用 `v2-preview` 标识，尚非正式签名发行，开源许可证待维护者定稿。
+P6 已补充[候选产物与手动更新流程](docs/v2-release-operations.md)、[支持平台表](docs/supported-platforms.md)和[贡献指南](CONTRIBUTING.md)，三平台候选 CI 已通过，实施与剩余验收见 [P6 报告](docs/plans/p6-verification.md)。候选包使用 `v2-preview` 标识，尚非正式签名发行，开源许可证待维护者定稿。
 
 ## 启动 V2 Web
 
