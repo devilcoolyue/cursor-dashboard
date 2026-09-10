@@ -2,7 +2,7 @@
 
 管理个人与团队的 Cursor 账号、额度与授权。一套 Python 业务核心提供已认证 API、Vue Web 界面、独立桌面和远程 CLI；个人空间默认隔离，团队账号按 view/use 权限共享。
 
-当前包版本仍为 `1.4.0`，V2 按 [实施计划](docs/plans/v2-architecture.md) 分阶段推进。P0–P4 开发与阶段自动验证已完成，Web 与服务端交付的验证记录见 [P3 报告](docs/plans/p3-verification.md)。P4 已接入独立桌面，平台验证见 [P4 报告](docs/plans/p4-verification.md)，操作见 [桌面使用说明](docs/v2-desktop-operations.md)。P5 已实现远程连接、浏览器登录、设备会话与远程账号操作，见 [连接使用说明](docs/v2-connected-operations.md) 和 [P5 报告](docs/plans/p5-verification.md)；真实 Cursor 续期竞争待验证，生产远程切换保持关闭。
+当前包版本仍为 `1.4.0`，V2 按 [实施计划](docs/plans/v2-architecture.md) 分阶段推进。P0–P4 开发与阶段自动验证已完成，Web 与服务端交付的验证记录见 [P3 报告](docs/plans/p3-verification.md)。P4 已接入独立桌面，平台验证见 [P4 报告](docs/plans/p4-verification.md)，操作见 [桌面使用说明](docs/v2-desktop-operations.md)。P5 已实现远程连接、浏览器登录、设备会话与远程账号操作，并通过三平台自动验证，见 [连接使用说明](docs/v2-connected-operations.md) 和 [P5 报告](docs/plans/p5-verification.md)；真实 Cursor 续期竞争待验证，生产远程切换保持关闭。
 
 ## 启动 V2 Web
 
