@@ -73,12 +73,18 @@ jobs:
           else:
               executable = release / 'bundle/macos/Cursor Panel.app/Contents/MacOS/cursor-panel-desktop'
           subprocess.run(['uv', 'run', '--project', 'desktop/sidecar', '--frozen', 'python', 'desktop/scripts/desktop-smoke.py', str(executable), '--output', 'desktop/output/p4-install.json'], check=True)
-      - name: Frontend native business flows
-        run: |
-          npm --prefix frontend exec -- playwright install chromium
-          npm --prefix frontend run test:desktop
-          npm --prefix frontend run test:e2e
-          npm --prefix frontend run test:connected
+      - name: Install browser fixture runtime
+        timeout-minutes: 5
+        run: npm --prefix frontend exec -- playwright install chromium
+      - name: Local desktop browser business flows
+        timeout-minutes: 5
+        run: npm --prefix frontend run test:desktop
+      - name: Web browser business flows
+        timeout-minutes: 5
+        run: npm --prefix frontend run test:e2e
+      - name: Connected desktop browser business flows
+        timeout-minutes: 5
+        run: npm --prefix frontend run test:connected
       - name: Full regression
         if: matrix.os == 'macos-14'
         run: uv run --frozen python -m unittest discover -s tests -v

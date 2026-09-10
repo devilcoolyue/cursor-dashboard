@@ -4,7 +4,7 @@ import { spawn, execFileSync } from 'node:child_process'
 import { once } from 'node:events'
 import { createServer, request as httpRequest } from 'node:http'
 import { mkdtemp, readFile, rm, mkdir } from 'node:fs/promises'
-import { join, resolve, extname } from 'node:path'
+import { join, resolve, extname, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { randomBytes } from 'node:crypto'
@@ -24,7 +24,7 @@ backend.stdout.on('data', chunk => { line += chunk; if (line.includes('\n')) rea
 const staticRoot = resolve(root, 'frontend/dist')
 const server = createServer(async (request, response) => {
   const path = resolve(staticRoot, '.' + new URL(request.url, 'http://local.test').pathname)
-  if (path !== staticRoot && !path.startsWith(staticRoot + '/')) { response.writeHead(404).end(); return }
+  if (path !== staticRoot && !path.startsWith(staticRoot + sep)) { response.writeHead(404).end(); return }
   try {
     const file = path === staticRoot ? join(path, 'index.html') : path
     const data = await readFile(file)
@@ -146,6 +146,6 @@ try {
   if (backend.exitCode === null) backend.kill()
   server.close()
   try {
-    execFileSync('uv', ['run', '--project', 'desktop/sidecar', '--frozen', 'python', '-c', 'import sys; from pathlib import Path; from cursor_dashboard.local.keys import SystemKeyStore; s=SystemKeyStore(Path(sys.argv[1])); s.backend().delete_password(s.service,s.account)', dataDir], { cwd: root, stdio: 'ignore' })
+    execFileSync('uv', ['run', '--project', 'desktop/sidecar', '--frozen', 'python', '-c', 'import sys; from pathlib import Path; from cursor_dashboard.local.keys import SystemKeyStore; s=SystemKeyStore(Path(sys.argv[1])); s.backend().delete_password(s.service,s.account)', dataDir], { cwd: root, stdio: 'ignore', timeout: 30000 })
   } finally { await rm(directory, { recursive: true, force: true }) }
 }
