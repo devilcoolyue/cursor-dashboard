@@ -329,6 +329,32 @@ class CredentialConcurrencyTest(CoreFixture, unittest.IsolatedAsyncioTestCase):
         self.core.credentials.gateway = callback
         self.core.accounts.gateway = callback
 
+    async def test_authorization_validates_usage_before_committing_credentials(self):
+        calls = []
+        async def fetch(cookie, label, name, *args):
+            calls.append(name)
+            if name in {"me", "desktop_me"}:
+                return {"email": "created@example.test", "sub": "auth0|user_test", "authId": "auth0|user_test"}
+            if name == "desktop_poll":
+                return {"accessToken": token("created"), "refreshToken": "created-rt"}
+            return {}
+        self.gateway(fetch)
+        view = await self.core.accounts.authorize(self.actor, self.first, "user_test::" + token("web"), label="Created")
+        self.assertIsNotNone(view["data"])
+        self.assertEqual(view["email"], "created@example.test")
+        self.assertIn("desktop_grok", calls)
+        saved = self.repo.authorized(self.first, view["id"])
+        async def failing(cookie, label, name, *args):
+            if name == "desktop_plan":
+                raise RateLimited("temporary")
+            return await fetch(cookie, label, name, *args)
+        self.gateway(failing)
+        from cursor_dashboard.application.queries import QueryFailure
+        with self.assertRaises(QueryFailure):
+            await self.core.accounts.authorize(self.actor, self.first, "user_test::" + token("new-web"),
+                                               label="Failed update", account_id=view["id"])
+        self.assertEqual(self.repo.authorized(self.first, view["id"]), saved)
+
     async def test_concurrent_refresh_and_heartbeat_keep_one_rotation(self):
         a = self.account(expiry=int(time.time()) + 1, snapshot=data(42))
         self.core.credentials.config = replace(self.config, lease_ttl=9, lease_wait=15)
