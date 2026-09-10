@@ -93,8 +93,9 @@ uv run --frozen cursor-quota -c other.json
 
 ## 维护资料
 
-- [V2 架构与实施计划](docs/plans/v2-architecture.md)：个人/团队空间、统一权限、服务端与桌面共用核心的目标设计及分阶段任务（P0 已完成）。
+- [V2 架构与实施计划](docs/plans/v2-architecture.md)：个人/团队空间、统一权限、服务端与桌面共用核心的目标设计及分阶段任务（P0、P1 已完成）。
 - [P0 验证报告](docs/plans/p0-verification.md)：Tauri + Vue + 随包 Python 的双平台结果、性能基线及后续边界；[运行验证程序](desktop/README.md)。
+- [P1 新核心](docs/core-operations.md)：显式配置、加密存储与旧库迁移命令；[验证报告](docs/plans/p1-verification.md)。
 - [部署与运行](docs/operations.md)：启动参数、配置、权限边界、迁移、备份与排障。
 - [实现与维护](docs/maintenance.md)：模块、请求链路、接口、数据口径、前端约束和测试入口。
 - [阶段归档](docs/archive/2026-09-07.md)：本次核查依据、说明删减、验证结果与遗留问题。

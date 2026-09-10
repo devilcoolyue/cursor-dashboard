@@ -2,6 +2,8 @@
 
 Cursor 多账号额度面板，Python 3.10+，FastAPI + SQLite，原生 HTML/CSS/JS。业务与使用说明见 [README](README.md)，实现和测试见[维护文档](docs/maintenance.md)，配置见[部署文档](docs/operations.md)。
 
+V2 核心逐步实施中：`domain/`、`application/`、`infrastructure/`、`runtime/` 为新分层，使用显式配置、SQLAlchemy/Alembic 和加密凭证。当前 `cursor-panel`/`cursor-quota` 保持原兼容入口，`cursor-core` 是独立本地运维入口；说明见 [新核心运行文档](docs/core-operations.md)。不要把旧共享鉴权直接接到 V2 数据库。
+
 ## 工作约束
 
 - 修改说明前核对实现和调用方；历史现象不能直接写成当前能力。阶段记录放 `docs/archive/`，避免把调试过程持续堆入 README。
@@ -15,6 +17,7 @@ Cursor 多账号额度面板，Python 3.10+，FastAPI + SQLite，原生 HTML/CSS
 - 本地切换脚本只由使用者执行；保留过期检查、正常退出、含 WAL 的备份和事务回滚。预览命令必须在访问本机 Cursor 前停止。
 - 前端使用 `PanelUI`；保留异步响应代次校验、焦点恢复、弹窗滚动约束和用户文本转义。皮肤与明暗保持独立维度，修改默认皮肤需同步 HTML 引导脚本。
 - 不提交真实运行数据、截图缓存、生成命令和会话实验文件；不因文档归档删除业务功能或改版本号。
+- 新核心的账号查询必须带空间上下文，快照/明细使用 UUID 与授权代次；轮换增加凭证版本但不改变授权代次。凭证保存必须验证旧版本及有效租约，升级/运行必须持有数据目录锁；密钥不可用时拒绝操作，不自动换新或保存明文。
 
 ## 常用检查
 
