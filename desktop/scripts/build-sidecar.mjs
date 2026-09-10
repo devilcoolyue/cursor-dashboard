@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { copyFileSync, mkdirSync, chmodSync } from 'node:fs'
+import { cpSync, mkdirSync, rmSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -9,12 +9,16 @@ const run = (command, args, cwd = sidecar) => execFileSync(command, args, { cwd,
 const target = execFileSync('rustc', ['-vV'], { encoding: 'utf8' }).match(/^host: (.+)$/m)?.[1]
 if (!target) throw new Error('Cannot determine Rust host target')
 run('uv', ['sync', '--frozen'])
-run('uv', ['run', '--frozen', 'pyinstaller', '--noconfirm', '--clean', '--onefile',
-  '--name', 'p0-backend', '--add-data', `fixtures.json${process.platform === 'win32' ? ';' : ':'}.`,
-  '--collect-submodules', 'uvicorn', 'backend.py'])
+// A directory bundle avoids unpacking the Python runtime on every cold start.
+run('uv', ['run', '--frozen', 'pyinstaller', '--noconfirm', '--clean', '--onedir',
+  '--name', 'cursor-local', '--collect-submodules', 'uvicorn',
+  '--collect-all', 'cursor_dashboard.infrastructure.persistence.migrations',
+  '--collect-data', 'cursor_dashboard', '--hidden-import', 'desktop_fixture',
+  '--hidden-import', process.platform === 'win32' ? 'keyring.backends.Windows' : 'keyring.backends.macOS',
+  'local_backend.py'])
 const suffix = process.platform === 'win32' ? '.exe' : ''
-const destination = join(desktop, 'src-tauri', 'binaries', `p0-backend-${target}${suffix}`)
+const destination = join(desktop, 'src-tauri', 'runtime')
 mkdirSync(dirname(destination), { recursive: true })
-copyFileSync(join(sidecar, 'dist', `p0-backend${suffix}`), destination)
-if (!suffix) chmodSync(destination, 0o755)
-console.log(`Bundled sidecar: ${destination}`)
+rmSync(destination, { recursive: true, force: true })
+cpSync(join(sidecar, 'dist', 'cursor-local'), destination, { recursive: true, preserveTimestamps: true })
+console.log(`Bundled desktop runtime for ${target}: ${destination}/cursor-local${suffix}`)

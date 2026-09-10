@@ -101,11 +101,13 @@ def validate_origin(public_origin):
     return parsed
 
 
-def create_app(core, *, public_origin, web_dir=None, manual_switch_preview=False):
+def create_app(core, *, public_origin, web_dir=None, manual_switch_preview=False, _local=None):
     parsed = validate_origin(public_origin)
-    if core.config.mode != "server":
+    if _local is not None and (core.config.mode != "local" or _local.core is not core):
+        raise CoreError("Private desktop identity requires its own local core")
+    if _local is None and core.config.mode != "server":
         raise CoreError("HTTP requires explicit server mode")
-    if not core.identity.initialized():
+    if _local is None and not core.identity.initialized():
         raise CoreError("Initialize server authentication with cursor-core server-init before listening")
     secure = parsed.scheme == "https"
     cookie_name = "__Host-cursor_session" if secure else "cursor_session"
@@ -119,7 +121,10 @@ def create_app(core, *, public_origin, web_dir=None, manual_switch_preview=False
     async def boundary(request, call_next):
         request.state.request_id = str(uuid.uuid4())
         origin = request.headers.get("origin")
-        if request.headers.get("host", "").lower() != parsed.netloc.lower():
+        if _local is not None:
+            # The outer native middleware authenticates every request, including reads.
+            response = await call_next(request)
+        elif request.headers.get("host", "").lower() != parsed.netloc.lower():
             response = error_response(400, "Invalid host")
         elif (origin is not None and origin != public_origin) or request.headers.get("sec-fetch-site") == "cross-site":
             response = error_response(403, "Invalid origin")
@@ -181,6 +186,10 @@ def create_app(core, *, public_origin, web_dir=None, manual_switch_preview=False
         app.add_exception_handler(error_type, provider_error)
 
     def current_actor(request: Request):
+        if _local is not None:
+            actor = _local.identity.actor(request.state.request_id)
+            request.state.actor = actor
+            return actor
         token = request.cookies.get(cookie_name, "")
         csrf = request.headers.get("x-csrf-token", "") if request.method not in {"GET", "HEAD", "OPTIONS"} else None
         actor = core.identity.authenticate(token, csrf=csrf, request_id=request.state.request_id)
@@ -189,6 +198,11 @@ def create_app(core, *, public_origin, web_dir=None, manual_switch_preview=False
 
     @app.get("/api/v1/bootstrap", response_model=dto.Bootstrap)
     def bootstrap():
+        if _local is not None:
+            return {"mode": "local", "initialized": True, "api_version": 1,
+                    "capabilities": {"workspaces": False, "invitations": False,
+                        "manual_switch": False, "native_switch": True, "archives": True,
+                        "device_sessions": False, "remote_switch": False}}
         return {"mode": "server", "initialized": True, "api_version": 1,
                 "capabilities": {"workspaces": True, "invitations": True,
                                  "manual_switch": True, "device_sessions": False, "remote_switch": False}}
@@ -363,6 +377,12 @@ def create_app(core, *, public_origin, web_dir=None, manual_switch_preview=False
     def manual_consume(body: ManualConsume, actor=Depends(current_actor)):
         return core.switches.consume(actor, body.token.get_secret_value(),
             render=lambda delivery: render_script(delivery, body.platform, preview=manual_switch_preview))
+
+    if _local is not None:
+        allowed = {"bootstrap", "me", "accounts", "account", "authorize_account", "reauthorize_account",
+                   "edit_account", "delete_account", "refresh", "detail", "workspace_audit", "health"}
+        app.router.routes[:] = [route for route in app.router.routes if route.name in allowed]
+        return app
 
     # Only explicit UI routes are mounted. Unknown API routes never become HTML.
     root = Path(web_dir) if web_dir else Path(__file__).parents[1] / "web_v2"

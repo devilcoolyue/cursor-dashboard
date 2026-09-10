@@ -46,7 +46,7 @@ jobs:
         run: npm --prefix desktop test
       - name: Build release bundle
         working-directory: desktop
-        run: npm run build
+        run: npm run build:probe
       - name: Test frozen backend
         shell: python
         run: |

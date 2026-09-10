@@ -10,9 +10,12 @@ async function start() {
   await import('./theme')
   await import('./styles.css')
   const [{ default: App }, { initialize }, { router }] = await Promise.all([import('./App.vue'), import('./state'), import('./router')])
-  await initialize()
+  const { isDesktop } = await import('./platform')
+  if (!isDesktop) await initialize()
   const app = createApp(App).use(router)
   await router.isReady()
   app.mount('#app')
+  if (isDesktop) await initialize()
+  if ((await import('./state')).me.value && router.currentRoute.value.path === '/login') await router.replace('/accounts')
 }
 void start()

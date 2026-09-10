@@ -2,7 +2,7 @@
 
 Cursor 多账号额度面板，Python 3.10+，FastAPI + SQLite，原生 HTML/CSS/JS。业务与使用说明见 [README](README.md)，实现和测试见[维护文档](docs/maintenance.md)，配置见[部署文档](docs/operations.md)。
 
-V2 核心逐步实施中：`domain/`、`application/`、`infrastructure/`、`runtime/` 为新分层，使用显式配置、SQLAlchemy/Alembic 和加密凭证。当前 `cursor-panel`/`cursor-quota` 保持原兼容入口，`cursor-core` 是独立本地运维入口，P3 `cursor-api` 提供 Vue Web 与已认证 `/api/v1`（[运行说明](docs/v2-api-operations.md)）；Web/容器/远程 CLI 见 [P3 运行文档](docs/v2-web-operations.md)；说明见 [新核心运行文档](docs/core-operations.md)。不要把旧共享鉴权直接接到 V2 数据库。
+V2 核心逐步实施中：`domain/`、`application/`、`infrastructure/`、`runtime/` 为新分层，使用显式配置、SQLAlchemy/Alembic 和加密凭证。当前 `cursor-panel`/`cursor-quota` 保持原兼容入口，`cursor-core` 是独立本地运维入口，P3 `cursor-api` 提供 Vue Web 与已认证 `/api/v1`（[运行说明](docs/v2-api-operations.md)）；Web/容器/远程 CLI 见 [P3 运行文档](docs/v2-web-operations.md)；说明见 [新核心运行文档](docs/core-operations.md)。P4 `desktop/` + `local/` 提供独立桌面与原生切换（[桌面说明](docs/v2-desktop-operations.md)）。不要把旧共享鉴权直接接到 V2 数据库。
 
 ## 工作约束
 
@@ -35,3 +35,5 @@ npm --prefix frontend run test:e2e
 ```
 
 完整测试含 Node SQLite 集成测试，需带 `node:sqlite` 的 Node 22.13+，否则相关用例跳过。浏览器预览优先使用 `dev/preview-admin.py`；旧 `dev/preview.py` 与当前页面模板的失配见[阶段归档](docs/archive/2026-09-07.md)。
+
+- P4 只通过操作枚举与 UUID 建立固定本地 IPC；不得加入任意 URL、路径、shell 或明文凭证返回桥。系统密钥不可用时锁定；归档恢复先验证数据库，导入仅限空个人空间。桌面验证仅使用临时目录与 fixture，不操作已运行的真实面板或 Cursor。

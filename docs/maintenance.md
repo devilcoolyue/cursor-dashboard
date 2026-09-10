@@ -1,5 +1,7 @@
 # 实现与维护
 
+P4 独立桌面入口为 `desktop/` 与 `cursor_dashboard/local/`，使用同一业务核心及原生系统密钥库；安装、切换、托盘和加密归档见 [桌面运行文档](v2-desktop-operations.md)，平台边界见 [P4 报告](plans/p4-verification.md)。
+
 P3 新 Web 位于 `frontend/`，通过 OpenAPI 生成类型；手工切换适配位于 `api/manual_switch.py`，与票据消费共享事务。容器、备份恢复、远程 CLI 及验证见 [Web 交付文档](v2-web-operations.md)和 [P3 报告](plans/p3-verification.md)。
 
 [返回 README](../README.md) · [部署与配置](operations.md) · [阶段归档](archive/2026-09-07.md)

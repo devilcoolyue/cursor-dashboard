@@ -33,7 +33,7 @@ class Me(BaseModel):
 
 
 class Bootstrap(BaseModel):
-    mode: Literal['server']
+    mode: Literal['server', 'local']
     initialized: bool
     api_version: int
     capabilities: dict[str, bool]

@@ -168,3 +168,13 @@ dialog::backdrop { background: var(--backdrop); }
 .token-counts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; font-size: 11px; }
 .token-counts dt { color: var(--dim); }
 .token-counts dd { margin: 4px 0 0; }
+
+.desktop-status { display:flex; gap:.6rem; align-items:center; padding:.8rem 0; color:var(--dim); font-size:.8rem; border-bottom:1px solid var(--line); }
+.desktop-gate { align-items:flex-start; max-width:620px; margin:auto; gap:1.2rem; }
+.desktop-gate .form-stack { margin-top:1.5rem; width:100%; }
+.switch-progress { list-style:none; padding:0; display:grid; gap:.65rem; }
+.switch-progress li { display:flex; align-items:center; gap:.8rem; color:var(--dim); transition:color .18s ease; }
+.switch-progress li span { width:1.7rem; height:1.7rem; display:grid; place-items:center; border:1px solid var(--line); border-radius:50%; }
+.switch-progress .current { color:var(--fg); font-weight:600; }
+.switch-progress .done { color:var(--accent); }
+@media (prefers-reduced-motion: reduce) { .switch-progress li { transition:none; } }

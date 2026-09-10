@@ -1,8 +1,8 @@
 # Cursor Panel
 
-管理个人与团队的 Cursor 账号、额度与授权。一套 Python 业务核心提供已认证 API、Vue Web 界面和远程 CLI；个人空间默认隔离，团队账号按 view/use 权限共享。
+管理个人与团队的 Cursor 账号、额度与授权。一套 Python 业务核心提供已认证 API、Vue Web 界面、独立桌面和远程 CLI；个人空间默认隔离，团队账号按 view/use 权限共享。
 
-当前包版本仍为 `1.4.0`，V2 按 [实施计划](docs/plans/v2-architecture.md) 分阶段推进。P0–P3 已完成，Web 与服务端交付的验证记录见 [P3 报告](docs/plans/p3-verification.md)。独立桌面产品和连接远端桌面属于 P4/P5，尚未交付。
+当前包版本仍为 `1.4.0`，V2 按 [实施计划](docs/plans/v2-architecture.md) 分阶段推进。P0–P3 已完成，Web 与服务端交付的验证记录见 [P3 报告](docs/plans/p3-verification.md)。P4 已接入独立桌面，平台验证见 [P4 报告](docs/plans/p4-verification.md)，操作见 [桌面使用说明](docs/v2-desktop-operations.md)。连接远端桌面属于 P5，尚未交付。
 
 ## 启动 V2 Web
 

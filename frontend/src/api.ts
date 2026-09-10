@@ -1,4 +1,5 @@
 import type { components } from './api.generated'
+import { DesktopError, isDesktop, localRequest } from './platform'
 export type Schema = components['schemas']
 export type Account = Schema['AccountView']
 export type Workspace = Schema['WorkspaceView']
@@ -27,7 +28,7 @@ export class ApiClient {
     signal?.addEventListener('abort', abort, { once: true })
     if (signal?.aborted) controller.abort()
     try {
-      const response = await fetch(`/api/v1${path}`, {
+      const response = isDesktop ? await localRequest(path, method, body) : await fetch(`/api/v1${path}`, {
         method, credentials: 'same-origin', redirect: 'error', cache: 'no-store', signal: controller.signal,
         headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
           ...(method !== 'GET' ? { 'X-CSRF-Token': this.csrf } : {}) },
@@ -52,6 +53,6 @@ export class ApiClient {
 }
 export const api = new ApiClient()
 export const isAbort = (error: unknown) => error instanceof DOMException && error.name === 'AbortError'
-export const message = (error: unknown) => isAbort(error) ? '' : error instanceof ApiError ? error.message : '无法连接服务，请检查网络后重试。'
+export const message = (error: unknown) => isAbort(error) ? '' : error instanceof ApiError || error instanceof DesktopError ? error.message : '无法连接服务，请检查网络后重试。'
 export const spacePath = (id: string) => `/workspaces/${encodeURIComponent(id)}`
 export const accountPath = (account: Account) => `${spacePath(account.workspace_id)}/accounts/${encodeURIComponent(account.id)}`

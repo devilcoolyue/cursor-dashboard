@@ -7,6 +7,7 @@ import SettingsView from './views/SettingsView.vue'
 import WorkspaceView from './views/WorkspaceView.vue'
 import InstanceView from './views/InstanceView.vue'
 import { invitationToken, me } from './state'
+import { isDesktop } from './platform'
 
 export const router = createRouter({
   history: createWebHashHistory(),
@@ -23,6 +24,7 @@ export const router = createRouter({
   ],
 })
 router.beforeEach(to => {
+  if (isDesktop && ['/join', '/setup', '/instance'].includes(to.path)) return '/accounts'
   // Invitation tokens live in the fragment only and are removed from history on arrival.
   if (to.path === '/join' && typeof to.query.token === 'string') {
     invitationToken.value = to.query.token.slice(0, 128)

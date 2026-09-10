@@ -661,9 +661,9 @@ export interface components {
         Bootstrap: {
             /**
              * Mode
-             * @constant
+             * @enum {string}
              */
-            mode: "server";
+            mode: "server" | "local";
             /** Initialized */
             initialized: boolean;
             /** Api Version */

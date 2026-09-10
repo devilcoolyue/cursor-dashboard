@@ -1,5 +1,7 @@
 # 部署与运行
 
+P4 独立桌面入口为 `desktop/` 与 `cursor_dashboard/local/`，使用同一业务核心及原生系统密钥库；安装、切换、托盘和加密归档见 [桌面运行文档](v2-desktop-operations.md)，平台边界见 [P4 报告](plans/p4-verification.md)。
+
 V2 Web 使用独立的 [Dockerfile/Compose 与运行文档](v2-web-operations.md)，通过 `cursor-api` 启动；本文以下仍描述 legacy `cursor-panel` / `cursor-quota`。
 
 [返回 README](../README.md) · [实现与维护](maintenance.md) · [阶段归档](archive/2026-09-07.md)

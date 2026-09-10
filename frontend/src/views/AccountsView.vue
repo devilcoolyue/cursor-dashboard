@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onBeforeUnmount } from 'vue'
+import { ref, watch, onBeforeUnmount, nextTick } from 'vue'
 import { api, ApiError, message, isAbort, accountPath, spacePath, type Account, type Schema } from '../api'
 import { activeSpace, bootstrap } from '../state'
 import { timeText } from '../format'
@@ -9,6 +9,8 @@ import AccountForm from '../components/AccountForm.vue'
 import DetailDialog from '../components/DetailDialog.vue'
 import SwitchDialog from '../components/SwitchDialog.vue'
 import GrantDialog from '../components/GrantDialog.vue'
+import NativeSwitchDialog from '../components/NativeSwitchDialog.vue'
+import { isDesktop, reportReady } from '../platform'
 const page = ref<Schema['AccountPage']>(), query = ref(''), tag = ref(''), offset = ref(0), busy = ref(false), error = ref('')
 const rowBusy = ref(''), selected = ref<Account>(), modal = ref(''), removeBusy = ref(false), modalError = ref('')
 let listController: AbortController | undefined
@@ -22,7 +24,10 @@ async function load() {
   busy.value = true; error.value = ''
   const params = new URLSearchParams({ q: query.value, offset: String(offset.value), limit: '25' })
   if (tag.value) params.set('tag', tag.value)
-  try { page.value = await api.request<Schema['AccountPage']>(spacePath(activeSpace.value.id) + '/accounts?' + params, 'GET', undefined, listController.signal) }
+  try {
+    page.value = await api.request<Schema['AccountPage']>(spacePath(activeSpace.value.id) + '/accounts?' + params, 'GET', undefined, listController.signal)
+    if (isDesktop) { await nextTick(); void reportReady(document.querySelectorAll('[data-account]').length).catch(() => {}) }
+  }
   catch (reason) { if (!isAbort(reason)) { error.value = message(reason); if (reason instanceof ApiError && [401, 403, 404].includes(reason.status)) page.value = undefined } }
   finally { if (sequence === current) busy.value = false }
 }
@@ -66,7 +71,7 @@ const statusText = (a: Account) => a.auth_invalid || a.expired ? '需要重新�
           <div class="account-meta"><span :class="['status-dot', { invalid: account.auth_invalid || account.expired, stale: account.stale }]" aria-hidden="true" />{{ statusText(account) }}<span v-for="name in account.tags" :key="name" class="tag">{{ name }}</span></div><small>快照 {{ timeText(account.ok_at) }} · {{ account.data?.plan?.name || '套餐未知' }}</small>
         </div>
         <QuotaBar name="综合池" :slot="account.data?.quota?.overall" /><QuotaBar name="Other Models" :slot="account.data?.quota?.other_models" />
-        <div class="row-actions"><button v-if="account.capabilities.detail" @click="open('detail', account)">明细</button><button v-if="account.capabilities.refresh" :disabled="!!rowBusy" @click="refresh(account)">{{ rowBusy === account.id ? '刷新中…' : '刷新' }}</button><button v-if="account.capabilities.switch && bootstrap?.capabilities.manual_switch" @click="open('switch', account)">切换</button>
+        <div class="row-actions"><button v-if="account.capabilities.detail" @click="open('detail', account)">明细</button><button v-if="account.capabilities.refresh" :disabled="!!rowBusy" @click="refresh(account)">{{ rowBusy === account.id ? '刷新中…' : '刷新' }}</button><button v-if="account.capabilities.switch && (bootstrap?.capabilities.manual_switch || bootstrap?.capabilities.native_switch)" @click="open('switch', account)">切换</button>
           <details v-if="account.capabilities.edit || account.capabilities.authorize || account.capabilities.delete" class="account-menu"><summary aria-label="更多账号操作">···</summary><div class="menu-items"><button v-if="account.capabilities.edit" @click="open('edit', account)">编辑资料与标签</button><button v-if="account.capabilities.authorize" @click="open('authorize', account)">重新授权</button><button v-if="account.capabilities.grant && activeSpace.capabilities.manage_members" @click="open('grant', account)">账号授权</button><button v-if="account.capabilities.delete" class="danger-text" @click="open('delete', account)">删除账号</button></div></details>
         </div>
       </article>
@@ -74,7 +79,8 @@ const statusText = (a: Account) => a.auth_invalid || a.expired ? '需要重新�
     <footer v-if="page" class="pagination"><span>{{ page.total }} 个账号 · 每页 25 个</span><div class="actions"><button :disabled="!offset || busy" @click="offset = Math.max(0, offset - 25)">上一页</button><button :disabled="offset + 25 >= page.total || busy" @click="offset += 25">下一页</button></div></footer>
     <AccountForm v-if="['add', 'edit', 'authorize'].includes(modal)" :workspace-id="activeSpace.id" :account="selected" :authorize="modal === 'authorize'" @close="close" @saved="saved" />
     <DetailDialog v-if="modal === 'detail' && selected" :account="selected" @close="close" />
-    <SwitchDialog v-if="modal === 'switch' && selected" :account="selected" @close="close" />
+    <SwitchDialog v-if="modal === 'switch' && selected && !isDesktop" :account="selected" @close="close" />
+    <NativeSwitchDialog v-if="modal === 'switch' && selected && isDesktop" :account="selected" @close="close" />
     <GrantDialog v-if="modal === 'grant' && selected" :account="selected" @close="close" />
     <UiDialog v-if="modal === 'delete' && selected" title="删除账号" @close="close"><p>确认从此空间删除 {{ selected.label }}？凭证、授权与额度快照会一并删除。</p><p v-if="modalError" role="alert" class="error">{{ modalError }}</p><div class="actions"><button @click="close">取消</button><button class="danger" :disabled="removeBusy" @click="remove">确认删除</button></div></UiDialog>
   </section>

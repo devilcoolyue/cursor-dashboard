@@ -7,3 +7,5 @@ sidecar/build/
 sidecar/dist/
 sidecar/*.spec
 output/
+src-tauri/runtime/
+sidecar/*.spec
