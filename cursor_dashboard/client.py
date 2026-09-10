@@ -185,11 +185,15 @@ def _backoff(base: float, attempt: int) -> float:
     return base * (2 ** attempt) + random.uniform(0, base)
 
 
-def fetch_one(cookie: str, label: str, name: str, *args):
+def fetch_one(cookie: str, label: str, name: str, *args, retry_policy=None):
     """取单个接口。刻意每次新建 Session —— requests.Session 跨线程共享不安全，
     而这几个请求本来就要并发发出去。瞬时错误和限流会退避重试，退避基数不同：
     连接抖动几百毫秒就够，被挡住则要等几秒。"""
-    attempts = max(REQUEST_RETRIES, RATE_LIMIT_RETRIES) + 1
+    request_retries = REQUEST_RETRIES if retry_policy is None else retry_policy.request_retries
+    rate_retries = RATE_LIMIT_RETRIES if retry_policy is None else retry_policy.rate_limit_retries
+    retry_base = RETRY_BASE_DELAY if retry_policy is None else retry_policy.retry_base_delay
+    rate_base = RATE_LIMIT_BASE_DELAY if retry_policy is None else retry_policy.rate_limit_base_delay
+    attempts = max(request_retries, rate_retries) + 1
     for attempt in range(attempts):
         client = CursorClient(cookie, label)
         try:
@@ -197,16 +201,16 @@ def fetch_one(cookie: str, label: str, name: str, *args):
         except AuthExpired:
             raise
         except RateLimited as exc:
-            if attempt >= RATE_LIMIT_RETRIES:
+            if attempt >= rate_retries:
                 raise
-            time.sleep(exc.retry_after or _backoff(RATE_LIMIT_BASE_DELAY, attempt))
+            time.sleep(exc.retry_after or _backoff(rate_base, attempt))
         except requests.RequestException as exc:
             status = exc.response.status_code if exc.response is not None else None
             retryable = isinstance(exc, (requests.ConnectionError, requests.Timeout))
             retryable = retryable or status in RETRYABLE_STATUS
-            if not retryable or attempt >= REQUEST_RETRIES:
+            if not retryable or attempt >= request_retries:
                 raise
-            time.sleep(_backoff(RETRY_BASE_DELAY, attempt))
+            time.sleep(_backoff(retry_base, attempt))
         finally:
             client.s.close()
 

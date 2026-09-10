@@ -48,6 +48,25 @@ def resolve(plan: dict | None) -> tuple[float | None, float | None, float | None
 
 
 def fill(data: dict | None) -> dict | None:
+    return _fill(data, resolve((data or {}).get("plan")))
+
+
+def fill_visible(data: dict | None, visible: list[dict]) -> dict | None:
+    """V2 derives observations only from this authorized query, with no global pool state."""
+    key = _plan_key((data or {}).get("plan"))
+    values = []
+    for item in visible:
+        if not key or _plan_key(item.get("plan")) != key:
+            continue
+        limits = tuple(((item.get("quota") or {}).get(slot) or {}).get("limit_usd")
+                       for slot in ("cursor_models", "other_models", "overall"))
+        if all(value is not None for value in limits):
+            values.append(limits)
+    limits = tuple(round(median(column), 2) for column in zip(*values)) if values else (None, None, None)
+    return _fill(data, limits)
+
+
+def _fill(data: dict | None, limits) -> dict | None:
     """给触顶而解不出上限的档位补上同套餐的池子，并标 `limit_inferred`。
 
     只补 `None` 的档位：账号自己解出来的数永远优先于从别人那儿抄来的。
@@ -59,7 +78,6 @@ def fill(data: dict | None) -> dict | None:
     ):
         return data
 
-    limits = resolve(data.get("plan"))
     if all(v is None for v in limits):
         return data
 

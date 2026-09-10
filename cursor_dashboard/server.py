@@ -108,23 +108,7 @@ async def fetch_cursor(cookie: str, label: str, name: str, *args):
 
 # ---------- 回源 ----------
 
-def _classify(errors: list[BaseException]) -> tuple[str, str]:
-    """把一组接口异常归成一种卡片状态。
-
-    **限流优先于失效**：几个接口里混着 401 和 403 拦截页时按限流处理。宁可多等
-    一轮，也不能误报"cookie 失效"——那会让用户去重新粘贴 cookie，而那次粘贴同样
-    会被挡住，看起来就像新 cookie 也不管用。
-    """
-    if any(isinstance(e, RateLimited) for e in errors):
-        return "rate_limited", "Cursor 暂时限制了请求，稍后会自动重试"
-    if any(isinstance(e, AuthExpired) for e in errors):
-        return "expired", "桌面授权已失效，请重新粘贴有效 Cookie 授权"
-    if any(isinstance(e, requests.Timeout) for e in errors):
-        return "network", "连接 Cursor 超时，稍后会自动重试"
-    if any(isinstance(e, requests.ConnectionError) for e in errors):
-        return "network", "暂时无法连接 Cursor，稍后会自动重试"
-    first = errors[0]
-    return "error", f"{type(first).__name__}: 暂时无法更新账号，请稍后重试"
+from .application.queries import QueryFailure, classify as _classify, collect_usage
 
 
 async def refresh_account(acc: dict) -> str | None:
@@ -138,20 +122,17 @@ async def refresh_account(acc: dict) -> str | None:
             acc = await sessions.ensure_account(acc, fetch_cursor)
             cookie = acc["cookie"]
             label = acc.get("label") or "unnamed"
-            raw = await asyncio.gather(
-                *(sessions.request_account(acc, fetch_cursor, name) for name in DESKTOP_ENDPOINTS),
-                return_exceptions=True,
-            )
-            errors = [item for item in raw if isinstance(item, BaseException)]
-            if not errors:
-                sessions.verify_identity(raw[0], email=acc.get("email"), subject=acc["auth_subject"])
+            data = await collect_usage(label, lambda name: sessions.request_account(acc, fetch_cursor, name),
+                                       email=acc.get("email"), subject=acc["auth_subject"],
+                                       verify=sessions.verify_identity, assemble=assemble_desktop)
+            errors = []
         except Exception as exc:
-            errors = [exc]
+            errors = exc.errors if isinstance(exc, QueryFailure) else [exc]
         if errors:
             kind, message = _classify(errors)
             snapshot.record_failure(ident, cookie, kind, message)
             return kind
-        snapshot.record_success(ident, cookie, assemble_desktop(label, *raw))
+        snapshot.record_success(ident, cookie, data)
         return None
 
 

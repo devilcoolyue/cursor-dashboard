@@ -1,0 +1,74 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Protocol
+
+
+class CoreError(RuntimeError):
+    """Safe, actionable messages suitable for the local maintenance CLI."""
+
+
+class NotFound(CoreError):
+    pass
+
+
+class Conflict(CoreError):
+    pass
+
+
+class Locked(CoreError):
+    pass
+
+
+class SecretError(CoreError):
+    pass
+
+
+@dataclass(frozen=True)
+class Actor:
+    user_id: str
+
+
+@dataclass(frozen=True)
+class AccountRef:
+    workspace_id: str
+    account_id: str
+    generation: str
+    version: int
+
+
+@dataclass(frozen=True, repr=False)
+class Secrets:
+    cookie: str = ""
+    access_token: str = ""
+    refresh_token: str = ""
+
+    def __repr__(self):
+        return "Secrets(<redacted>)"
+
+
+@dataclass(frozen=True)
+class AuthorizedAccount:
+    ref: AccountRef
+    label: str
+    email: str | None
+    subject: str | None
+    expires_at: int
+    refreshed_at: int
+    invalid: bool
+    secrets: Secrets = field(repr=False)
+
+
+class KeyProvider(Protocol):
+    @property
+    def active_id(self) -> str: ...
+    def get(self, key_id: str) -> bytes: ...
+
+
+class AccountRepository(Protocol):
+    def authorized(self, workspace_id: str, account_id: str) -> AuthorizedAccount: ...
+    def claim_lease(self, workspace_id: str, account_id: str, owner: str, ttl: float) -> bool: ...
+    def renew_lease(self, workspace_id: str, account_id: str, owner: str, ttl: float) -> bool: ...
+    def release_lease(self, workspace_id: str, account_id: str, owner: str) -> None: ...
+    def rotate(self, account: AuthorizedAccount, secrets: Secrets, expires_at: int,
+               *, lease_owner: str, invalid: bool = False, subject: str | None = None) -> bool: ...

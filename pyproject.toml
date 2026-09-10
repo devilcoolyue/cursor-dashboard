@@ -8,11 +8,15 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn>=0.30",
     "requests>=2.31",
+    "sqlalchemy>=2.0,<3",
+    "alembic>=1.16,<2",
+    "cryptography>=44,<47",
 ]
 
 [project.scripts]
 cursor-panel = "cursor_dashboard.server:main"
 cursor-quota = "cursor_dashboard.cli:main"
+cursor-core = "cursor_dashboard.runtime.cli:entrypoint"
 
 [build-system]
 requires = ["hatchling"]

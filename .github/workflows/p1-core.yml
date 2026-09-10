@@ -1,0 +1,51 @@
+name: P1 core verification
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/v2-p1]
+    paths: ['cursor_dashboard/**', 'tests/**', 'pyproject.toml', 'uv.lock', 'dev/verify-core-wheel.py', '.github/workflows/p1-core.yml']
+  pull_request:
+    paths: ['cursor_dashboard/**', 'tests/**', 'pyproject.toml', 'uv.lock', 'dev/verify-core-wheel.py', '.github/workflows/p1-core.yml']
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUTF8: '1'
+
+jobs:
+  core:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.10'
+          - os: macos-14
+            python: '3.12'
+          - os: windows-latest
+            python: '3.12'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.11.3'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: uv sync --locked --python ${{ matrix.python }}
+      - name: V2 persistence, encryption, migration and concurrency
+        run: uv run --frozen python -m unittest discover -s tests -p test_core.py -v
+      - name: Existing behavior regression
+        if: runner.os == 'macOS'
+        run: python desktop/scripts/legacy-baseline.py
+      - name: Build and verify installed wheel
+        shell: python
+        run: |
+          import pathlib, subprocess
+          subprocess.run(['uv', 'build', '--wheel', '--out-dir', 'output/p1/wheels'], check=True)
+          wheel = next(pathlib.Path('output/p1/wheels').glob('*.whl'))
+          subprocess.run(['python', 'dev/verify-core-wheel.py', str(wheel)], check=True)
