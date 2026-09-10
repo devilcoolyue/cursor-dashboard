@@ -1,6 +1,8 @@
 # P2 验证报告
 
-日期：2026-09-10。分支：`feat/v2-p2`。实现与本地验证完成，三平台 CI 待确认。
+日期：2026-09-10。状态：P2 已完成。分支：`feat/v2-p2`。
+
+实现与测试提交 `815b8c46120e0944119689d0c31a9a9890d58d43` 通过 [三平台 CI](https://github.com/devilcoolyue/cursor-dashboard/actions/runs/34434865306)。后续收尾只更新文档。
 
 ## 交付
 
@@ -36,7 +38,15 @@ macOS arm64，Python 3.12.13，依赖固定于 `uv.lock`。显式声明 Pydantic
 
 ## 三平台验证
 
-`.github/workflows/p2-identity.yml` 覆盖 Linux / Python 3.10、macOS / Python 3.12、Windows / Python 3.12 的新核心、身份、HTTP 与升级测试，以及各平台 Python 3.12 独立 wheel 安装和真实 HTTP 进程。macOS 另运行完整回归。当前待 CI 结果，不将尚未运行的平台写成已通过。
+`.github/workflows/p2-identity.yml` 的最终运行 [34434865306](https://github.com/devilcoolyue/cursor-dashboard/actions/runs/34434865306) 全部成功：
+
+| 环境 | P1 核心 | 身份/权限/票据 | HTTP 与升级 | wheel + HTTP 进程 | 完整回归 |
+| --- | --- | --- | --- | --- | --- |
+| Linux / Python 3.10 | 27 项，4.995 秒 | 19 项，25.672 秒 | 11 项，13.225 秒 | 通过 | 本 job 不运行全量 |
+| macOS / Python 3.12 | 27 项，4.715 秒 | 19 项，30.409 秒 | 11 项，15.871 秒 | 通过 | 238 项全部通过，无跳过，77.697 秒 |
+| Windows / Python 3.12 | 27 项，9.030 秒 | 19 项，46.113 秒 | 11 项，23.423 秒 | 通过 | 本 job 不运行全量 |
+
+各平台 wheel 流程另建 Python 3.12 环境；Linux 的 Python 3.10 覆盖是核心/身份/API/升级测试，不将 wheel 安装称为 Python 3.10 验证。macOS CI 覆盖本地缺少 PowerShell 而跳过的 9 项；无测试失败或平台跳过。完整日志保存于被忽略的 `output/p2/ci-final.log`。
 
 ## 实施依据
 
