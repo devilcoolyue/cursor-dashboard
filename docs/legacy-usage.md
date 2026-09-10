@@ -89,15 +89,15 @@ uv run --frozen cursor-quota --json
 uv run --frozen cursor-quota -c other.json
 ```
 
-默认读取共享 SQLite 库，直接查询 Cursor，可迁移或续期并更新账号凭证，但不更新 Web 快照。`-c` 使用[旧 JSON 格式](accounts.example.json)，每次临时换取桌面凭证，不读写本地账号库。全部成功退出 0，账号查询失败退出 1。
+默认读取共享 SQLite 库，直接查询 Cursor，可迁移或续期并更新账号凭证，但不更新 Web 快照。`-c` 使用[旧 JSON 格式](../accounts.example.json)，每次临时换取桌面凭证，不读写本地账号库。全部成功退出 0，账号查询失败退出 1。
 
 ## 维护资料
 
-- [V2 架构与实施计划](plans/v2-architecture.md)：个人/团队空间、统一权限、服务端与桌面共用核心的目标设计及分阶段任务（P0、P1、P2 已完成）。
-- [P0 验证报告](plans/p0-verification.md)：Tauri + Vue + 随包 Python 的双平台结果、性能基线及后续边界；[运行验证程序](desktop/README.md)。
+- [V2 架构与实施计划](plans/v2-architecture.md)：个人/团队空间、统一权限、服务端与桌面共用核心的目标设计及分阶段任务（P0–P3 已完成）。
+- [P0 验证报告](plans/p0-verification.md)：Tauri + Vue + 随包 Python 的双平台结果、性能基线及后续边界；[运行验证程序](../desktop/README.md)。
 - [V2 核心](core-operations.md)：显式配置、加密存储与旧库迁移命令；[P1 验证报告](plans/p1-verification.md)。
 - [P2 用户与权限 API](v2-api-operations.md)：初始化、登录、空间成员、账号授权和审计；[验证报告](plans/p2-verification.md)。新版 Web 界面见 [P3 运行说明](v2-web-operations.md)。
 - [部署与运行](operations.md)：启动参数、配置、权限边界、迁移、备份与排障。
 - [实现与维护](maintenance.md)：模块、请求链路、接口、数据口径、前端约束和测试入口。
 - [阶段归档](archive/2026-09-07.md)：本次核查依据、说明删减、验证结果与遗留问题。
-- [CLAUDE.md](CLAUDE.md)：仓库维护时的简要约束。
+- [CLAUDE.md](../CLAUDE.md)：仓库维护时的简要约束。

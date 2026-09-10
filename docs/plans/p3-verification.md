@@ -2,7 +2,7 @@
 
 日期：2026-09-10。分支：`feat/v2-p3`，基于 P2 `9941ad1`。
 
-状态：本地实现与验收通过，三平台 CI 待核对。
+状态：P3 已完成。实现提交 `a7c477e769bd8d8199ec69e40af9fd8baaa3c878` 通过 [三平台 CI](https://github.com/devilcoolyue/cursor-dashboard/actions/runs/34438061339)。
 
 ## 交付内容
 
@@ -27,6 +27,19 @@
 | Ruff / diff 检查 | E4/E7/E9/F、空白检查通过 |
 
 容器验证使用 Docker Engine 20.10.13；Compose 配置通过本机 v2.3.3 解析。浏览器验证使用本机 Chrome 及安装的 Playwright Chromium。输出位于被忽略的 `output/p3/` 与 `output/playwright/`，没有真实账号、密钥或 Cursor 客户端操作。
+
+## CI 验证
+
+最终 CI 的四个任务全部成功：
+
+| 环境 | 验证结果 |
+| --- | --- |
+| Linux / Python 3.10 | 27 项核心、19 项身份、19 项 HTTP/升级/Web/恢复测试；独立 wheel 中的 Web 与远程 CLI 通过 |
+| macOS / Python 3.12 | 上述核心/身份/API 及 wheel 验证通过；完整回归 **246 项全部通过、无跳过**，耗时 77.704 秒 |
+| Windows / Python 3.12 | 上述核心/身份/API 及 wheel 验证通过，含备份恢复后的文件句柄释放 |
+| Linux Web/容器 | API 类型生成无漂移；P0 独立构建与正式 Web 构建、真实 Chromium 业务流程、容器初始化/持久化/备份恢复及 Compose 配置检查通过 |
+
+SQLite 备份显式关闭源和目标连接，恢复结束即可清理暂存目录，避免 Windows 文件占用错误。CI 日志保存于被忽略的 `output/p3/ci-final.log`。
 
 ## 验收边界
 
