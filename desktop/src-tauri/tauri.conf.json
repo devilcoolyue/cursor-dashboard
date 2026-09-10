@@ -26,6 +26,8 @@
   },
   "bundle": {
     "active": true,
+    "license": "MIT",
+    "licenseFile": "../../LICENSE",
     "targets": [
       "app",
       "dmg",
@@ -39,7 +41,8 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "runtime/": "runtime/"
+      "runtime/": "runtime/",
+      "../../LICENSE": "LICENSE"
     },
     "macOS": {
       "minimumSystemVersion": "12.0",

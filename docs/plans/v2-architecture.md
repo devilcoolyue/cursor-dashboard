@@ -1,6 +1,6 @@
 # V2 通用账号管理架构与实施计划
 
-状态：P0、P1、P2、P3、P4 开发与阶段自动验证已完成，结果见 [P0 验证报告](p0-verification.md)、[P1 验证报告](p1-verification.md)、[P2 验证报告](p2-verification.md)、[P3 验证报告](p3-verification.md)、[P4 验证报告](p4-verification.md)；P5 连接与设备会话实现及三平台自动验证见 [P5 报告](p5-verification.md)，真实上游远程切换仍待验证；P6 发布准备与剩余项见 [P6 报告](p6-verification.md)。本文描述目标设计，各阶段可用入口及边界以验证报告为准。
+状态：P0、P1、P2、P3、P4 开发与阶段自动验证已完成，结果见 [P0 验证报告](p0-verification.md)、[P1 验证报告](p1-verification.md)、[P2 验证报告](p2-verification.md)、[P3 验证报告](p3-verification.md)、[P4 验证报告](p4-verification.md)；P5 连接与设备会话实现及三平台自动验证见 [P5 报告](p5-verification.md)，真实上游远程切换仍待验证；P6 发布与维护收口已完成，范围与正式发行边界见 [P6 报告](p6-verification.md)。本文描述目标设计，各阶段可用入口及边界以验证报告为准。
 
 制定日期：2026-09-09。基线：`1.4.0` / `52d0a9255b798dce21d97efbc3739bb46d100b96`，已归档到远端 `legacy` 分支。新版在 `main` 演进，开发任务通过独立分支交付。
 
@@ -295,12 +295,12 @@ P5 实现、模拟验证和剩余事项见 [验证报告](p5-verification.md)，
 ### P6：发布与维护收口
 
 - [x] 分别完成 Web、独立桌面、远程连接的上手文档，以及旧版迁移和回退演练记录。
-- [ ] 确定开源许可证，补充 LICENSE、贡献指南、问题模板与支持平台表；许可证选择在发布前由维护者定稿。
+- [x] 确定开源许可证，补充 LICENSE、贡献指南、问题模板与支持平台表；维护者已确定采用 MIT。
 - [x] 为服务端镜像和桌面产物建立版本、校验和及可追踪构建；准备 macOS 签名/公证和 Windows 签名方案。
 - [x] 首轮提供明确的手动更新流程，验证更新前备份、schema 升级失败恢复和 API 兼容提示；自动更新后续实现时必须验证签名。
 - [x] 更新 README、maintenance、operations 与仓库维护指引，使当前能力与测试结果一致，保留 legacy 的版本边界。
 
-候选交付与更新见 [发行运维](../v2-release-operations.md)，验证范围见 [P6 报告](p6-verification.md)。贡献指南、问题模板和平台表已补齐，LICENSE 待维护者选定许可证后落地；在此之前不将整个 P6 标记完成。签名方案已经准备，实际签名/公证另行验收，不提升为完整 V2 Connected Desktop。
+候选交付与更新见 [发行运维](../v2-release-operations.md)，验证范围见 [P6 报告](p6-verification.md)。MIT LICENSE、包/镜像许可声明、贡献指南、问题模板和平台表已补齐，P6 计划任务已完成。签名方案已经准备，实际签名/公证另行验收，不提升为完整 V2 Connected Desktop。
 
 验收：所有宣称支持的组合均有实际验证记录；无真实凭证、运行数据库、生成切换命令或密钥进入仓库和发布产物。发布标记对应已经完成的阶段，不能将计划项写成已完成能力。
 

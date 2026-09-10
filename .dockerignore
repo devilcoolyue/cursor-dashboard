@@ -2,6 +2,7 @@
 !pyproject.toml
 !uv.lock
 !README.md
+!LICENSE
 !cursor_dashboard/
 !cursor_dashboard/**
 !frontend/

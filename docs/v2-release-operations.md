@@ -6,7 +6,7 @@
 
 [P6 工作流](../.github/workflows/p6-release.yml) 从干净提交构建包含 Web 的 wheel、Linux amd64 镜像归档、macOS arm64/x64 DMG 和 Windows x64 NSIS。它只上传 CI artifact，不推送镜像、不创建 Release、不访问签名密钥。桌面候选不具有发行者签名/公证，不等同于正式安装发行。
 
-每个目标目录包含安装文件、`release-manifest.json` 和 `SHA256SUMS`。清单记录包版本、`v2-preview` 通道、目标架构、完整源码提交、CI run/attempt、依赖锁摘要、工具版本、API/schema、签名状态以及文件大小和 SHA-256。容器另记录 image ID、仓库 digest（如果存在）和 OCI 来源标签。候选的标识是版本、完整提交与构建运行，不能仅靠相同的 `1.4.0` 文件名区分新旧。
+每个目标目录包含安装文件、MIT `LICENSE`、`release-manifest.json` 和 `SHA256SUMS`。许可全文也进入校验文件清单，manifest 声明 `license=MIT`；项目许可证不替代第三方依赖原有许可。清单记录包版本、`v2-preview` 通道、目标架构、完整源码提交、CI run/attempt、依赖锁摘要、工具版本、API/schema、签名状态以及文件大小和 SHA-256。容器另记录 image ID、仓库 digest（如果存在）和 OCI 来源标签。候选的标识是版本、完整提交与构建运行，不能仅靠相同的 `1.4.0` 文件名区分新旧。
 
 源码与依赖锁可追踪不代表字节级可复现：基础镜像标签、Rust stable、runner 和签名时间戳仍可能变化。正式发行应保存本次锁、清单、验证报告和实际镜像 digest；不要覆盖已有候选文件。
 

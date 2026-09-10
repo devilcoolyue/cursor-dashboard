@@ -24,7 +24,7 @@ uv run --frozen python dev/release.py check
 
 数据库 schema 使用新 Alembic revision，旧 revision 冻结。升级要覆盖已提交 WAL、错误密钥、进程锁、失败恢复与重新执行；禁止破坏性 downgrade。变更设备、身份或切换边界时验证实时撤权、一次性消费与旧请求拒绝。
 
-发布候选、手动更新、签名方案和版本一致性见 [发行运维](docs/v2-release-operations.md)，已验证平台见 [支持表](docs/supported-platforms.md)。许可证由维护者在发布前确定；仓库中没有 LICENSE 时不默认授予 MIT 或其他开源许可。确定后贡献按该 LICENSE 接受，不覆盖第三方依赖原有许可。
+发布候选、手动更新、签名方案和版本一致性见 [发行运维](docs/v2-release-operations.md)，已验证平台见 [支持表](docs/supported-platforms.md)。本项目采用 [MIT 许可证](LICENSE)，贡献按同一许可证接受。分发代码或产物时保留版权与许可声明；第三方依赖保留各自许可证。
 
 ## 报告问题
 

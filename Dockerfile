@@ -9,7 +9,7 @@ RUN npm --prefix frontend run build
 FROM python:3.12-slim-bookworm AS package
 COPY --from=ghcr.io/astral-sh/uv:0.11.3 /uv /usr/local/bin/uv
 WORKDIR /build
-COPY pyproject.toml uv.lock README.md ./
+COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY cursor_dashboard ./cursor_dashboard
 COPY --from=web /build/frontend/dist ./cursor_dashboard/web_v2
 RUN UV_PROJECT_ENVIRONMENT=/opt/venv uv sync --frozen --no-dev --no-editable --no-cache
@@ -20,6 +20,7 @@ ARG SOURCE_REVISION=unrecorded
 ARG BUILD_DATE=unrecorded
 LABEL org.opencontainers.image.title="Cursor Panel" \
     org.opencontainers.image.source="https://github.com/devilcoolyue/cursor-dashboard" \
+    org.opencontainers.image.licenses="MIT" \
     org.opencontainers.image.version=$APP_VERSION \
     org.opencontainers.image.revision=$SOURCE_REVISION \
     org.opencontainers.image.created=$BUILD_DATE
@@ -27,6 +28,7 @@ RUN groupadd --gid 10001 cursor && useradd --uid 10001 --gid cursor --create-hom
     && mkdir -p /var/lib/cursor-panel /run/cursor-secrets /backups \
     && chown cursor:cursor /var/lib/cursor-panel /run/cursor-secrets /backups
 COPY --from=package /opt/venv /opt/venv
+COPY LICENSE /usr/share/licenses/cursor-panel/LICENSE
 ENV PATH="/opt/venv/bin:$PATH" PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
     CURSOR_CORE_MODE=server CURSOR_CORE_DATA_DIR=/var/lib/cursor-panel \
     CURSOR_CORE_KEY_FILE=/run/cursor-secrets/master.json

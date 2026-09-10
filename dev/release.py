@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from email.parser import BytesParser
 import hashlib
 import json
 import os
@@ -75,6 +76,25 @@ def check_versions(root=ROOT):
     return version
 
 
+def check_licenses(root=ROOT):
+    license_text = (root / "LICENSE").read_text(encoding="utf-8")
+    if not license_text.startswith("MIT License\n") or "Permission is hereby granted, free of charge" not in license_text:
+        raise ValueError("Missing MIT license text")
+    for name in ("pyproject.toml", "desktop/sidecar/pyproject.toml", "desktop/src-tauri/Cargo.toml"):
+        if not re.search(r'^license = "MIT"$', (root / name).read_text(encoding="utf-8"), re.M):
+            raise ValueError(f"MIT license metadata missing: {name}")
+    for project in ("desktop", "frontend"):
+        package = json.loads((root / project / "package.json").read_text(encoding="utf-8"))
+        lock = json.loads((root / project / "package-lock.json").read_text(encoding="utf-8"))
+        if package.get("license") != "MIT" or lock["packages"][""].get("license") != "MIT":
+            raise ValueError(f"MIT license metadata missing: {project}")
+    bundle = json.loads((root / "desktop/src-tauri/tauri.conf.json").read_text(encoding="utf-8"))["bundle"]
+    if (bundle.get("license") != "MIT" or bundle.get("licenseFile") != "../../LICENSE"
+            or bundle["resources"].get("../../LICENSE") != "LICENSE"):
+        raise ValueError("Desktop must include the root MIT license")
+    return "MIT"
+
+
 def audit_source(root=ROOT):
     names = git("ls-files", "-z", root=root).split("\0")
     count = 0
@@ -122,10 +142,20 @@ def audit_wheel(path):
             if not name.startswith(("cursor_dashboard/", "cursor_dashboard-")):
                 raise ValueError(f"Unexpected wheel member: {name}")
             check_content(name, archive.read(name))
+        metadata_files = [name for name in members if name.endswith(".dist-info/METADATA")]
+        if len(metadata_files) != 1:
+            raise ValueError("Wheel requires a single package metadata file")
+        metadata = BytesParser().parsebytes(archive.read(metadata_files[0]))
+        license_path = metadata_files[0].removesuffix("METADATA") + "licenses/LICENSE"
+        if (metadata.get("License-Expression") != "MIT" or "LICENSE" not in metadata.get_all("License-File", [])
+                or license_path not in members
+                or archive.read(license_path) != (ROOT / "LICENSE").read_bytes()):
+            raise ValueError("Wheel must include matching MIT metadata and license text")
 
 
 def manifest(args):
     version = check_versions()
+    license_id = check_licenses()
     count = audit_source()
     source_status = git("status", "--porcelain", "--untracked-files=all")
     dirty = bool(source_status)
@@ -136,7 +166,7 @@ def manifest(args):
     artifacts = [Path(name).resolve() for name in args.artifact]
     if len({path.name for path in artifacts}) != len(artifacts):
         raise ValueError("Artifact basenames must be unique")
-    reserved = {"release-manifest.json", "SHA256SUMS"}
+    reserved = {"release-manifest.json", "SHA256SUMS", "LICENSE"}
     for path in artifacts:
         check_name(path.name)
         if path.name in reserved or not path.is_file():
@@ -147,8 +177,10 @@ def manifest(args):
                    "macos-arm64": ".dmg", "macos-x64": ".dmg", "windows-x64": ".exe"}
         if path.suffix != allowed[args.target]:
             raise ValueError("Artifact extension does not match target")
+    artifacts.append(ROOT / "LICENSE")
     report = {
         "format": 1, "product": "Cursor Panel", "version": version, "channel": "v2-preview",
+        "license": license_id,
         "target": args.target, "source_commit": git("rev-parse", "HEAD"),
         "source_dirty": dirty, "local_verification_only": dirty,
         "source_url": "https://github.com/devilcoolyue/cursor-dashboard",
@@ -169,8 +201,9 @@ def manifest(args):
         info = info[0] if isinstance(info, list) else info
         labels = info["Config"]["Labels"]
         if (labels.get("org.opencontainers.image.version") != version
-                or labels.get("org.opencontainers.image.revision") != report["source_commit"]):
-            raise ValueError("Container labels do not match source/version")
+                or labels.get("org.opencontainers.image.revision") != report["source_commit"]
+                or labels.get("org.opencontainers.image.licenses") != license_id):
+            raise ValueError("Container labels do not match source/version/license")
         if f'{info["Os"]}-{info["Architecture"]}' != args.target:
             raise ValueError("Container architecture does not match target")
         report["container"] = {"id": info["Id"], "repo_digests": info.get("RepoDigests", []), "labels": labels}
@@ -236,7 +269,7 @@ def main():
     args = parser.parse_args()
     try:
         if args.command == "check":
-            result = {"version": check_versions(), "source_files_checked": audit_source()}
+            result = {"version": check_versions(), "license": check_licenses(), "source_files_checked": audit_source()}
         elif args.command == "audit-tree":
             result = {"runtime_files_checked": audit_tree(args.directory)}
         elif args.command == "manifest":

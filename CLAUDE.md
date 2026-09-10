@@ -6,7 +6,7 @@ V2 核心逐步实施中：`domain/`、`application/`、`infrastructure/`、`run
 
 ## 工作约束
 
-- P6 发行准备见 `docs/v2-release-operations.md`，使用 `dev/release.py check/manifest/verify` 检查版本、来源和产物。保持包版本与 Python/前端/桌面/锁文件一致，候选标记 `v2-preview`；不将 unsigned CI artifact 宣称为正式签名发行。更新必须先备份，schema 失败恢复旧程序与匹配数据库/密钥，不执行破坏性降级。许可证未确定前不自动授予开源许可，阶段结果见 `docs/plans/p6-verification.md`。
+- P6 发行准备见 `docs/v2-release-operations.md`，使用 `dev/release.py check/manifest/verify` 检查版本、来源和产物。保持包版本与 Python/前端/桌面/锁文件一致，候选标记 `v2-preview`；不将 unsigned CI artifact 宣称为正式签名发行。更新必须先备份，schema 失败恢复旧程序与匹配数据库/密钥，不执行破坏性降级。项目已由维护者确定采用 MIT，保留根目录 LICENSE，源码/包元数据与发行产物同步许可声明，阶段结果见 `docs/plans/p6-verification.md`。
 
 - 修改说明前核对实现和调用方；历史现象不能直接写成当前能力。阶段记录放 `docs/archive/`，避免把调试过程持续堆入 README。
 - 不读取、复制或输出真实 Cookie、AT/RT、数据库及切换命令。验证使用临时库和模拟数据；真实会话实验的用途与副作用见维护文档。

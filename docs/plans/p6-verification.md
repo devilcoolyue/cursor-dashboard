@@ -1,6 +1,6 @@
 # P6 验证报告
 
-实施日期：2026-09-10。分支：`feat/v2-p6`。发布准备、贡献资料与更新/回退演练已实现，本机实际候选构建与安装/恢复验证、三平台候选 CI 均已通过。**许可证等待维护者定稿，LICENSE 尚未建立，因此 P6 尚未全部验收。** macOS/Windows 正式签名、公证与干净设备安装不在已完成验证中；本阶段准备签名方案，当前产物为 unsigned `v2-preview`。
+实施日期：2026-09-10。分支：`feat/v2-p6`。发布准备、贡献资料与更新/回退演练已实现，本机实际候选构建与安装/恢复验证、三平台候选 CI 均已通过。**维护者已确定 MIT，LICENSE 与包/镜像/桌面许可声明已补齐，P6 计划任务全部完成。** macOS/Windows 正式签名、公证与干净设备安装不在已完成验证中；本阶段准备签名方案，当前产物为 unsigned `v2-preview`。
 
 P5 的真实 Cursor S01–S06 实验仍未完成，`remote_switch=false`。本阶段不读取真实账号、运行库或密钥，不执行真实 Cursor 切换，也不创建正式 Release/标签或推送镜像。
 
@@ -66,8 +66,15 @@ macOS 的 Python framework 包含相对符号链接。Node `cpSync` 默认会把
 
 Windows 安装探测通过后，清单生成发现 Tauri 重写 `Cargo.toml` 导致工作区变化。增加 `.gitattributes` 将 TOML 检出固定为 LF，保留干净提交要求；CI 只报告变化文件名及该公开 manifest 的 diff，不通过忽略实际源码改动绕过检查。DMG 打包曾有一次脚本失败，已保留日志并增加 verbose 与明确 CI 模式，后续候选必须以成功运行的记录为准。
 
-## 剩余验收
+## MIT 许可收口
 
-1. 维护者选定许可证后增加 LICENSE 和一致的包/镜像许可元数据，更新贡献约定并重新构建验证。
-2. 正式发行需要维护者证书、实际 macOS 签名/公证、Windows 签名，以及干净用户/最低系统/真实 WebView 的验证。签名方案已准备，尚未执行或宣称通过。
-3. P5 真实多设备会话实验独立保留，不以 P6 文档和构建工作完成为由开启远程切换或宣布完整 V2 Connected Desktop。
+2026-09-10 维护者确认采用 MIT。根目录增加标准 `LICENSE`，版权声明为 `Copyright (c) 2026 Cursor Panel contributors`。Python 元数据使用 `License-Expression: MIT` 并在 wheel/sdist 内携带全文；前端、桌面 npm 包、Rust 和 sidecar 同步 SPDX 标识。容器增加 OCI `org.opencontainers.image.licenses=MIT`，全文位于 `/usr/share/licenses/cursor-panel/LICENSE`。Tauri 配置声明 MIT，并把全文纳入安装资源和适用安装器的许可页。
+
+每个新候选目录额外携带 LICENSE，和安装文件一起进入 manifest 文件清单与 SHA256SUMS，清单声明 `license=MIT`。CI 检查 wheel 的许可元数据与全文、镜像标签/文件，以及实际桌面安装目录里的 LICENSE。第三方依赖继续适用各自许可证，MIT 选择不改变候选的签名状态或 P5 能力边界。
+
+本次许可变更的构建验证结果在完成后补录；上方 `1045956` 是许可收口前的交付基线，不能将其产物描述为已包含本次新增 LICENSE。
+
+## 正式发行与 P5 的独立剩余验收
+
+1. 正式发行需要维护者证书、实际 macOS 签名/公证、Windows 签名，以及干净用户/最低系统/真实 WebView 的验证。签名方案已准备，尚未执行或宣称通过。
+2. P5 真实多设备会话实验独立保留，不以 P6 文档和构建工作完成为由开启远程切换或宣布完整 V2 Connected Desktop。

@@ -5,7 +5,7 @@ on:
   push:
     branches: [feat/v2-p6]
   pull_request:
-    paths: ['dev/release.py', 'tests/test_release*.py', 'Dockerfile', '.dockerignore', 'deploy/v2/**', 'pyproject.toml', 'uv.lock', 'frontend/package*.json', 'desktop/**', '.github/workflows/p6-release.yml']
+    paths: ['LICENSE', 'dev/release.py', 'tests/test_release*.py', 'Dockerfile', '.dockerignore', 'deploy/v2/**', 'pyproject.toml', 'uv.lock', 'frontend/package*.json', 'desktop/**', '.github/workflows/p6-release.yml']
 
 # This workflow produces unsigned CI candidates. It cannot publish a release,
 # push an image, or access signing credentials.
@@ -46,6 +46,8 @@ jobs:
           docker build --build-arg APP_VERSION="$version" --build-arg SOURCE_REVISION="$GITHUB_SHA" --build-arg BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" -t cursor-panel-v2:p6 .
           uv run --frozen python dev/verify-v2-container.py cursor-panel-v2:p6
           docker run --rm -v "$PWD/dev/release.py:/audit/release.py:ro" --entrypoint python cursor-panel-v2:p6 /audit/release.py audit-tree /opt/venv/lib/python3.12/site-packages/cursor_dashboard
+          docker run --rm --entrypoint cat cursor-panel-v2:p6 /usr/share/licenses/cursor-panel/LICENSE > output/p6/image-license.txt
+          cmp LICENSE output/p6/image-license.txt
           docker image inspect cursor-panel-v2:p6 > output/p6/image.json
           docker save --output output/p6/cursor-panel-linux-amd64.tar cursor-panel-v2:p6
           python dev/release.py manifest --target linux-amd64 --artifact output/p6/cursor-panel-linux-amd64.tar --image-metadata output/p6/image.json --output output/p6/linux-amd64
@@ -117,9 +119,12 @@ jobs:
               install_dir = pathlib.Path(os.environ['RUNNER_TEMP']) / 'P6 installed with spaces'
               subprocess.run(f'"{installer.resolve()}" /S /D={install_dir}', check=True, timeout=120)
               executable = install_dir / 'cursor-panel-desktop.exe'
+              license_path = install_dir / 'LICENSE'
           else:
               installer = next((release / 'bundle/dmg').glob('*.dmg'))
               executable = release / 'bundle/macos/Cursor Panel.app/Contents/MacOS/cursor-panel-desktop'
+              license_path = release / 'bundle/macos/Cursor Panel.app/Contents/Resources/LICENSE'
+          assert license_path.read_bytes() == pathlib.Path('LICENSE').read_bytes(), 'Installed MIT license missing or changed'
           subprocess.run(['uv', 'run', '--project', 'desktop/sidecar', '--frozen', 'python', 'desktop/scripts/desktop-smoke.py', str(executable), '--output', str(output / 'installed-smoke.json')], check=True)
           subprocess.run([sys.executable, 'dev/release.py', 'manifest', '--target', target, '--artifact', str(installer), '--output', str(output / target)], check=True)
       - name: Source status after build (filenames only)

@@ -3,6 +3,8 @@ name = "cursor-dashboard"
 version = "1.4.0"
 description = "查询多个 Cursor 账号的订阅套餐和额度余量（Web 面板 + 命令行）"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.115",
@@ -22,7 +24,7 @@ cursor-remote = "cursor_dashboard.runtime.remote:entrypoint"
 cursor-api = "cursor_dashboard.runtime.server:main"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build]
