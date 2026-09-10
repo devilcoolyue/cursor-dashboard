@@ -26,7 +26,10 @@ const request = (path, method = 'GET', body) => new Promise((resolve, reject) =>
   })
   req.on('error', reject); req.end(body === undefined ? undefined : JSON.stringify(body))
 })
-async function visible(locator) { await locator.waitFor({ state: 'visible', timeout: 15000 }) }
+// Native remote HTTP allows a 30-second response wait. Include renderer/IPC
+// overhead on slower Intel runners instead of timing out before the operation.
+const nativeWait = 45000
+async function visible(locator) { await locator.waitFor({ state: 'visible', timeout: nativeWait }) }
 async function rows(page, count) {
   for (let i = 0; i < 150; i++) { if (await page.locator('[data-account]').count() === count) return; await delay(50) }
   assert.equal(await page.locator('[data-account]').count(), count, await page.locator('body').innerText())
