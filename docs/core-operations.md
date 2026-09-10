@@ -1,5 +1,7 @@
 # V2 核心运行与迁移
 
+P3 增加 `backup`、`restore` 离线命令及 `cursor-remote` 已认证查询入口，见 [Web 备份恢复与 CLI](v2-web-operations.md)。恢复必须指定原密钥和空目标目录，并撤销旧会话/票据。
+
 P1 建立本地运维 CLI 和可调用核心；P2 已增加独立用户认证与 `cursor-api`，见 [P2 API 运行文档](v2-api-operations.md)。本说明覆盖本地运维及旧版导入，命令只操作显式指定的 V2 目录。
 
 `cursor-core` 是拥有文件访问权限的运维者入口。`--actor` 选择数据库中的操作者记录供业务规则检查；它不是远程登录凭证，不能将此命令直接包装为接受任意用户 ID 的公开 API。P2 HTTP 入口从已验证会话构造 Actor，并在业务操作中复查当前会话与权限。

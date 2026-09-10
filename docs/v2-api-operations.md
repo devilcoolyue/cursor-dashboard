@@ -1,5 +1,7 @@
-# P2 V2 身份与 API 运行
+# V2 V2 身份与 API 运行
 
+
+P3 已接入 Vue 界面、Web 手工脚本、容器与远程 CLI，见 [Web 部署与使用](v2-web-operations.md)。首次管理员初始化继续使用离线命令。
 P2 在 P1 核心上增加真实用户认证、团队成员、账号授权、审计及独立 `/api/v1`。入口是 `cursor-api`；旧 `cursor-panel` 保留原兼容服务。P3 才提供新版 Web 界面、容器和手工切换适配，当前不能将 P2 作为完成的 V2 Web 产品发布。
 
 ## 新实例
@@ -81,11 +83,14 @@ API 不开启跨域请求。响应使用 `Cache-Control: no-store`。错误不�
 | `/workspaces/{w}/accounts/{a}/grants/{user_id}` | PUT `{level: view或use}` / DELETE 收回 |
 | `/workspaces/{w}/audit` | GET 空间审计（Owner/Admin） |
 | `/instance/users`、`/instance/users/{id}` | GET 用户 / PUT `{active: true或false}`（实例管理员） |
+| `/workspaces/{w}/accounts/{a}/manual-switch` | POST 签发当前会话绑定的短期票据 |
+| `/manual-switch/consume` | POST `{token, platform: macos或windows}` 原子领取固定脚本，仅限 use |
+| `/health` | GET 健康检查，仍校验 Host/Origin |
 | `/instance/audit` | GET 实例事件，不包含他人空间事件 |
 
-账号列表支持 `q`、`tag`、`offset`、`limit`。查询先限定可见账号，再搜索/统计/分页；未经授权的邮箱、标签和快照不会影响结果。列表只读快照，最新数据依赖手动刷新或明细请求；P2 尚未启用 V2 周期后台调度。
+账号列表支持 `q`、`tag`、`offset`、`limit`。查询先限定可见账号，再搜索/统计/分页；未经授权的邮箱、标签和快照不会影响结果。列表只读快照，最新数据依赖手动刷新或明细请求；P3 尚未启用 V2 周期后台调度。
 
-普通邀请角色为 Member/Viewer，只有 Owner 可邀请 Admin；邀请有效期 7 天，只能领取一次。用户加入团队不共享其个人账号。Viewer 不能获 use，Member 的 use 包含 view；管理员权限不包含导出凭证归档。账号 capabilities 中的 switch 只表示已具备 use 权限，P2 bootstrap 的切换入口能力仍为 false。
+普通邀请角色为 Member/Viewer，只有 Owner 可邀请 Admin；邀请有效期 7 天，只能领取一次。用户加入团队不共享其个人账号。Viewer 不能获 use，Member 的 use 包含 view；管理员权限不包含导出凭证归档。账号 capabilities 中的 switch 表示已具备 use 权限，P3 bootstrap 的 manual_switch 为 true；device_sessions 和 remote_switch 仍为 false。
 
 Owner 可以删除团队；删除整个导入团队同时删除其导入回执和映射，保留审计。单独删除账号保留导入回执，不会被重复导入恢复。
 

@@ -2,11 +2,18 @@ from __future__ import annotations
 
 import re
 import uuid
+from pathlib import Path
+from typing import Literal
 from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
+
+from . import models as dto
+from .manual_switch import render_script
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from ..application.queries import QueryFailure
@@ -75,6 +82,11 @@ class Authorization(Input):
     tags: list[str] = Field(default_factory=list, max_length=100)
 
 
+class ManualConsume(Input):
+    token: SecretStr = Field(min_length=20, max_length=128)
+    platform: Literal["macos", "windows"]
+
+
 def validate_origin(public_origin):
     parsed = urlsplit(public_origin)
     if (parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password
@@ -89,7 +101,7 @@ def validate_origin(public_origin):
     return parsed
 
 
-def create_app(core, *, public_origin):
+def create_app(core, *, public_origin, web_dir=None, manual_switch_preview=False):
     parsed = validate_origin(public_origin)
     if core.config.mode != "server":
         raise CoreError("HTTP requires explicit server mode")
@@ -133,6 +145,9 @@ def create_app(core, *, public_origin):
         response.headers["Pragma"] = "no-cache"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Content-Security-Policy"] = ("default-src 'self'; script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; "
+            "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
         response.headers["X-Request-ID"] = request.state.request_id
         return response
 
@@ -172,13 +187,13 @@ def create_app(core, *, public_origin):
         request.state.actor = actor
         return actor
 
-    @app.get("/api/v1/bootstrap")
+    @app.get("/api/v1/bootstrap", response_model=dto.Bootstrap)
     def bootstrap():
         return {"mode": "server", "initialized": True, "api_version": 1,
                 "capabilities": {"workspaces": True, "invitations": True,
-                                 "manual_switch": False, "device_sessions": False, "remote_switch": False}}
+                                 "manual_switch": True, "device_sessions": False, "remote_switch": False}}
 
-    @app.post("/api/v1/auth/login")
+    @app.post("/api/v1/auth/login", response_model=dto.LoginResult)
     def login(body: Login, request: Request):
         result = core.identity.login(body.login, body.password.get_secret_value(),
             source=request.client.host if request.client else "unknown", request_id=request.state.request_id)
@@ -187,7 +202,7 @@ def create_app(core, *, public_origin):
                             httponly=True, secure=secure, samesite="strict", path="/")
         return response
 
-    @app.get("/api/v1/auth/csrf")
+    @app.get("/api/v1/auth/csrf", response_model=dto.Csrf)
     def csrf(request: Request, actor=Depends(current_actor)):
         return {"csrf_token": digest("csrf:" + request.cookies[cookie_name])}
 
@@ -198,7 +213,7 @@ def create_app(core, *, public_origin):
         response.delete_cookie(cookie_name, secure=secure, httponly=True, samesite="strict", path="/")
         return response
 
-    @app.get("/api/v1/me")
+    @app.get("/api/v1/me", response_model=dto.Me)
     def me(actor=Depends(current_actor)):
         return core.identity.me(actor)
 
@@ -207,7 +222,7 @@ def create_app(core, *, public_origin):
         core.identity.change_password(actor, body.current_password.get_secret_value(), body.new_password.get_secret_value())
         return Response(status_code=204)
 
-    @app.get("/api/v1/auth/sessions")
+    @app.get("/api/v1/auth/sessions", response_model=list[dto.SessionView])
     def sessions(actor=Depends(current_actor)):
         return core.identity.sessions(actor)
 
@@ -216,7 +231,7 @@ def create_app(core, *, public_origin):
         core.identity.revoke_session(actor, str(session_id))
         return Response(status_code=204)
 
-    @app.post("/api/v1/workspaces", status_code=201)
+    @app.post("/api/v1/workspaces", status_code=201, response_model=dto.WorkspaceCreated)
     def create_workspace(body: WorkspaceCreate, actor=Depends(current_actor)):
         return core.workspaces.create(actor, body.name)
 
@@ -230,7 +245,7 @@ def create_app(core, *, public_origin):
         core.workspaces.transfer(actor, str(workspace_id), str(body.user_id))
         return Response(status_code=204)
 
-    @app.get("/api/v1/workspaces/{workspace_id}/members")
+    @app.get("/api/v1/workspaces/{workspace_id}/members", response_model=list[dto.MemberView])
     def members(workspace_id: uuid.UUID, actor=Depends(current_actor)):
         return core.workspaces.members(actor, str(workspace_id))
 
@@ -244,11 +259,11 @@ def create_app(core, *, public_origin):
         core.workspaces.remove_member(actor, str(workspace_id), str(user_id))
         return Response(status_code=204)
 
-    @app.post("/api/v1/workspaces/{workspace_id}/invitations", status_code=201)
+    @app.post("/api/v1/workspaces/{workspace_id}/invitations", status_code=201, response_model=dto.InvitationIssued)
     def invite(workspace_id: uuid.UUID, body: Invite, actor=Depends(current_actor)):
         return core.workspaces.invite(actor, str(workspace_id), body.login, body.role)
 
-    @app.get("/api/v1/workspaces/{workspace_id}/invitations")
+    @app.get("/api/v1/workspaces/{workspace_id}/invitations", response_model=list[dto.InvitationView])
     def invitations(workspace_id: uuid.UUID, actor=Depends(current_actor)):
         return core.workspaces.invitations(actor, str(workspace_id))
 
@@ -257,34 +272,34 @@ def create_app(core, *, public_origin):
         core.workspaces.revoke_invitation(actor, str(workspace_id), str(invitation_id))
         return Response(status_code=204)
 
-    @app.post("/api/v1/invitations/accept")
+    @app.post("/api/v1/invitations/accept", response_model=dto.Joined)
     def accept(body: AcceptInvite, request: Request):
         actor = current_actor(request) if request.cookies.get(cookie_name) else None
         return core.workspaces.accept(body.token.get_secret_value(), actor=actor,
             password=body.password.get_secret_value() if body.password else None,
             request_id=request.state.request_id, source=request.client.host if request.client else "unknown")
 
-    @app.get("/api/v1/workspaces/{workspace_id}/accounts")
+    @app.get("/api/v1/workspaces/{workspace_id}/accounts", response_model=dto.AccountPage)
     def accounts(workspace_id: uuid.UUID, q: str = Query("", max_length=256), tag: str | None = Query(None, max_length=128),
                  limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), actor=Depends(current_actor)):
         return core.accounts.search(actor, str(workspace_id), query=q, tag=tag, limit=limit, offset=offset)
 
-    @app.get("/api/v1/workspaces/{workspace_id}/accounts/{account_id}")
+    @app.get("/api/v1/workspaces/{workspace_id}/accounts/{account_id}", response_model=dto.AccountView)
     def account(workspace_id: uuid.UUID, account_id: uuid.UUID, actor=Depends(current_actor)):
         return core.accounts.get(actor, str(workspace_id), str(account_id))
 
-    @app.post("/api/v1/workspaces/{workspace_id}/accounts", status_code=201)
+    @app.post("/api/v1/workspaces/{workspace_id}/accounts", status_code=201, response_model=dto.AccountView)
     async def authorize_account(workspace_id: uuid.UUID, body: Authorization, actor=Depends(current_actor)):
         return await core.accounts.authorize(actor, str(workspace_id), body.cookie.get_secret_value(),
                                              label=body.label, tags=body.tags)
 
-    @app.post("/api/v1/workspaces/{workspace_id}/accounts/{account_id}/authorization")
+    @app.post("/api/v1/workspaces/{workspace_id}/accounts/{account_id}/authorization", response_model=dto.AccountView)
     async def reauthorize_account(workspace_id: uuid.UUID, account_id: uuid.UUID, body: Authorization,
                                   actor=Depends(current_actor)):
         return await core.accounts.authorize(actor, str(workspace_id), body.cookie.get_secret_value(),
                                              label=body.label, tags=body.tags, account_id=str(account_id))
 
-    @app.patch("/api/v1/workspaces/{workspace_id}/accounts/{account_id}")
+    @app.patch("/api/v1/workspaces/{workspace_id}/accounts/{account_id}", response_model=dto.AccountView)
     def edit_account(workspace_id: uuid.UUID, account_id: uuid.UUID, body: AccountEdit, actor=Depends(current_actor)):
         return core.accounts.edit(actor, str(workspace_id), str(account_id), **body.model_dump(exclude_none=True))
 
@@ -293,15 +308,15 @@ def create_app(core, *, public_origin):
         core.accounts.delete(actor, str(workspace_id), str(account_id))
         return Response(status_code=204)
 
-    @app.post("/api/v1/workspaces/{workspace_id}/accounts/{account_id}/refresh")
+    @app.post("/api/v1/workspaces/{workspace_id}/accounts/{account_id}/refresh", response_model=dto.AccountView)
     async def refresh(workspace_id: uuid.UUID, account_id: uuid.UUID, actor=Depends(current_actor)):
         return await core.accounts.refresh(actor, str(workspace_id), str(account_id))
 
-    @app.get("/api/v1/workspaces/{workspace_id}/accounts/{account_id}/detail")
+    @app.get("/api/v1/workspaces/{workspace_id}/accounts/{account_id}/detail", response_model=dto.DetailView)
     async def detail(workspace_id: uuid.UUID, account_id: uuid.UUID, actor=Depends(current_actor)):
         return await core.accounts.detail(actor, str(workspace_id), str(account_id))
 
-    @app.get("/api/v1/workspaces/{workspace_id}/accounts/{account_id}/grants")
+    @app.get("/api/v1/workspaces/{workspace_id}/accounts/{account_id}/grants", response_model=list[dto.GrantView])
     def grants(workspace_id: uuid.UUID, account_id: uuid.UUID, actor=Depends(current_actor)):
         return core.workspaces.grants(actor, str(workspace_id), str(account_id))
 
@@ -316,12 +331,12 @@ def create_app(core, *, public_origin):
         core.workspaces.set_grant(actor, str(workspace_id), str(account_id), str(user_id), None)
         return Response(status_code=204)
 
-    @app.get("/api/v1/workspaces/{workspace_id}/audit")
+    @app.get("/api/v1/workspaces/{workspace_id}/audit", response_model=list[dto.AuditView])
     def workspace_audit(workspace_id: uuid.UUID, limit: int = Query(100, ge=1, le=200),
                         offset: int = Query(0, ge=0), actor=Depends(current_actor)):
         return core.workspaces.audits(actor, str(workspace_id), limit=limit, offset=offset)
 
-    @app.get("/api/v1/instance/users")
+    @app.get("/api/v1/instance/users", response_model=list[dto.UserView])
     def users(actor=Depends(current_actor)):
         return core.identity.users(actor)
 
@@ -330,8 +345,32 @@ def create_app(core, *, public_origin):
         core.identity.set_user_active(actor, str(user_id), body.active)
         return Response(status_code=204)
 
-    @app.get("/api/v1/instance/audit")
+    @app.get("/api/v1/instance/audit", response_model=list[dto.AuditView])
     def instance_audit(limit: int = Query(100, ge=1, le=200), offset: int = Query(0, ge=0), actor=Depends(current_actor)):
         return core.workspaces.audits(actor, None, limit=limit, offset=offset)
+
+    @app.get("/api/v1/health", response_model=dto.Health)
+    def health():
+        with core.db.transaction() as session:
+            session.execute(text("SELECT 1"))
+        return {"status": "ok", "api_version": 1}
+
+    @app.post("/api/v1/workspaces/{workspace_id}/accounts/{account_id}/manual-switch", response_model=dto.SwitchIssued)
+    async def manual_ticket(workspace_id: uuid.UUID, account_id: uuid.UUID, actor=Depends(current_actor)):
+        return await core.switches.issue(actor, str(workspace_id), str(account_id))
+
+    @app.post("/api/v1/manual-switch/consume", response_model=dto.ManualScript)
+    def manual_consume(body: ManualConsume, actor=Depends(current_actor)):
+        return core.switches.consume(actor, body.token.get_secret_value(),
+            render=lambda delivery: render_script(delivery, body.platform, preview=manual_switch_preview))
+
+    # Only explicit UI routes are mounted. Unknown API routes never become HTML.
+    root = Path(web_dir) if web_dir else Path(__file__).parents[1] / "web_v2"
+    if (root / "index.html").is_file():
+        app.mount("/assets", StaticFiles(directory=root / "assets"), name="assets")
+
+        @app.get("/", include_in_schema=False)
+        def frontend():
+            return FileResponse(root / "index.html", media_type="text/html")
 
     return app

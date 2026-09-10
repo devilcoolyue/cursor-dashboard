@@ -18,11 +18,15 @@ dependencies = [
 cursor-panel = "cursor_dashboard.server:main"
 cursor-quota = "cursor_dashboard.cli:main"
 cursor-core = "cursor_dashboard.runtime.cli:entrypoint"
+cursor-remote = "cursor_dashboard.runtime.remote:entrypoint"
 cursor-api = "cursor_dashboard.runtime.server:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build]
+artifacts = ["cursor_dashboard/web_v2/**"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["cursor_dashboard"]

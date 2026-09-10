@@ -20,6 +20,7 @@ import tempfile
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("wheel", type=Path)
+    parser.add_argument("--web", action="store_true", help="Require built P3 Web assets and exercise remote CLI")
     args = parser.parse_args()
     wheel = args.wheel.resolve()
     with tempfile.TemporaryDirectory(prefix="core-wheel-") as folder:
@@ -86,6 +87,10 @@ def main():
                     if process.poll() is not None or time.monotonic() > deadline:
                         raise RuntimeError("Installed API failed to start") from None
                     time.sleep(.1)
+            if args.web:
+                with client.open(origin + "/", timeout=5) as response:
+                    assert "Cursor Panel" in response.read().decode()
+                    assert "frame-ancestors" in response.headers["Content-Security-Policy"]
             body = json.dumps({"login": "owner@example.test", "password": "Synthetic wheel password 42!"}).encode()
             request = urllib.request.Request(origin + "/api/v1/auth/login", data=body,
                 headers={"Content-Type": "application/json", "Origin": origin})
@@ -99,6 +104,21 @@ def main():
                 result = json.load(response)
                 assert result["total"] == 1
                 assert "fixture-cookie-only" not in json.dumps(result)
+            if args.web:
+                with client.open(origin + "/api/v1/auth/sessions", timeout=5) as response:
+                    before_sessions = len(json.load(response))
+                remote = root / "remote.py"
+                remote.write_text("from unittest.mock import patch\n"
+                    "from cursor_dashboard.runtime.remote import main\nimport sys\n"
+                    "with patch('cursor_dashboard.runtime.remote.getpass.getpass', return_value='Synthetic wheel password 42!'):\n"
+                    "    raise SystemExit(main(sys.argv[1:]))\n")
+                result = subprocess.run([str(python), str(remote), "--server", origin, "--login", "owner@example.test",
+                    "list", "--workspace", owner["workspace_id"]], cwd=root, env=env, text=True, encoding="utf-8", capture_output=True, check=True)
+                assert json.loads(result.stdout)["total"] == 1
+                assert "fixture-cookie-only" not in result.stdout
+                assert "Synthetic wheel password" not in result.stdout + result.stderr
+                with client.open(origin + "/api/v1/auth/sessions", timeout=5) as response:
+                    assert len(json.load(response)) == before_sessions, "Remote CLI left an active session"
             request = urllib.request.Request(origin + "/api/v1/auth/logout", data=b"", headers={"Origin": origin, "X-CSRF-Token": csrf})
             with client.open(request, timeout=5) as response:
                 assert response.status == 204
@@ -116,7 +136,7 @@ def main():
                 process.kill()
                 process.wait(timeout=10)
         assert run("verify")["credentials_decryptable"] == 1
-        print("Installed wheel: migration/recovery CLI and real API login/list/logout passed; source unchanged")
+        print("Installed wheel: Web/remote CLI checks enabled=" + str(args.web) + "; " + " migration/recovery CLI and real API login/list/logout passed; source unchanged")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,18 @@
 import { createApp } from 'vue'
-import App from './App.vue'
 
-createApp(App).mount('#app')
+async function start() {
+  if (import.meta.env.MODE === 'desktop-probe') {
+    document.title = 'Cursor Panel · P0'
+    const { default: ProbeApp } = await import('./ProbeApp.vue')
+    createApp(ProbeApp).mount('#app')
+    return
+  }
+  await import('./theme')
+  await import('./styles.css')
+  const [{ default: App }, { initialize }, { router }] = await Promise.all([import('./App.vue'), import('./state'), import('./router')])
+  await initialize()
+  const app = createApp(App).use(router)
+  await router.isReady()
+  app.mount('#app')
+}
+void start()

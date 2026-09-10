@@ -18,6 +18,7 @@ from ..infrastructure.persistence.legacy import import_backup, read_backup
 from ..infrastructure.secrets import FileKeyProvider
 from .core import Core
 from .settings import CoreConfig
+from .backup import backup, restore
 
 
 def main(argv=None):
@@ -40,6 +41,10 @@ def main(argv=None):
     sub.add_argument("source", type=Path)
     sub.add_argument("--actor", required=True)
     sub.add_argument("--workspace", required=True)
+    sub = commands.add_parser("backup")
+    sub.add_argument("destination", type=Path)
+    sub = commands.add_parser("restore")
+    sub.add_argument("source", type=Path)
     commands.add_parser("upgrade")
     commands.add_parser("verify")
     for name in ("list", "refresh", "detail"):
@@ -62,6 +67,9 @@ def main(argv=None):
                 raise CoreError("Supply both --data-dir and --key-file, or use both environment variables")
             config = (CoreConfig(args.data_dir, args.key_file) if args.data_dir and args.key_file
                       else CoreConfig.from_env())
+            if args.command == "restore":
+                print(json.dumps(restore(config, args.source), ensure_ascii=False, indent=2))
+                return 0
             if args.command == "server-init":
                 config = replace(config, mode="server")
             password = None
@@ -78,6 +86,8 @@ def main(argv=None):
                     result = {"password_changed": True, "sessions_revoked": True}
                 elif args.command in {"init", "workspace"}:
                     result = core.repository.create_workspace(args.owner, args.name, args.kind)
+                elif args.command == "backup":
+                    result = backup(core, args.destination)
                 elif args.command in {"verify", "upgrade"}:
                     result = core.repository.verify()
                 elif args.command == "import-legacy":

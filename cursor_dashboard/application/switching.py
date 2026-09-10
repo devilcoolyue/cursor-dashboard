@@ -24,6 +24,8 @@ class SwitchDelivery:
     workspace_id: str
     expires_at: float
     secrets: Secrets = field(repr=False)
+    email: str = ""
+    subject: str = ""
 
 
 class SwitchService:
@@ -55,7 +57,7 @@ class SwitchService:
             audit(session, actor, "switch.issue", workspace_id, account_id)
             return {"token": token, "expires_at": expires}
 
-    def consume(self, actor, token):
+    def consume(self, actor, token, *, render=None):
         """Check, decrypt, consume and audit in one write transaction, with no await."""
         with self.db.transaction(write=True) as session:
             ticket = session.scalar(select(SwitchTicket).where(SwitchTicket.token_hash == digest(token)))
@@ -72,8 +74,12 @@ class SwitchService:
                 raise Conflict("Desktop authorization is unavailable")
             ticket.consumed_at = time.time()
             audit(session, actor, "switch.consume", ticket.workspace_id, ticket.account_id)
-            return SwitchDelivery(ticket.id, ticket.account_id, ticket.workspace_id,
-                                  ticket.expires_at, authorized.secrets)
+            delivery = SwitchDelivery(ticket.id, ticket.account_id, ticket.workspace_id,
+                                      ticket.expires_at, authorized.secrets, authorized.email or "",
+                                      authorized.subject or "")
+            # Fixed transport rendering shares the write lock with consumption.
+            # Render failures roll back; revocation cannot interleave delivery.
+            return render(delivery) if render else delivery
 
     def record_result(self, actor, ticket_id, result):
         """External execution is a separate event and never changes consumption."""

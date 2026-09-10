@@ -4,13 +4,22 @@
   "version": "0.0.0",
   "identifier": "dev.cursor-panel.p0",
   "build": {
-    "beforeDevCommand": "npm --prefix ../frontend run dev",
+    "beforeDevCommand": "npm --prefix ../frontend run dev:probe",
     "devUrl": "http://127.0.0.1:1420",
-    "beforeBuildCommand": "npm --prefix ../frontend run build",
+    "beforeBuildCommand": "npm --prefix ../frontend run build:probe",
     "frontendDist": "../../frontend/dist"
   },
   "app": {
-    "windows": [{"label": "main", "title": "Cursor Panel · P0", "width": 960, "height": 700, "minWidth": 580, "minHeight": 580}],
+    "windows": [
+      {
+        "label": "main",
+        "title": "Cursor Panel \u00b7 P0",
+        "width": 960,
+        "height": 700,
+        "minWidth": 580,
+        "minHeight": 580
+      }
+    ],
     "security": {
       "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost; img-src 'self' data:; object-src 'none'; frame-src 'none'"
     }
@@ -18,7 +27,15 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "externalBin": ["binaries/p0-backend"],
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
+    "externalBin": [
+      "binaries/p0-backend"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
   }
 }

@@ -1,5 +1,7 @@
 # 部署与运行
 
+V2 Web 使用独立的 [Dockerfile/Compose 与运行文档](v2-web-operations.md)，通过 `cursor-api` 启动；本文以下仍描述 legacy `cursor-panel` / `cursor-quota`。
+
 [返回 README](../README.md) · [实现与维护](maintenance.md) · [阶段归档](archive/2026-09-07.md)
 
 ## 启动与部署
