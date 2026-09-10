@@ -1,0 +1,2 @@
+# Tauri rewrites Cargo.toml with LF. Keep its checkout stable on Windows too.
+*.toml text eol=lf
