@@ -18,6 +18,14 @@ import time
 import psutil
 
 
+def still_running(process):
+    try:
+        return process.is_running() and process.status() != psutil.STATUS_ZOMBIE
+    except psutil.NoSuchProcess:
+        # Process exit can occur between the two OS queries, especially WebView2 helpers.
+        return False
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("executable", type=Path)
@@ -86,7 +94,7 @@ def main():
             deadline = time.monotonic() + 8
             survivors = []
             while time.monotonic() < deadline:
-                survivors = [p for p in tracked.values() if p.is_running() and p.status() != psutil.STATUS_ZOMBIE]
+                survivors = [p for p in tracked.values() if still_running(p)]
                 if not survivors:
                     break
                 time.sleep(.1)
