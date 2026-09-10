@@ -66,8 +66,12 @@ jobs:
               import os
               install_dir = pathlib.Path(os.environ['RUNNER_TEMP']) / 'P0 installed with spaces'
               installer = next((release / 'bundle/nsis').glob('*.exe'))
-              subprocess.run([str(installer.resolve()), '/S', f'/D={install_dir}'], check=True, timeout=120)
+              # NSIS requires /D to be the final, unquoted argument, including spaces.
+              # Pass a Windows command line directly; shell=False avoids shell expansion.
+              subprocess.run(f'"{installer.resolve()}" /S /D={install_dir}', check=True, timeout=120)
               executable = install_dir / 'cursor-panel-p0.exe'
+              assert executable.is_file(), f'Installed executable missing: {executable}'
+              assert (install_dir / 'p0-backend.exe').is_file(), 'Installed sidecar missing'
           for mode, extra in [('normal', []), ('crash', ['--kill-shell'])]:
               subprocess.run(['uv', 'run', '--project', 'desktop/sidecar', '--frozen', 'python',
                               'desktop/scripts/smoke.py', str(executable), '--output',
