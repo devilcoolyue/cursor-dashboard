@@ -1,7 +1,7 @@
 """Trusted credential delivery boundary for the P3/P5 transport adapters.
 
-This module is never mounted as a raw-credential browser API. It binds tickets
-only to authenticated Web sessions in P2; PKCE device sessions arrive in P5.
+Web scripts and native device delivery use distinct authenticated transports.
+Both bind tickets to the exact live session and current account versions.
 """
 from __future__ import annotations
 

@@ -115,6 +115,7 @@ class IdentityService:
         session.execute(delete(UserSession).where(UserSession.expires_at <= now))
         # Bound active sessions without returning any previous raw ticket.
         current = list(session.scalars(select(UserSession).where(UserSession.user_id == user.id,
+            UserSession.kind == "web",
             UserSession.revoked.is_(False)).order_by(UserSession.created_at.desc())))
         for old in current[19:]:
             old.revoked = True
@@ -126,10 +127,10 @@ class IdentityService:
         audit(session, actor, "session.login", resource_id=record.id)
         return LoginResult(actor, token, csrf, record.expires_at)
 
-    def authenticate(self, token, *, csrf=None, request_id=None):
+    def authenticate(self, token, *, csrf=None, request_id=None, kind="web"):
         with self.db.transaction() as session:
             record = session.scalar(select(UserSession).where(UserSession.token_hash == digest(token)))
-            if record is None or record.revoked or record.expires_at <= time.time():
+            if record is None or record.kind != kind or record.revoked or record.expires_at <= time.time():
                 raise Unauthenticated("Session expired or revoked")
             actor = Actor(record.user_id, record.id, request_id)
             try:
@@ -155,6 +156,7 @@ class IdentityService:
         with self.db.transaction() as session:
             active_user(session, actor)
             return [{"id": r.id, "created_at": r.created_at, "expires_at": r.expires_at,
+                     "kind": r.kind, "device_id": r.device_id, "device_name": r.device_name,
                      "current": r.id == actor.session_id} for r in session.scalars(select(UserSession).where(
                          UserSession.user_id == actor.user_id, UserSession.revoked.is_(False),
                          UserSession.expires_at > time.time()).order_by(UserSession.created_at.desc()))]

@@ -53,6 +53,30 @@ class SessionView(BaseModel):
     created_at: float
     expires_at: float
     current: bool
+    kind: Literal['web', 'device'] = 'web'
+    device_id: str | None = None
+    device_name: str | None = None
+
+
+class DeviceApproved(BaseModel):
+    callback_url: str
+
+
+class DeviceLogin(BaseModel):
+    token: str
+    session_id: str
+    expires_at: float
+
+
+class DeviceDelivery(BaseModel):
+    ticket_id: str
+    workspace_id: str
+    account_id: str
+    expires_at: float
+    access_token: str
+    refresh_token: str
+    email: str
+    subject: str
 
 
 class MemberView(BaseModel):

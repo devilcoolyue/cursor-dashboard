@@ -6,8 +6,10 @@ import SetupView from './views/SetupView.vue'
 import SettingsView from './views/SettingsView.vue'
 import WorkspaceView from './views/WorkspaceView.vue'
 import InstanceView from './views/InstanceView.vue'
-import { invitationToken, me } from './state'
+import { invitationToken, me, deviceAuthorization } from './state'
 import { isDesktop } from './platform'
+import ConnectionsView from './views/ConnectionsView.vue'
+import DeviceView from './views/DeviceView.vue'
 
 export const router = createRouter({
   history: createWebHashHistory(),
@@ -20,11 +22,21 @@ export const router = createRouter({
     { path: '/settings', component: SettingsView },
     { path: '/workspace', component: WorkspaceView },
     { path: '/instance', component: InstanceView },
+    { path: '/connections', component: ConnectionsView, meta: { public: true } },
+    { path: '/device', component: DeviceView },
     { path: '/:pathMatch(.*)*', redirect: '/accounts' },
   ],
 })
 router.beforeEach(to => {
-  if (isDesktop && ['/join', '/setup', '/instance'].includes(to.path)) return '/accounts'
+  if (isDesktop && ['/join', '/setup', '/device'].includes(to.path)) return '/accounts'
+  if (!isDesktop && to.path === '/connections') return '/accounts'
+  if (to.path === '/device' && Object.keys(to.query).length) {
+    const keys = ['code_challenge', 'state', 'callback', 'device_id', 'device_name'] as const
+    if (keys.every(k => typeof to.query[k] === 'string' && to.query[k]!.length <= 256)) {
+      deviceAuthorization.value = Object.fromEntries(keys.map(k => [k, to.query[k]])) as NonNullable<typeof deviceAuthorization.value>
+    } else deviceAuthorization.value = undefined
+    return { path: '/device', replace: true }
+  }
   // Invitation tokens live in the fragment only and are removed from history on arrival.
   if (to.path === '/join' && typeof to.query.token === 'string') {
     invitationToken.value = to.query.token.slice(0, 128)

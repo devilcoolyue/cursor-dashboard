@@ -57,6 +57,7 @@ try {
   let starting = true
   await context.exposeBinding('nativeInvoke', async (_, command, args) => {
     if (command === 'frontend_ready' || command === 'desktop_open_backups') return null
+    if (command === 'connection_request') return request('/native/connections')
     if (command === 'desktop_archive') {
       return request(args.operation === 'recover' ? '/native/recover' : `/native/archive/${args.operation}`, 'POST', { path: archivePath, password: args.password, workspace_id: args.workspace })
     }

@@ -164,6 +164,21 @@ class UserSession(Base):
     created_at: Mapped[float] = mapped_column(Float, default=time.time)
     expires_at: Mapped[float] = mapped_column(Float)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+    kind: Mapped[str] = mapped_column(String(16), default="web", server_default="web")
+    device_id: Mapped[str | None] = mapped_column(String(36))
+    device_name: Mapped[str | None] = mapped_column(String(128))
+    __table_args__ = (CheckConstraint("kind IN ('web','device')", name="session_kind"),)
+
+
+class DeviceAuthorization(Base):
+    __tablename__ = "device_authorizations"
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("user_sessions.id", ondelete="CASCADE"))
+    challenge: Mapped[str] = mapped_column(String(43))
+    redirect_uri: Mapped[str] = mapped_column(String(256))
+    device_id: Mapped[str] = mapped_column(String(36))
+    device_name: Mapped[str] = mapped_column(String(128))
+    expires_at: Mapped[float] = mapped_column(Float)
 
 
 class Invitation(Base):

@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, ApiError, message, type Schema } from '../api'
-import { invitationToken, loadMe } from '../state'
+import { invitationToken, loadMe, deviceAuthorization } from '../state'
 const router = useRouter()
 const login = ref(''), password = ref(''), busy = ref(false), error = ref('')
 async function submit() {
@@ -11,7 +11,7 @@ async function submit() {
     api.csrf = (await api.request<Schema['LoginResult']>('/auth/login', 'POST', { login: login.value, password: password.value })).csrf_token
     password.value = ''
     await loadMe()
-    await router.replace(invitationToken.value ? '/join' : '/accounts')
+    await router.replace(deviceAuthorization.value ? '/device' : invitationToken.value ? '/join' : '/accounts')
   } catch (reason) { error.value = reason instanceof ApiError && reason.status === 401 ? '登录邮箱或密码不正确。' : message(reason) }
   finally { password.value = ''; busy.value = false }
 }

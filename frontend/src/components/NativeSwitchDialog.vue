@@ -2,7 +2,7 @@
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import UiDialog from './UiDialog.vue'
 import { message, type Account } from '../api'
-import { native, openBackups, type Detection, type SwitchState } from '../platform'
+import { native, openBackups, connectionId, type Detection, type SwitchState } from '../platform'
 const props = defineProps<{ account?: Account; restoreId?: string }>()
 const emit = defineEmits<{ close: [] }>()
 const detection = ref<Detection>(), state = ref<SwitchState>(), confirmed = ref(false), busy = ref(false), error = ref(''), started = ref(false)
@@ -27,7 +27,7 @@ async function start() {
   try {
     const result = props.restoreId
       ? await native<SwitchState>('restore', { backup_id: props.restoreId, confirmed: confirmed.value })
-      : await native<SwitchState>('switch', { workspace_id: props.account?.workspace_id, account_id: props.account?.id, confirmed: confirmed.value })
+      : await native<SwitchState>('switch', { connection_id: connectionId.value, workspace_id: props.account?.workspace_id, account_id: props.account?.id, confirmed: confirmed.value })
     if (!alive) return
     state.value = result; started.value = true
     await poll()

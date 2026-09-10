@@ -3,7 +3,7 @@ name: P3 Web and server delivery
 on:
   workflow_dispatch:
   push:
-    branches: [feat/v2-p3]
+    branches: [feat/v2-p3, feat/v2-p5]
     paths: ['cursor_dashboard/**', 'frontend/**', 'tests/**', 'dev/**', 'deploy/v2/**', 'Dockerfile', '.dockerignore', 'pyproject.toml', 'uv.lock', '.github/workflows/p3-web.yml']
   pull_request:
     paths: ['cursor_dashboard/**', 'frontend/**', 'tests/**', 'dev/**', 'deploy/v2/**', 'Dockerfile', '.dockerignore', 'pyproject.toml', 'uv.lock', '.github/workflows/p3-web.yml']

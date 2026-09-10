@@ -2,7 +2,7 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, spacePath, message, type Schema } from '../api'
-import { activeSpace, loadMe, me } from '../state'
+import { activeSpace, loadMe, me, activeConnection } from '../state'
 import { roleText, timeText } from '../format'
 import UiDialog from '../components/UiDialog.vue'
 import AuditList from '../components/AuditList.vue'
@@ -26,7 +26,7 @@ async function load() {
 async function run(action: () => Promise<void>) { busy.value = true; error.value = ''; try { await action() } catch (reason) { error.value = message(reason) } finally { busy.value = false } }
 onMounted(() => void run(load))
 async function invite() {
-  await run(async () => { const result = await api.request<Schema['InvitationIssued']>(base + '/invitations', 'POST', { login: login.value, role: role.value }, controller.signal); link.value = `${location.origin}/#/join?token=${encodeURIComponent(result.token)}`; login.value = ''; await load() })
+  await run(async () => { const result = await api.request<Schema['InvitationIssued']>(base + '/invitations', 'POST', { login: login.value, role: role.value }, controller.signal); link.value = `${activeConnection.value?.origin || location.origin}/#/join?token=${encodeURIComponent(result.token)}`; login.value = ''; await load() })
 }
 async function changeRole(member: Schema['MemberView'], event: Event) {
   const next = (event.target as HTMLSelectElement).value

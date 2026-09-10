@@ -2,7 +2,7 @@
 
 管理个人与团队的 Cursor 账号、额度与授权。一套 Python 业务核心提供已认证 API、Vue Web 界面、独立桌面和远程 CLI；个人空间默认隔离，团队账号按 view/use 权限共享。
 
-当前包版本仍为 `1.4.0`，V2 按 [实施计划](docs/plans/v2-architecture.md) 分阶段推进。P0–P4 开发与阶段自动验证已完成，Web 与服务端交付的验证记录见 [P3 报告](docs/plans/p3-verification.md)。P4 已接入独立桌面，平台验证见 [P4 报告](docs/plans/p4-verification.md)，操作见 [桌面使用说明](docs/v2-desktop-operations.md)。连接远端桌面属于 P5，尚未交付。
+当前包版本仍为 `1.4.0`，V2 按 [实施计划](docs/plans/v2-architecture.md) 分阶段推进。P0–P4 开发与阶段自动验证已完成，Web 与服务端交付的验证记录见 [P3 报告](docs/plans/p3-verification.md)。P4 已接入独立桌面，平台验证见 [P4 报告](docs/plans/p4-verification.md)，操作见 [桌面使用说明](docs/v2-desktop-operations.md)。P5 已实现远程连接、浏览器登录、设备会话与远程账号操作，见 [连接使用说明](docs/v2-connected-operations.md) 和 [P5 报告](docs/plans/p5-verification.md)；真实 Cursor 续期竞争待验证，生产远程切换保持关闭。
 
 ## 启动 V2 Web
 
@@ -33,6 +33,7 @@ docker compose --env-file deploy/v2/.env -f deploy/v2/compose.yaml up -d panel p
 | 额度与明细 | 最后成功快照、套餐与周期、综合/Cursor/Other Models 额度、Grok 周额度、按 tier 分组的模型用量 |
 | 刷新 | 手工刷新与按需明细，统一节流与凭证续期；失败保留成功快照，显示更新时间与状态；尚无 V2 周期调度 |
 | Web 手工切换 | 经过 use 授权的短期一次性票据，领取时复查当前权限，生成固定 macOS/Windows 脚本由用户执行 |
+| 桌面连接实例 | 系统浏览器登录、S256 PKCE、系统凭证库设备令牌、可撤销设备会话；区分本地与多个远程实例 |
 | 设置与审计 | 空间成员/授权管理、空间审计、实例用户启停及实例审计；实例管理员不自动获得他人空间权限 |
 | 显示与交互 | 六种皮肤与独立明暗、移动布局、焦点恢复、减少动态效果；切换空间/用户取消旧请求 |
 | 运行维护 | 加密凭证、进程锁、显式 schema 升级、旧版迁移、离线一致备份及新环境恢复 |
@@ -65,6 +66,7 @@ uv run --frozen python dev/preview-v2.py --port 18763
 uv run --frozen python -m unittest discover -s tests -v
 npx --prefix frontend playwright install chromium
 npm --prefix frontend run test:e2e
+npm --prefix frontend run test:connected
 ```
 
 验证使用模拟网关和临时数据。前端 API 类型由 OpenAPI 生成并通过 CI 检查漂移；容器、wheel 和三平台检查见 [P3 报告](docs/plans/p3-verification.md)。
@@ -78,6 +80,7 @@ npm --prefix frontend run test:e2e
 ## 文档
 
 - [Web 部署、备份恢复、远程 CLI](docs/v2-web-operations.md)
+- [桌面连接实例与设备登录](docs/v2-connected-operations.md)
 - [V2 认证与 API 约定](docs/v2-api-operations.md)
 - [核心运行与旧版迁移](docs/core-operations.md)
 - [架构与分阶段计划](docs/plans/v2-architecture.md)

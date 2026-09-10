@@ -1,5 +1,6 @@
 # V2 身份与 API 运行
 
+P5 新增设备授权与会话接口：浏览器通过已登录且带 CSRF 的 `POST /api/v1/auth/devices/authorize` 审批，原生后台以 S256 verifier 调用 `POST /api/v1/auth/devices/exchange` 单次交换；`GET /api/v1/auth/devices` 和 `DELETE /api/v1/auth/devices/{session_id}` 查看/撤销设备。设备 API 使用独立类型的 Bearer 会话，拒绝网页 Cookie 或浏览器 Origin/Fetch 请求头，不能复用旧 `PANEL_TOKEN`。生产 `remote_switch=false`，结构化切换签发及领取拒绝；详情见 [桌面连接说明](v2-connected-operations.md)。升级此版本需停止旧进程并升级到 schema `0003_devices`。
 
 P3 已接入 Vue 界面、Web 手工脚本、容器与远程 CLI，见 [Web 部署与使用](v2-web-operations.md)。首次管理员初始化继续使用离线命令。
 P2 在 P1 核心上增加真实用户认证、团队成员、账号授权、审计及独立 `/api/v1`。入口是 `cursor-api`；旧 `cursor-panel` 保留原兼容服务。P3 在此基础上交付新版 Web 界面、容器和手工切换适配。
@@ -40,7 +41,7 @@ uv run --frozen cursor-core --data-dir ./v2-data --key-file ./v2-secrets/master.
   server-init --login 原P1空间Owner的登录邮箱
 ```
 
-`0001_core → 0002_identity` 保留账号、密文、原成员与导入回执，增加会话、邀请、切换票据和审计。不会因升级自动授予实例管理员或公开数据。首次初始化保留同登录标识的旧用户 UUID/空间，并补建个人空间；再次初始化拒绝。原密钥继续使用，不重新 keygen。
+`0001_core → 0002_identity → 0003_devices` 保留账号、密文、原成员与导入回执，增加会话、邀请、切换票据、审计和设备授权码；设备会话新增类型及标识，旧网页会话与票据继续保留。不会因升级自动授予实例管理员或公开数据。首次初始化保留同登录标识的旧用户 UUID/空间，并补建个人空间；再次初始化拒绝。原密钥继续使用，不重新 keygen。
 
 其他 P1 无密码身份及忘记密码的恢复使用离线命令：
 
@@ -90,7 +91,7 @@ API 不开启跨域请求。响应使用 `Cache-Control: no-store`。错误不�
 
 账号列表支持 `q`、`tag`、`offset`、`limit`。查询先限定可见账号，再搜索/统计/分页；未经授权的邮箱、标签和快照不会影响结果。列表只读快照，最新数据依赖手动刷新或明细请求；P3 尚未启用 V2 周期后台调度。
 
-普通邀请角色为 Member/Viewer，只有 Owner 可邀请 Admin；邀请有效期 7 天，只能领取一次。用户加入团队不共享其个人账号。Viewer 不能获 use，Member 的 use 包含 view；管理员权限不包含导出凭证归档。账号 capabilities 中的 switch 表示已具备 use 权限，P3 bootstrap 的 manual_switch 为 true；device_sessions 和 remote_switch 仍为 false。
+普通邀请角色为 Member/Viewer，只有 Owner 可邀请 Admin；邀请有效期 7 天，只能领取一次。用户加入团队不共享其个人账号。Viewer 不能获 use，Member 的 use 包含 view；管理员权限不包含导出凭证归档。账号 capabilities 中的 switch 表示已具备 use 权限，server bootstrap 的 manual_switch、device_sessions 为 true，remote_switch 为 false；账号 switch capability 仅表示 use 授权，入口还须满足对应运行能力。
 
 Owner 可以删除团队；删除整个导入团队同时删除其导入回执和映射，保留审计。单独删除账号保留导入回执，不会被重复导入恢复。
 

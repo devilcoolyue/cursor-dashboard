@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager, suppress
 import hmac
 from pathlib import Path
 import uuid
+from typing import Literal
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -14,12 +15,29 @@ from pydantic import Field, SecretStr
 from ..api.app import Input
 from ..domain.core import CoreError, SecretError
 from .archive import export_archive, import_archive
+from .remote import RemoteError
 
 
 class SwitchInput(Input):
     workspace_id: uuid.UUID
     account_id: uuid.UUID
     confirmed: bool = Field(strict=True)
+    connection_id: uuid.UUID | None = None
+
+
+class ConnectionInput(Input):
+    name: str = Field(min_length=1, max_length=128)
+    origin: str = Field(min_length=1, max_length=2048)
+
+
+class ConnectionSelect(Input):
+    connection_id: uuid.UUID | None = None
+
+
+class RemoteRequest(Input):
+    method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"]
+    path: str = Field(max_length=4096)
+    body: dict | None = None
 
 
 class RestoreInput(Input):
@@ -72,7 +90,8 @@ def create_local_app(runtime, token, port):
 
     @app.exception_handler(CoreError)
     async def core_error(request, error):
-        return JSONResponse({"detail": str(error)}, status_code=423 if isinstance(error, SecretError) else 409)
+        return JSONResponse({"detail": str(error)}, status_code=error.status if isinstance(error, RemoteError)
+                            else 423 if isinstance(error, SecretError) else 409)
 
     @app.exception_handler(RequestValidationError)
     async def invalid(request, error):
@@ -102,7 +121,46 @@ def create_local_app(runtime, token, port):
     async def switch(body: SwitchInput):
         if not body.confirmed:
             return JSONResponse({"detail": "Save and confirm before switching"}, status_code=409)
+        if body.connection_id:
+            return runtime.start_remote_switch(str(body.connection_id), str(body.workspace_id), str(body.account_id))
         return runtime.start_switch(str(body.workspace_id), str(body.account_id))
+
+    @app.get("/native/connections")
+    def connections():
+        return runtime.connections.snapshot()
+
+    @app.post("/native/connections")
+    def add_connection(body: ConnectionInput):
+        return runtime.connections.add(body.name, body.origin)
+
+    @app.put("/native/connections/active")
+    def select_connection(body: ConnectionSelect):
+        if runtime.job is not None:
+            raise CoreError("Wait for the current Cursor operation to finish")
+        return runtime.connections.select(str(body.connection_id) if body.connection_id else None)
+
+    @app.post("/native/connections/{connection_id}/login")
+    def connection_login(connection_id: uuid.UUID):
+        if runtime.job is not None:
+            raise CoreError("Wait for the current Cursor operation to finish")
+        return runtime.connections.login(str(connection_id))
+
+    @app.post("/native/connections/{connection_id}/disconnect")
+    def disconnect(connection_id: uuid.UUID):
+        if runtime.job is not None:
+            raise CoreError("Wait for the current Cursor operation to finish")
+        return runtime.connections.disconnect(str(connection_id))
+
+    @app.delete("/native/connections/{connection_id}")
+    def remove_connection(connection_id: uuid.UUID):
+        if runtime.job is not None:
+            raise CoreError("Wait for the current Cursor operation to finish")
+        return runtime.connections.disconnect(str(connection_id), remove=True)
+
+    @app.post("/native/connections/{connection_id}/request")
+    def remote_request(connection_id: uuid.UUID, body: RemoteRequest):
+        result = runtime.connections.request(str(connection_id), body.method, body.path, body.body)
+        return JSONResponse(result) if result is not None else JSONResponse(None, status_code=200)
 
     @app.get("/native/backups")
     def backups():

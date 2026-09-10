@@ -28,7 +28,7 @@ async function load() {
     page.value = await api.request<Schema['AccountPage']>(spacePath(activeSpace.value.id) + '/accounts?' + params, 'GET', undefined, listController.signal)
     if (isDesktop) { await nextTick(); void reportReady(document.querySelectorAll('[data-account]').length).catch(() => {}) }
   }
-  catch (reason) { if (!isAbort(reason)) { error.value = message(reason); if (reason instanceof ApiError && [401, 403, 404].includes(reason.status)) page.value = undefined } }
+  catch (reason) { if (!isAbort(reason)) { error.value = message(reason); if (reason instanceof ApiError && [401, 403, 404, 426].includes(reason.status)) page.value = undefined } }
   finally { if (sequence === current) busy.value = false }
 }
 watch([query, tag], () => { page.value = undefined; offset.value = 0; void load() })

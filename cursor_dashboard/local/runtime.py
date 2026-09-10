@@ -17,11 +17,12 @@ from .cursor import CursorInstallation
 from .files import private_directory, write_new
 from .identity import LocalIdentity
 from .keys import DesktopKeys, SystemKeyStore
+from .remote import Connections
 from .switching import SwitchExecutor
 
 
 class DesktopRuntime:
-    def __init__(self, data_dir, *, store=None, gateway=None, installation=None):
+    def __init__(self, data_dir, *, store=None, gateway=None, installation=None, connections=None):
         self.directory = private_directory(Path(data_dir))
         self.lock = RuntimeLock(self.directory / ".desktop.lock").acquire()
         self.store = store or SystemKeyStore(self.directory)
@@ -32,6 +33,7 @@ class DesktopRuntime:
         self.phase = "starting"
         self.open_lock = threading.Lock()
         self.executor = SwitchExecutor(self.directory, installation or CursorInstallation())
+        self.connections = connections or Connections(self.directory)
         self.job = None
         self.background = False
         self.last_refresh = None
@@ -58,7 +60,7 @@ class DesktopRuntime:
                     keys = DesktopKeys.generate()
                     self.store.save(keys)
                 candidate = Core(self.config, keys=keys, gateway=self.gateway,
-                                 initialize=not self.config.database.exists())
+                                 initialize=not self.config.database.exists(), upgrade=True)
                 identity = LocalIdentity(candidate)
                 if recovery is not None:
                     self.store.save(keys)
@@ -175,10 +177,37 @@ class DesktopRuntime:
         self.job = asyncio.create_task(run())
         return self.executor.status()
 
+    def start_remote_switch(self, connection_id, workspace_id, account_id):
+        if self.job is not None:
+            raise Conflict("A Cursor operation is already running")
+        self.executor.update(stage="authorizing", busy=True, error=None, written=False)
+
+        async def run():
+            report = None
+            result = "failure"
+            try:
+                delivery, report = await asyncio.to_thread(self.connections.delivery, connection_id, workspace_id, account_id)
+                await asyncio.to_thread(self.executor.execute, delivery)
+                result = "success"
+            except Exception:
+                if self.executor.status()["busy"]:
+                    self.executor.update(stage="failed", busy=False,
+                        error="Remote authorization failed; reconnect and request a new switch")
+            finally:
+                if report:
+                    try:
+                        await asyncio.to_thread(report, result)
+                    except Exception:
+                        self.executor.update(report_pending=True)
+                self.job = None
+        self.job = asyncio.create_task(run())
+        return self.executor.status()
+
     async def shutdown(self):
         # A started SQLite operation is allowed to finish before disposing its database.
         if self.job is not None:
             await self.job
+        self.connections.close()
         if self.core:
             try:
                 self.identity.close()

@@ -4,9 +4,11 @@ import os
 
 from ..application.accounts import AccountService
 from ..application.credentials import CredentialService
+from ..application.devices import DeviceService
 from ..application.identity import IdentityService, WorkspaceService
 from ..application.switching import SwitchService
 from ..domain.core import Conflict
+from ..domain.core import CoreError
 from ..infrastructure.persistence.database import Database
 from ..infrastructure.persistence.repository import Repository
 from ..infrastructure.providers.cursor.gateway import CursorGateway
@@ -40,12 +42,22 @@ class Core:
             else:
                 self.repository.check_key()
                 if upgrade:
+                    if config.mode == "local":
+                        try:
+                            self.db.require_current()
+                        except CoreError:
+                            # RuntimeLock is held; a consistent backup includes WAL
+                            # before any schema mutation of an installed desktop.
+                            import uuid
+                            from .backup import copy_database
+                            copy_database(config.database.resolve(), config.data_dir / f"pre-upgrade-{uuid.uuid4()}.db")
                     self.db.upgrade()
                 self.db.require_current()
             gateway = gateway or CursorGateway(interval=config.request_interval, concurrency=config.request_concurrency)
             self.credentials = CredentialService(self.repository, gateway, config)
             self.accounts = AccountService(self.repository, self.credentials, gateway, config)
             self.identity = IdentityService(self.repository)
+            self.devices = DeviceService(self.repository, self.identity)
             self.workspaces = WorkspaceService(self.repository, self.identity)
             self.switches = SwitchService(self.repository, self.credentials)
         except BaseException:

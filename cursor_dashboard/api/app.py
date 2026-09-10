@@ -87,6 +87,29 @@ class ManualConsume(Input):
     platform: Literal["macos", "windows"]
 
 
+class DeviceApproval(Input):
+    code_challenge: str = Field(pattern=r"^[A-Za-z0-9_-]{43}$")
+    state: str = Field(pattern=r"^[A-Za-z0-9_-]{43,128}$")
+    callback: str = Field(max_length=256)
+    device_id: uuid.UUID
+    device_name: str = Field(min_length=1, max_length=128)
+
+
+class DeviceExchange(Input):
+    code: SecretStr = Field(min_length=20, max_length=128)
+    verifier: SecretStr = Field(min_length=43, max_length=128)
+    callback: str = Field(max_length=256)
+    device_id: uuid.UUID
+
+
+class DeviceConsume(Input):
+    token: SecretStr = Field(min_length=20, max_length=128)
+
+
+class DeviceResult(Input):
+    result: Literal["success", "failure", "cancelled"]
+
+
 def validate_origin(public_origin):
     parsed = urlsplit(public_origin)
     if (parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password
@@ -101,7 +124,8 @@ def validate_origin(public_origin):
     return parsed
 
 
-def create_app(core, *, public_origin, web_dir=None, manual_switch_preview=False, _local=None):
+def create_app(core, *, public_origin, web_dir=None, manual_switch_preview=False, _local=None,
+               _device_switch_test=False):
     parsed = validate_origin(public_origin)
     if _local is not None and (core.config.mode != "local" or _local.core is not core):
         raise CoreError("Private desktop identity requires its own local core")
@@ -121,6 +145,10 @@ def create_app(core, *, public_origin, web_dir=None, manual_switch_preview=False
     async def boundary(request, call_next):
         request.state.request_id = str(uuid.uuid4())
         origin = request.headers.get("origin")
+        native = (origin is None and not any(key.startswith("sec-fetch-") for key in request.headers)
+                  and not request.headers.get("cookie") and
+                  (request.headers.get("authorization", "").startswith("Bearer ") or
+                   request.url.path == "/api/v1/auth/devices/exchange"))
         if _local is not None:
             # The outer native middleware authenticates every request, including reads.
             response = await call_next(request)
@@ -128,7 +156,7 @@ def create_app(core, *, public_origin, web_dir=None, manual_switch_preview=False
             response = error_response(400, "Invalid host")
         elif (origin is not None and origin != public_origin) or request.headers.get("sec-fetch-site") == "cross-site":
             response = error_response(403, "Invalid origin")
-        elif request.method not in {"GET", "HEAD", "OPTIONS"} and origin != public_origin:
+        elif request.method not in {"GET", "HEAD", "OPTIONS"} and origin != public_origin and not native:
             response = error_response(403, "Same-origin requests are required")
         else:
             length = request.headers.get("content-length", "0")
@@ -190,10 +218,35 @@ def create_app(core, *, public_origin, web_dir=None, manual_switch_preview=False
             actor = _local.identity.actor(request.state.request_id)
             request.state.actor = actor
             return actor
+        if request.headers.get("authorization"):
+            supplied = request.headers.get("authorization", "")
+            if not supplied.startswith("Bearer "):
+                raise Unauthenticated("Device authentication required")
+            actor = core.identity.authenticate(supplied[7:], kind="device", request_id=request.state.request_id)
+            if (request.headers.get("origin") is not None or request.headers.get("cookie")
+                    or any(key.startswith("sec-fetch-") for key in request.headers)):
+                raise Forbidden("Device authentication requires the native channel")
+            request.state.actor = actor
+            return actor
         token = request.cookies.get(cookie_name, "")
         csrf = request.headers.get("x-csrf-token", "") if request.method not in {"GET", "HEAD", "OPTIONS"} else None
         actor = core.identity.authenticate(token, csrf=csrf, request_id=request.state.request_id)
         request.state.actor = actor
+        return actor
+
+    def browser_actor(actor=Depends(current_actor)):
+        core.devices.require_kind(actor, "web")
+        return actor
+
+    def device_actor(actor=Depends(current_actor)):
+        core.devices.require_kind(actor, "device")
+        return actor
+
+    def switch_device(actor=Depends(device_actor)):
+        # No production setting enables shared Cursor credentials before the
+        # upstream S01–S06 matrix is verified. This hook is only used by fixtures.
+        if not _device_switch_test:
+            raise Forbidden("Remote switching awaits upstream session verification")
         return actor
 
     @app.get("/api/v1/bootstrap", response_model=dto.Bootstrap)
@@ -205,7 +258,8 @@ def create_app(core, *, public_origin, web_dir=None, manual_switch_preview=False
                         "device_sessions": False, "remote_switch": False}}
         return {"mode": "server", "initialized": True, "api_version": 1,
                 "capabilities": {"workspaces": True, "invitations": True,
-                                 "manual_switch": True, "device_sessions": False, "remote_switch": False}}
+                                 "manual_switch": True, "device_sessions": True,
+                                 "remote_switch": bool(_device_switch_test)}}
 
     @app.post("/api/v1/auth/login", response_model=dto.LoginResult)
     def login(body: Login, request: Request):
@@ -217,7 +271,7 @@ def create_app(core, *, public_origin, web_dir=None, manual_switch_preview=False
         return response
 
     @app.get("/api/v1/auth/csrf", response_model=dto.Csrf)
-    def csrf(request: Request, actor=Depends(current_actor)):
+    def csrf(request: Request, actor=Depends(browser_actor)):
         return {"csrf_token": digest("csrf:" + request.cookies[cookie_name])}
 
     @app.post("/api/v1/auth/logout", status_code=204)
@@ -243,6 +297,28 @@ def create_app(core, *, public_origin, web_dir=None, manual_switch_preview=False
     @app.delete("/api/v1/auth/sessions/{session_id}", status_code=204)
     def revoke_session(session_id: uuid.UUID, actor=Depends(current_actor)):
         core.identity.revoke_session(actor, str(session_id))
+        return Response(status_code=204)
+
+    @app.post("/api/v1/auth/devices/authorize", response_model=dto.DeviceApproved)
+    def approve_device(body: DeviceApproval, actor=Depends(browser_actor)):
+        return core.devices.authorize(actor, **{**body.model_dump(), "device_id": str(body.device_id)})
+
+    @app.post("/api/v1/auth/devices/exchange", response_model=dto.DeviceLogin)
+    def exchange_device(body: DeviceExchange, request: Request):
+        if (request.headers.get("origin") is not None or request.headers.get("cookie")
+                or any(key.startswith("sec-fetch-") for key in request.headers)):
+            raise Forbidden("Device exchange requires the native channel")
+        return core.devices.exchange(code=body.code.get_secret_value(), verifier=body.verifier.get_secret_value(),
+            callback=body.callback, device_id=str(body.device_id), request_id=request.state.request_id,
+            source=request.client.host if request.client else "unknown")
+
+    @app.get("/api/v1/auth/devices", response_model=list[dto.SessionView])
+    def devices(actor=Depends(current_actor)):
+        return core.devices.sessions(actor)
+
+    @app.delete("/api/v1/auth/devices/{session_id}", status_code=204)
+    def revoke_device(session_id: uuid.UUID, actor=Depends(current_actor)):
+        core.devices.revoke(actor, str(session_id))
         return Response(status_code=204)
 
     @app.post("/api/v1/workspaces", status_code=201, response_model=dto.WorkspaceCreated)
@@ -370,13 +446,31 @@ def create_app(core, *, public_origin, web_dir=None, manual_switch_preview=False
         return {"status": "ok", "api_version": 1}
 
     @app.post("/api/v1/workspaces/{workspace_id}/accounts/{account_id}/manual-switch", response_model=dto.SwitchIssued)
-    async def manual_ticket(workspace_id: uuid.UUID, account_id: uuid.UUID, actor=Depends(current_actor)):
+    async def manual_ticket(workspace_id: uuid.UUID, account_id: uuid.UUID, actor=Depends(browser_actor)):
         return await core.switches.issue(actor, str(workspace_id), str(account_id))
 
     @app.post("/api/v1/manual-switch/consume", response_model=dto.ManualScript)
-    def manual_consume(body: ManualConsume, actor=Depends(current_actor)):
+    def manual_consume(body: ManualConsume, actor=Depends(browser_actor)):
         return core.switches.consume(actor, body.token.get_secret_value(),
             render=lambda delivery: render_script(delivery, body.platform, preview=manual_switch_preview))
+
+    @app.post("/api/v1/workspaces/{workspace_id}/accounts/{account_id}/device-switch", response_model=dto.SwitchIssued)
+    async def device_ticket(workspace_id: uuid.UUID, account_id: uuid.UUID, actor=Depends(switch_device)):
+        return await core.switches.issue(actor, str(workspace_id), str(account_id))
+
+    @app.post("/api/v1/device-switch/consume", response_model=dto.DeviceDelivery)
+    def device_consume(body: DeviceConsume, actor=Depends(switch_device)):
+        def render(delivery):
+            return dto.DeviceDelivery(ticket_id=delivery.ticket_id, workspace_id=delivery.workspace_id,
+                account_id=delivery.account_id, expires_at=delivery.expires_at,
+                access_token=delivery.secrets.access_token, refresh_token=delivery.secrets.refresh_token,
+                email=delivery.email, subject=delivery.subject)
+        return core.switches.consume(actor, body.token.get_secret_value(), render=render)
+
+    @app.post("/api/v1/device-switch/{ticket_id}/result", status_code=204)
+    def device_result(ticket_id: uuid.UUID, body: DeviceResult, actor=Depends(switch_device)):
+        core.switches.record_result(actor, str(ticket_id), body.result)
+        return Response(status_code=204)
 
     if _local is not None:
         allowed = {"bootstrap", "me", "accounts", "account", "authorize_account", "reauthorize_account",

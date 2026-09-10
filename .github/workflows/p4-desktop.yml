@@ -1,11 +1,11 @@
-name: P4 independent desktop
+name: V2 desktop and connected fixtures
 on:
   workflow_dispatch:
   push:
-    branches: [feat/v2-p4]
-    paths: ['cursor_dashboard/**', 'desktop/**', 'frontend/**', 'tests/**', '.github/workflows/p4-desktop.yml', 'uv.lock', 'pyproject.toml']
+    branches: [feat/v2-p4, feat/v2-p5]
+    paths: ['cursor_dashboard/**', 'desktop/**', 'frontend/**', 'tests/**', 'dev/preview-connected.py', '.github/workflows/p4-desktop.yml', 'uv.lock', 'pyproject.toml']
   pull_request:
-    paths: ['cursor_dashboard/**', 'desktop/**', 'frontend/**', 'tests/**', '.github/workflows/p4-desktop.yml']
+    paths: ['cursor_dashboard/**', 'desktop/**', 'frontend/**', 'tests/**', 'dev/preview-connected.py', '.github/workflows/p4-desktop.yml']
 permissions:
   contents: read
 env:
@@ -38,7 +38,10 @@ jobs:
           npm --prefix frontend ci --no-audit --no-fund
           npm --prefix desktop ci --no-audit --no-fund
       - name: Core desktop failure and recovery contracts
-        run: uv run --frozen python -m unittest discover -s tests -p test_v2_desktop.py -v
+        run: |
+          uv run --frozen python -m unittest discover -s tests -p test_v2_desktop.py -v
+          uv run --frozen python -m unittest discover -s tests -p test_v2_connected.py -v
+          uv run --frozen python -m unittest discover -s tests -p test_v2_upgrade.py -v
       - name: Native backend and system key store
         timeout-minutes: 5
         run: npm --prefix desktop test
@@ -71,11 +74,11 @@ jobs:
               executable = release / 'bundle/macos/Cursor Panel.app/Contents/MacOS/cursor-panel-desktop'
           subprocess.run(['uv', 'run', '--project', 'desktop/sidecar', '--frozen', 'python', 'desktop/scripts/desktop-smoke.py', str(executable), '--output', 'desktop/output/p4-install.json'], check=True)
       - name: Frontend native business flows
-        if: matrix.os == 'macos-14'
         run: |
           npm --prefix frontend exec -- playwright install chromium
           npm --prefix frontend run test:desktop
           npm --prefix frontend run test:e2e
+          npm --prefix frontend run test:connected
       - name: Full regression
         if: matrix.os == 'macos-14'
         run: uv run --frozen python -m unittest discover -s tests -v
@@ -88,3 +91,4 @@ jobs:
             desktop/src-tauri/target/release/bundle/dmg/*.dmg
             desktop/src-tauri/target/release/bundle/nsis/*.exe
             output/playwright/p4-*.png
+            output/playwright/p5-*.png

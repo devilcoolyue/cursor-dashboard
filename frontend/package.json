@@ -10,7 +10,8 @@
     "build:probe": "vue-tsc --noEmit && vite build --mode desktop-probe",
     "api:generate": "openapi-typescript openapi.json -o src/api.generated.ts",
     "test:e2e": "node scripts/verify-web.mjs",
-    "test:desktop": "node scripts/verify-desktop.mjs"
+    "test:desktop": "node scripts/verify-desktop.mjs",
+    "test:connected": "node scripts/verify-connected.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "2.11.1",

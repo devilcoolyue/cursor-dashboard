@@ -40,7 +40,7 @@ export class ApiClient {
         if (response.status === 401 && path !== '/auth/login' && path !== '/invitations/accept') this.onUnauthorized()
         const messages: Record<number, string> = { 401: '登录已失效，请重新登录。', 403: '当前没有此操作权限，请重新载入权限。',
           404: '内容不可用，可能已删除或收回授权。', 409: '状态已发生变化，请重新载入后重试。', 422: '请检查填写的内容。',
-          429: '操作过于频繁，请稍后重试。', 502: 'Cursor 请求失败，请稍后重试或重新授权。', 503: '服务暂不可用，请联系实例管理员。' }
+          426: '实例协议不兼容，请升级服务端或桌面应用。', 429: '操作过于频繁，请稍后重试。', 502: '服务请求失败，请检查网络后重试。', 503: '服务暂不可用，请联系实例管理员。' }
         // Known public errors may guide recovery; never render arbitrary upstream HTML.
         throw new ApiError(response.status, messages[response.status] || '请求失败，请稍后重试。')
       }

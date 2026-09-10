@@ -5,7 +5,7 @@ from copy import deepcopy
 import json
 import time
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.dialects.sqlite import insert
 
 from ...domain.core import (AccountRef, AuthorizedAccount, Conflict, NotFound,
@@ -289,6 +289,7 @@ class Repository:
             accounts = list(session.scalars(select(Account)))
             for account in accounts:
                 self._authorized(session, account)
-            return {"schema": "0002_identity", "accounts": len(accounts), "credentials_decryptable": len(accounts),
+            return {"schema": session.execute(text("SELECT version_num FROM alembic_version")).scalar_one(),
+                    "accounts": len(accounts), "credentials_decryptable": len(accounts),
                     "workspaces": session.scalar(select(func.count()).select_from(Workspace)),
                     "imports": session.scalar(select(func.count()).select_from(LegacyImport))}

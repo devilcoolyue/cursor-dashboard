@@ -19,6 +19,9 @@ use tauri::{
     Manager,
 };
 
+#[path = "connected.rs"]
+mod connected;
+
 fn nonce() -> String {
     let mut bytes = [0u8; 32];
     OsRng.fill_bytes(&mut bytes);
@@ -293,7 +296,7 @@ fn account_route(
         ),
     ))
 }
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn account_request(
     app: tauri::AppHandle,
     operation: AccountOperation,
@@ -301,9 +304,10 @@ async fn account_request(
     account: Option<String>,
     query: Option<Query>,
     body: Option<Value>,
+    connection_id: Option<String>,
 ) -> Result<Value, String> {
     let (method, route) = account_route(operation, workspace, account, query.unwrap_or_default())?;
-    tauri::async_runtime::spawn_blocking(move || connection(&app)?.request(method, &route, body))
+    tauri::async_runtime::spawn_blocking(move || connected::request(&app, connection_id, method, &route, body))
         .await
         .map_err(|_| "Native request failed")?
 }
@@ -537,6 +541,8 @@ pub fn run() {
             desktop_request,
             desktop_archive,
             desktop_open_backups,
+            connected::connection_request,
+            connected::remote_manage,
             frontend_ready
         ])
         .on_window_event(|window, event| {

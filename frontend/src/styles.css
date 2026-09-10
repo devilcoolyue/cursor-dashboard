@@ -178,3 +178,9 @@ dialog::backdrop { background: var(--backdrop); }
 .switch-progress .current { color:var(--fg); font-weight:600; }
 .switch-progress .done { color:var(--accent); }
 @media (prefers-reduced-motion: reduce) { .switch-progress li { transition:none; } }
+
+.connection-selector { display: block; padding: 12px 0; overflow-wrap: anywhere; color: var(--fg); font-size: 12px; text-decoration: none; }
+.connection-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px 0; border-bottom: 1px solid var(--line); }
+.connection-row small { display: block; margin-top: 6px; overflow-wrap: anywhere; }
+.standalone-connections { max-width: 1000px; margin: 0 auto; padding: 40px 24px; }
+@media (max-width: 720px) { .connection-row { align-items: stretch; flex-direction: column; } }
