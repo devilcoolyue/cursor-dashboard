@@ -2,6 +2,8 @@
 
 P5 已实现实例管理、浏览器登录、远程账号 API 和设备会话撤销。远程切换的链路仅在合成环境验证，生产入口保持关闭；真实 Cursor 多设备续期实验尚未完成，不能将其作为已支持能力。验证结果见 [P5 报告](plans/p5-verification.md)，设计见 [ADR 0007](adr/0007-p5-connected-desktop.md)。
 
+版本兼容、手动更新和回退见 [发行运维](v2-release-operations.md)，已验证系统与浏览器组合见 [支持表](supported-platforms.md)。
+
 ## 连接与使用
 
 1. 部署并初始化 V2 服务端，升级到包含 `0003_devices` 的版本，按 [Web 文档](v2-web-operations.md) 配置 HTTPS。

@@ -1,5 +1,7 @@
 # 实现与维护
 
+P5 连接与设备身份见 [连接文档](v2-connected-operations.md)。P6 的版本一致性、候选构建、内容检查、更新和失败回退见 [发行运维](v2-release-operations.md)与 [P6 报告](plans/p6-verification.md)；平台证据集中在 [支持表](supported-platforms.md)，贡献流程见 [CONTRIBUTING](../CONTRIBUTING.md)。`dev/release.py` 只生成 unsigned preview 清单，不发布或签名。
+
 P4 独立桌面入口为 `desktop/` 与 `cursor_dashboard/local/`，使用同一业务核心及原生系统密钥库；安装、切换、托盘和加密归档见 [桌面运行文档](v2-desktop-operations.md)，平台边界见 [P4 报告](plans/p4-verification.md)。
 
 P3 新 Web 位于 `frontend/`，通过 OpenAPI 生成类型；手工切换适配位于 `api/manual_switch.py`，与票据消费共享事务。容器、备份恢复、远程 CLI 及验证见 [Web 交付文档](v2-web-operations.md)和 [P3 报告](plans/p3-verification.md)。

@@ -4,6 +4,8 @@
 
 当前包版本仍为 `1.4.0`，V2 按 [实施计划](docs/plans/v2-architecture.md) 分阶段推进。P0–P4 开发与阶段自动验证已完成，Web 与服务端交付的验证记录见 [P3 报告](docs/plans/p3-verification.md)。P4 已接入独立桌面，平台验证见 [P4 报告](docs/plans/p4-verification.md)，操作见 [桌面使用说明](docs/v2-desktop-operations.md)。P5 已实现远程连接、浏览器登录、设备会话与远程账号操作，并通过三平台自动验证，见 [连接使用说明](docs/v2-connected-operations.md) 和 [P5 报告](docs/plans/p5-verification.md)；真实 Cursor 续期竞争待验证，生产远程切换保持关闭。
 
+P6 已补充[候选产物与手动更新流程](docs/v2-release-operations.md)、[支持平台表](docs/supported-platforms.md)和[贡献指南](CONTRIBUTING.md)，实施与剩余验收见 [P6 报告](docs/plans/p6-verification.md)。候选包使用 `v2-preview` 标识，尚非正式签名发行，开源许可证待维护者定稿。
+
 ## 启动 V2 Web
 
 推荐使用 Docker Compose，完整步骤见 [Web 部署与使用](docs/v2-web-operations.md)。在仓库根目录执行：
@@ -80,8 +82,12 @@ npm --prefix frontend run test:connected
 ## 文档
 
 - [Web 部署、备份恢复、远程 CLI](docs/v2-web-operations.md)
+- [独立桌面安装与使用](docs/v2-desktop-operations.md)
 - [桌面连接实例与设备登录](docs/v2-connected-operations.md)
 - [V2 认证与 API 约定](docs/v2-api-operations.md)
 - [核心运行与旧版迁移](docs/core-operations.md)
 - [架构与分阶段计划](docs/plans/v2-architecture.md)
 - [P3 交付决策](docs/adr/0005-p3-web-delivery.md)
+- [版本、校验、手动更新和签名方案](docs/v2-release-operations.md)
+- [支持平台与验证边界](docs/supported-platforms.md)
+- [贡献与问题报告](CONTRIBUTING.md)

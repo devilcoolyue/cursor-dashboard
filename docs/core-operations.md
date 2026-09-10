@@ -22,7 +22,7 @@ uv run --frozen cursor-core --data-dir ./v2-data --key-file ./v2-secrets/master.
 
 也可同时设置 `CURSOR_CORE_DATA_DIR` 和 `CURSOR_CORE_KEY_FILE`，命令省略路径参数。`CURSOR_CORE_MODE` 接受 `local`/`server`，`cursor-core` 本身不监听 HTTP；`cursor-api` 要求显式 server 模式及已初始化认证。新核心不沿用旧 `DATABASE_PATH` 或 `ACCOUNTS_PATH`。
 
-文件结构：数据目录包含 `core.db`、SQLite WAL/SHM 和 `.core.lock`；密钥文件单独存放。POSIX 密钥文件必须限制为 owner 访问，SQLite 文件设为 0600。Windows 使用目录继承的 ACL，部署时将数据与密钥目录设为仅运行用户可访问；系统凭证库的正式接入仍在 P4。
+文件结构：数据目录包含 `core.db`、SQLite WAL/SHM 和 `.core.lock`；密钥文件单独存放。POSIX 密钥文件必须限制为 owner 访问，SQLite 文件设为 0600。Windows 使用目录继承的 ACL，部署时将数据与密钥目录设为仅运行用户可访问；系统凭证库已由 P4 桌面接入，CLI 仍使用独立密钥文件。
 
 ## 预检与导入
 
@@ -60,7 +60,7 @@ uv run --frozen cursor-core --data-dir ./v2-data --key-file ./v2-secrets/master.
 
 ## 升级、备份和恢复
 
-`upgrade` 要求当前运行实例已停止。它通过数据目录锁执行 Alembic，并检查结果；应用正常打开不会隐式迁移未知旧库。
+`upgrade` 要求当前运行实例已停止。它通过数据目录锁执行 Alembic，并检查结果；服务端正常打开不会隐式迁移旧库；独立桌面会在锁内先备份再升级已知 V2 schema，完整更新与回退见 [发行运维](v2-release-operations.md)。
 
 ```bash
 uv run --frozen cursor-core --data-dir ./v2-data --key-file ./v2-secrets/master.json upgrade

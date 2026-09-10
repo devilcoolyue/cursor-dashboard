@@ -15,6 +15,14 @@ COPY --from=web /build/frontend/dist ./cursor_dashboard/web_v2
 RUN UV_PROJECT_ENVIRONMENT=/opt/venv uv sync --frozen --no-dev --no-editable --no-cache
 
 FROM python:3.12-slim-bookworm
+ARG APP_VERSION=1.4.0
+ARG SOURCE_REVISION=unrecorded
+ARG BUILD_DATE=unrecorded
+LABEL org.opencontainers.image.title="Cursor Panel" \
+    org.opencontainers.image.source="https://github.com/devilcoolyue/cursor-dashboard" \
+    org.opencontainers.image.version=$APP_VERSION \
+    org.opencontainers.image.revision=$SOURCE_REVISION \
+    org.opencontainers.image.created=$BUILD_DATE
 RUN groupadd --gid 10001 cursor && useradd --uid 10001 --gid cursor --create-home cursor \
     && mkdir -p /var/lib/cursor-panel /run/cursor-secrets /backups \
     && chown cursor:cursor /var/lib/cursor-panel /run/cursor-secrets /backups

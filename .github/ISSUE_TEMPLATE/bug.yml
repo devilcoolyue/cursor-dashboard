@@ -1,0 +1,38 @@
+name: 缺陷报告
+description: 报告可复现的行为或更新失败（请先脱敏）
+title: '[Bug] '
+body:
+  - type: markdown
+    attributes:
+      value: '请勿提供 Cookie、AT/RT、会话、密钥、数据库或切换命令。平台边界见 docs/supported-platforms.md。'
+  - type: input
+    id: version
+    attributes:
+      label: 版本与来源提交
+      placeholder: '包版本 / release-manifest 中的 source_commit / CI run'
+    validations:
+      required: true
+  - type: dropdown
+    id: entry
+    attributes:
+      label: 使用入口
+      options: [V2 Web/API, V2 独立桌面, V2 桌面远程连接, V2 远程 CLI, Legacy 面板/CLI]
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: 系统版本、CPU 架构与浏览器版本
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 复现步骤、预期与实际行为
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 已脱敏错误与更新背景
+      description: '更新问题请提供升级前后版本、schema、备份是否完成；不要上传数据本身。'

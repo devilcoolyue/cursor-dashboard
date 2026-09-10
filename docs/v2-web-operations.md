@@ -31,6 +31,8 @@ Caddy 自动申请 HTTPS 证书，保持 Host，并将请求转发到内部 8000
 
 首版只支持一个实例、一个业务进程和一个数据目录写入者。不要增加 uvicorn workers 或复制 panel 服务。维护命令必须先停止 panel；进程锁会阻止在线升级、备份和第二个业务进程。
 
+版本/校验、镜像固定、schema 失败恢复和签名方案见 [发行运维](v2-release-operations.md)，当前平台证据见 [支持表](supported-platforms.md)。`CURSOR_PANEL_IMAGE` 同时控制 panel 和 maintenance，更新时为两者指定同一已验证镜像。
+
 ## 更新、备份与恢复
 
 更新不会隐式升级数据库。先停止服务并备份，再用新镜像执行显式升级：
@@ -116,7 +118,7 @@ cursor-remote --server https://panel.example.com --login owner@example.com \
   refresh --workspace 空间UUID --account 账号UUID
 ```
 
-每次执行隐藏输入密码，检查 API 主版本，使用同一登录/CSRF/授权流程；省略空间时使用本人个人空间。会话仅保存在进程内存，命令结束主动撤销，失败时提示从个人设置撤销。拒绝不安全的外网 HTTP origin 和重定向，不提供密码参数或明文会话文件。设备长期会话留待 P5。
+每次执行隐藏输入密码，检查 API 主版本，使用同一登录/CSRF/授权流程；省略空间时使用本人个人空间。会话仅保存在进程内存，命令结束主动撤销，失败时提示从个人设置撤销。拒绝不安全的外网 HTTP origin 和重定向，不提供密码参数或明文会话文件。P5 桌面已有独立设备会话；远程 CLI 仍采用每次登录后撤销的短会话。
 
 `cursor-core` 继续作为离线维护入口，持有数据目录锁；常规远程查询应使用 `cursor-remote`，不要用运维 Actor 参数代替用户认证。
 
