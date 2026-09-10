@@ -1,6 +1,7 @@
 """Offline consistent database backup and restore; keys travel separately."""
 from __future__ import annotations
 
+from contextlib import closing
 from dataclasses import replace
 import json
 import os
@@ -21,8 +22,10 @@ def copy_database(source, destination):
     fd = os.open(destination, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     os.close(fd)
     try:
-        with sqlite3.connect(Path(source).as_uri() + '?mode=ro', uri=True) as src:
-            with sqlite3.connect(destination) as dst:
+        # sqlite3's transaction context does not close connections. Release both
+        # handles before restore removes staging files, including on Windows.
+        with closing(sqlite3.connect(Path(source).as_uri() + '?mode=ro', uri=True)) as src:
+            with closing(sqlite3.connect(destination)) as dst:
                 src.backup(dst)
                 if dst.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
                     raise CoreError('Backup integrity check failed')
