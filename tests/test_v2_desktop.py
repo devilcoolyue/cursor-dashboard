@@ -18,7 +18,7 @@ from cursor_dashboard.application.switching import SwitchDelivery
 from cursor_dashboard.domain.core import Conflict, CoreError, Locked, SecretError, Secrets, Unauthenticated
 from cursor_dashboard.infrastructure.persistence.models import Credential
 from cursor_dashboard.local.api import create_local_app
-from cursor_dashboard.local.archive import export_archive, import_archive, read_archive
+from cursor_dashboard.local.archive import export_archive, import_archive, read_archive, seal
 from cursor_dashboard.local.keys import DesktopKeys
 from cursor_dashboard.local.runtime import DesktopRuntime
 from cursor_dashboard.local.switching import SwitchExecutor, validate_delivery
@@ -183,6 +183,30 @@ class DesktopTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.runtime.recover(archive, 'archive password 42')['phase'], 'ready')
         self.assertEqual(self.runtime.keys.document, saved)
         self.assertEqual(self.runtime.core.repository.verify()['accounts'], 2)
+
+    async def test_archive_duplicate_failure_rolls_back_every_imported_account(self):
+        archive = self.directory / 'duplicate.cursorarchive'
+        export_archive(self.core, self.actor, self.workspace, archive, 'archive password 42', self.runtime.keys)
+        document = read_archive(archive, 'archive password 42')
+        document.accounts.append(document.accounts[0])
+        archive.write_bytes(seal(document, 'archive password 42'))
+        destination = self.open(self.directory / 'destination', MemoryStore())
+        try:
+            actor = destination.identity.actor()
+            workspace = destination.core.identity.me(actor)['workspaces'][0]['id']
+            with self.assertRaises(Conflict):
+                import_archive(destination.core, actor, workspace, archive, 'archive password 42')
+            self.assertEqual(destination.core.accounts.list(actor, workspace), [])
+        finally:
+            await destination.shutdown()
+
+    async def test_wrong_recovery_key_does_not_replace_the_system_entry(self):
+        await self.runtime.shutdown()
+        self.store.keys = None
+        self.runtime = self.open()
+        self.assertEqual(self.runtime.open(DesktopKeys.generate())['phase'], 'locked')
+        self.assertIsNone(self.store.keys)
+        self.assertEqual(self.store.saves, 1)
 
     async def test_offline_refresh_preserves_last_snapshot_and_error_state(self):
         before = self.accounts[0]

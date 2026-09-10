@@ -1,5 +1,6 @@
 """Synthetic desktop verification only. Never reads a real Cursor installation."""
 from __future__ import annotations
+from contextlib import closing
 import asyncio
 import base64
 from datetime import datetime, timedelta, timezone
@@ -68,9 +69,10 @@ class FixtureInstallation:
     def __init__(self, directory):
         self.database = Path(directory) / "fixture-cursor.sqlite"
         if not self.database.exists():
-            with sqlite3.connect(self.database) as connection:
+            with closing(sqlite3.connect(self.database)) as connection:
                 connection.execute("CREATE TABLE ItemTable(key TEXT PRIMARY KEY, value BLOB)")
                 connection.execute("INSERT INTO ItemTable VALUES ('fixture', 'preserved')")
+                connection.commit()
 
     def require(self):
         assert self.database.is_file()
