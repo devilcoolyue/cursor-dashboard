@@ -72,7 +72,9 @@ Windows 安装探测通过后，清单生成发现 Tauri 重写 `Cargo.toml` 导
 
 每个新候选目录额外携带 LICENSE，和安装文件一起进入 manifest 文件清单与 SHA256SUMS，清单声明 `license=MIT`。CI 检查 wheel 的许可元数据与全文、镜像标签/文件，以及实际桌面安装目录里的 LICENSE。第三方依赖继续适用各自许可证，MIT 选择不改变候选的签名状态或 P5 能力边界。
 
-本次许可变更的构建验证结果在完成后补录；上方 `1045956` 是许可收口前的交付基线，不能将其产物描述为已包含本次新增 LICENSE。
+许可收口提交 `a7a112461aca7d43d4f15f103411449c6d077ed1` 的 [CI 34476418600](https://github.com/devilcoolyue/cursor-dashboard/actions/runs/34476418600) 已通过 Linux、macOS arm64/x64、Windows x64 的所有构建、恢复、安装与许可检查，并生成全部候选。五种目标已下载到 `output/p6-mit/ci-final/` 与 `output/p6-mit/ci-intel/`，逐一复验清单、SHA-256、MIT 全文、干净来源及提交标识，全部通过。
+
+本机另验证 wheel 和干净检出构建的 sdist 均携带 `License-Expression: MIT` 与完整 LICENSE，Linux arm64 镜像的 OCI 标签及 `/usr/share/licenses/cursor-panel/LICENSE` 一致；8 项 P6 专项、许可元数据检查、Ruff、actionlint 和文档链接检查通过。上方 `1045956` 保留为许可收口前的交付基线，本次候选以 `a7a1124` 为准。
 
 ## 正式发行与 P5 的独立剩余验收
 
