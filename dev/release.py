@@ -127,9 +127,10 @@ def audit_wheel(path):
 def manifest(args):
     version = check_versions()
     count = audit_source()
-    dirty = bool(git("status", "--porcelain", "--untracked-files=all"))
+    source_status = git("status", "--porcelain", "--untracked-files=all")
+    dirty = bool(source_status)
     if dirty and not args.allow_dirty:
-        raise ValueError("Use a clean checkout; --allow-dirty is only for local verification")
+        raise ValueError("Use a clean checkout; changed paths (no file contents):\n" + source_status)
     if any(Path(name).is_symlink() for name in args.artifact):
         raise ValueError("Artifact symlinks are not allowed")
     artifacts = [Path(name).resolve() for name in args.artifact]

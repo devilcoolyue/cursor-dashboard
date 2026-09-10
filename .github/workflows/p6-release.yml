@@ -93,11 +93,15 @@ jobs:
           uv run --frozen python -m unittest discover -s tests -p 'test_release*.py' -v
           uv run --frozen python -m unittest discover -s tests -p test_v2_upgrade.py -v
           npm --prefix desktop test
-      - name: Build candidate and inspect frozen runtime
+      - name: Freeze and inspect desktop runtime
         run: |
-          npm --prefix desktop run build
+          npm --prefix desktop run sidecar
           uv run --frozen python dev/release.py audit-tree desktop/src-tauri/runtime
-          cargo test --locked --manifest-path desktop/src-tauri/Cargo.toml --bin cursor-panel-desktop
+      - name: Build candidate and check Rust routes
+        working-directory: desktop
+        run: |
+          npm exec -- tauri build --ci --verbose
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --bin cursor-panel-desktop
       - name: Installed candidate smoke and checksummed delivery
         shell: python
         env:
@@ -118,6 +122,9 @@ jobs:
               executable = release / 'bundle/macos/Cursor Panel.app/Contents/MacOS/cursor-panel-desktop'
           subprocess.run(['uv', 'run', '--project', 'desktop/sidecar', '--frozen', 'python', 'desktop/scripts/desktop-smoke.py', str(executable), '--output', str(output / 'installed-smoke.json')], check=True)
           subprocess.run([sys.executable, 'dev/release.py', 'manifest', '--target', target, '--artifact', str(installer), '--output', str(output / target)], check=True)
+      - name: Source status after build (filenames only)
+        if: always()
+        run: git status --short
       - uses: actions/upload-artifact@v4
         with:
           name: p6-${{ matrix.target }}
