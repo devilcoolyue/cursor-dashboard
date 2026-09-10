@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import closing
 import hashlib
 import json
 import os
@@ -35,7 +36,7 @@ def main():
         run("keygen")
         owner = run("init", "--owner", "owner@example.test", "--name", "Import smoke")
         source = root / "legacy.db"
-        with sqlite3.connect(source) as conn:
+        with closing(sqlite3.connect(source)) as conn, conn:
             conn.execute("CREATE TABLE accounts (id INTEGER PRIMARY KEY, label TEXT, cookie TEXT, email TEXT, department TEXT)")
             conn.execute("INSERT INTO accounts VALUES (1, 'Fixture', 'fixture-cookie-only', 'fixture@example.test', 'Engineering')")
         before = hashlib.sha256(source.read_bytes()).hexdigest()

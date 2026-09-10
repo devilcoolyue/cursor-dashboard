@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from contextlib import closing
 from dataclasses import replace
 import hashlib
 import json
@@ -12,6 +13,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from unittest.mock import patch
@@ -42,7 +44,7 @@ def data(limit=None, cycle="2026-09-01T00:00:00+00:00"):
 
 
 def make_legacy(path, *, ambiguous=False):
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn, conn:
         conn.executescript('''
             CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT);
             INSERT INTO metadata VALUES ('schema_version', '4');
@@ -282,11 +284,11 @@ class MigrationTest(CoreFixture, unittest.TestCase):
         with self.assertRaises(Conflict):
             read_backup(source)
         wal.unlink()
-        with sqlite3.connect(source) as conn:
+        with closing(sqlite3.connect(source)) as conn, conn:
             conn.execute("UPDATE metadata SET value='999' WHERE key='schema_version'")
         with self.assertRaises(Conflict):
             read_backup(source)
-        with sqlite3.connect(source) as conn:
+        with closing(sqlite3.connect(source)) as conn, conn:
             conn.execute("UPDATE metadata SET value='4' WHERE key='schema_version'")
         self.account()
         with self.assertRaises(Conflict):
@@ -295,7 +297,7 @@ class MigrationTest(CoreFixture, unittest.TestCase):
     def test_conflicting_normalized_email_is_not_silently_merged(self):
         source = self.root / "legacy.db"
         make_legacy(source)
-        with sqlite3.connect(source) as conn:
+        with closing(sqlite3.connect(source)) as conn, conn:
             conn.execute("INSERT INTO accounts (id,label,cookie,email) VALUES (2,'Duplicate','fake','LEGACY@example.test')")
         with self.assertRaises(Conflict):
             read_backup(source)
@@ -315,7 +317,7 @@ class MigrationTest(CoreFixture, unittest.TestCase):
         self.core.close()
         backup = self.root / "restored"
         backup.mkdir()
-        with sqlite3.connect(self.config.database) as original, sqlite3.connect(backup / "core.db") as target:
+        with closing(sqlite3.connect(self.config.database)) as original, closing(sqlite3.connect(backup / "core.db")) as target:
             original.backup(target)
         shutil.copy2(self.key, self.root / "restored-key.json")
         with Core(CoreConfig(backup, self.root / "restored-key.json")) as restored:
@@ -329,15 +331,25 @@ class CredentialConcurrencyTest(CoreFixture, unittest.IsolatedAsyncioTestCase):
 
     async def test_concurrent_refresh_and_heartbeat_keep_one_rotation(self):
         a = self.account(expiry=int(time.time()) + 1, snapshot=data(42))
-        self.core.credentials.config = replace(self.config, lease_ttl=.3)
+        self.core.credentials.config = replace(self.config, lease_ttl=9, lease_wait=15)
         calls = 0
+        renewed = threading.Event()
+        original_renew = self.repo.renew_lease
+        def renew(*args):
+            saved = original_renew(*args)
+            if saved:
+                renewed.set()
+            return saved
         async def fetch(*args):
             nonlocal calls
             calls += 1
-            await asyncio.sleep(.5)
+            self.assertTrue(await asyncio.to_thread(renewed.wait, 8), "Lease heartbeat did not complete")
             return {"access_token": token("renewed"), "refresh_token": "renewed-rt"}
         self.gateway(fetch)
-        results = await asyncio.gather(*(self.core.credentials.ensure(self.first, a.ref.account_id) for _ in range(12)))
+        with patch.object(self.repo, "renew_lease", side_effect=renew):
+            results = await asyncio.gather(*(self.core.credentials.ensure(self.first, a.ref.account_id) for _ in range(12)),
+                                           return_exceptions=True)
+        self.assertFalse([result for result in results if isinstance(result, BaseException)])
         self.assertEqual(calls, 1)
         self.assertEqual({r.ref.version for r in results}, {2})
         self.assertEqual(results[0].ref.generation, a.ref.generation)
