@@ -6,6 +6,7 @@ import { createServer } from 'node:net'
 import { chromium } from 'playwright'
 import { fileURLToPath } from 'node:url'
 import { setTimeout as delay } from 'node:timers/promises'
+import { stopFixture } from './fixture-process.mjs'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const portProbe = createServer()
@@ -13,7 +14,7 @@ portProbe.listen(0, '127.0.0.1'); await once(portProbe, 'listening')
 const port = portProbe.address().port
 await new Promise(resolve => portProbe.close(resolve))
 const origin = `http://127.0.0.1:${port}`
-const backend = spawn('uv', ['run', '--frozen', 'python', 'dev/preview-v2.py', '--port', String(port)], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] })
+const backend = spawn('uv', ['run', '--frozen', 'python', 'dev/preview-v2.py', '--port', String(port), '--parent-pipe'], { cwd: root, stdio: ['pipe', 'pipe', 'pipe'] })
 let backendErrors = ''
 backend.stderr.on('data', data => { backendErrors += data.toString() })
 backend.stdout.resume()
@@ -183,7 +184,5 @@ try {
   console.log('PASS Web: login, isolated workspaces, view/use controls, detail/focus, stale request cancellation, preview script cleanup, account lifecycle, invitations, responsive layout, display-only persistence, session revocation and incompatible API')
 } finally {
   await browser?.close()
-  backend.kill('SIGTERM')
-  await Promise.race([once(backend, 'exit'), delay(5000)])
-  if (backend.exitCode === null) backend.kill('SIGKILL')
+  await stopFixture(backend)
 }

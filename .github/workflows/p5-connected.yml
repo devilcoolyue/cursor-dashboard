@@ -1,0 +1,49 @@
+name: P5 connected desktop browser contracts
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/v2-p5]
+    paths: ['cursor_dashboard/**', 'frontend/**', 'dev/**', 'desktop/sidecar/**', '.github/workflows/p5-connected.yml']
+  pull_request:
+    paths: ['cursor_dashboard/**', 'frontend/**', 'dev/**', 'desktop/sidecar/**', '.github/workflows/p5-connected.yml']
+permissions:
+  contents: read
+env:
+  PYTHONUTF8: '1'
+jobs:
+  browser:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15-intel, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.11.3'
+      - name: Locked dependencies and production frontend
+        run: |
+          uv sync --locked --python 3.12
+          uv sync --project desktop/sidecar --frozen
+          npm --prefix frontend ci --no-audit --no-fund
+          npm --prefix frontend run build
+          npm --prefix frontend exec -- playwright install chromium
+      - name: Local desktop browser business flows
+        timeout-minutes: 5
+        run: npm --prefix frontend run test:desktop
+      - name: Web browser business flows
+        timeout-minutes: 5
+        run: npm --prefix frontend run test:e2e
+      - name: Connected desktop browser business flows
+        timeout-minutes: 5
+        run: npm --prefix frontend run test:connected
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p5-browser-${{ matrix.os }}
+          path: output/playwright/p5-*.png

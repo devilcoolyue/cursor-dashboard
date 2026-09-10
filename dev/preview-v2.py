@@ -8,6 +8,8 @@ from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 import tempfile
+import sys
+import threading
 import time
 
 import uvicorn
@@ -100,6 +102,7 @@ async def seed(core):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port', type=int, default=18763)
+    parser.add_argument('--parent-pipe', action='store_true', help='Exit when the test launcher closes stdin')
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     with tempfile.TemporaryDirectory(prefix='cursor-p3-preview-') as temporary:
@@ -110,7 +113,13 @@ def main():
             asyncio.run(seed(core))
             app = create_app(core, public_origin=f'http://127.0.0.1:{args.port}', web_dir=root / 'frontend' / 'dist', manual_switch_preview=True)
             print(f'Synthetic preview: http://127.0.0.1:{args.port} · owner/member/viewer@example.test · password: {PASSWORD}', flush=True)
-            uvicorn.run(app, host='127.0.0.1', port=args.port, access_log=False, proxy_headers=False)
+            server = uvicorn.Server(uvicorn.Config(app, host='127.0.0.1', port=args.port, access_log=False, proxy_headers=False))
+            if args.parent_pipe:
+                def parent_lifetime():
+                    sys.stdin.buffer.read()
+                    server.should_exit = True
+                threading.Thread(target=parent_lifetime, daemon=True).start()
+            server.run()
 
 
 if __name__ == '__main__':

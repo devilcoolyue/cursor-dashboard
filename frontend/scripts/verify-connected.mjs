@@ -1,7 +1,6 @@
 /** Production Vue + private native HTTP + real remote API, using only synthetic accounts. */
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { once } from 'node:events'
 import { request as httpRequest } from 'node:http'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -9,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { randomBytes } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
 import { chromium } from 'playwright'
+import { stopFixture } from './fixture-process.mjs'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const token = randomBytes(32).toString('hex')
@@ -31,7 +31,7 @@ async function rows(page, count) {
   for (let i = 0; i < 150; i++) { if (await page.locator('[data-account]').count() === count) return; await delay(50) }
   assert.equal(await page.locator('[data-account]').count(), count, await page.locator('body').innerText())
 }
-let browser
+let browser, page
 try {
   for (let i = 0; i < 150 && !ready; i++) { if (backend.exitCode !== null) throw Error(backendError); await delay(100) }
   assert(ready, backendError)
@@ -73,7 +73,7 @@ try {
     globalThis.isTauri = true
     window.__TAURI_INTERNALS__ = { invoke: (command, args) => window.nativeInvoke(command, args) }
   })
-  const page = await desktop.newPage()
+  page = await desktop.newPage()
   page.on('pageerror', error => errors.push(error.message))
   await page.goto(ready.server_origin)
   await rows(page, 2)
@@ -84,7 +84,12 @@ try {
   await page.getByRole('button', { name: '添加实例', exact: true }).click()
   await visible(page.getByText('Studio 远程', { exact: true }))
   await page.getByRole('button', { name: '浏览器登录', exact: true }).click()
-  await visible(page.getByText('等待浏览器授权', { exact: true }))
+  try { await visible(page.getByText('等待浏览器授权', { exact: true })) }
+  catch (error) {
+    console.error('Connection status:', JSON.stringify((await request('/native/connections')).body))
+    console.error('Fixture page:', await page.locator('body').innerText())
+    throw error
+  }
   const launch = (await request('/fixture/browser')).body.url
   const approval = await browserContext.newPage()
   approval.on('pageerror', error => errors.push(error.message))
@@ -159,7 +164,5 @@ try {
   console.log('PASS Connected Desktop: real PKCE browser approval/callback, native API, device session, instance isolation, stale response discard, gated and fixture-only switch, protocol mismatch, revoke, offline disconnect, responsive UI, no credential IPC or persistence.')
 } finally {
   await browser?.close()
-  backend.stdin.end()
-  if (backend.exitCode === null) await Promise.race([once(backend, 'exit'), delay(15000)])
-  if (backend.exitCode === null) backend.kill()
+  await stopFixture(backend)
 }

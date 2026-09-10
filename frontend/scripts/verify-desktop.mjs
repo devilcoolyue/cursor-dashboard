@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url'
 import { randomBytes } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
 import { chromium } from 'playwright'
+import { stopFixture } from './fixture-process.mjs'
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const directory = await mkdtemp(join(tmpdir(), 'cursor-p4-browser-'))
 const dataDir = join(directory, 'data')
@@ -141,9 +142,7 @@ try {
   console.log('Desktop browser flows passed: private initialization, detail, confirmed switch, focus, background preferences, encrypted export/import, backup restore, locked recovery, no credential persistence.')
 } finally {
   await browser?.close()
-  backend.stdin.end()
-  if (backend.exitCode === null) await Promise.race([once(backend, 'exit'), delay(15000)])
-  if (backend.exitCode === null) backend.kill()
+  await stopFixture(backend)
   server.close()
   try {
     execFileSync('uv', ['run', '--project', 'desktop/sidecar', '--frozen', 'python', '-c', 'import sys; from pathlib import Path; from cursor_dashboard.local.keys import SystemKeyStore; s=SystemKeyStore(Path(sys.argv[1])); s.backend().delete_password(s.service,s.account)', dataDir], { cwd: root, stdio: 'ignore', timeout: 30000 })
