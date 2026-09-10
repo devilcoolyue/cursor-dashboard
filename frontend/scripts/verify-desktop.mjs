@@ -85,7 +85,7 @@ try {
   assert.equal(await page.getByText('团队协作', { exact: true }).count(), 0)
   assert.equal(await page.getByText('退出登录', { exact: true }).count(), 0)
   await mkdir(join(root, 'output/playwright'), { recursive: true })
-  await page.screenshot({ path: join(root, 'output/playwright/p4-accounts.png'), fullPage: true })
+  await page.screenshot({ path: join(root, 'output/playwright/p4-accounts.png'), fullPage: true, animations: 'disabled' })
   await page.locator('[data-account]').first().getByRole('button', { name: '明细', exact: true }).click()
   await visible(page.getByText('Claude Sonnet', { exact: true }))
   await page.keyboard.press('Escape')
@@ -96,7 +96,7 @@ try {
   await page.getByRole('checkbox').check()
   await page.getByRole('button', { name: '开始切换', exact: true }).click()
   await visible(page.getByText('Cursor 已重新打开，请在 Cursor 中核对当前账号。', { exact: true }))
-  await page.screenshot({ path: join(root, 'output/playwright/p4-switch.png'), fullPage: true })
+  await page.screenshot({ path: join(root, 'output/playwright/p4-switch.png'), fullPage: true, animations: 'disabled' })
   await page.keyboard.press('Escape')
   assert.equal(await switchButton.evaluate(el => el === document.activeElement), true)
   await page.getByRole('link', { name: '个人设置' }).click()
@@ -114,7 +114,7 @@ try {
   await page.getByRole('button', { name: '备份当前状态并恢复', exact: true }).click()
   await visible(page.getByText('Cursor 已重新打开，请在 Cursor 中核对当前账号。', { exact: true }))
   await page.keyboard.press('Escape')
-  await page.screenshot({ path: join(root, 'output/playwright/p4-settings.png'), fullPage: true })
+  await page.screenshot({ path: join(root, 'output/playwright/p4-settings.png'), fullPage: true, animations: 'disabled' })
   const identity = (await request('/api/v1/me')).body
   const space = identity.workspaces[0].id
   const accounts = (await request(`/api/v1/workspaces/${space}/accounts`)).body.items
@@ -132,7 +132,7 @@ try {
   await page.reload()
   await visible(page.getByRole('heading', { name: '本地账号已锁定', exact: true }))
   assert.equal(await page.locator('[data-account]').count(), 0)
-  await page.screenshot({ path: join(root, 'output/playwright/p4-locked.png'), fullPage: true })
+  await page.screenshot({ path: join(root, 'output/playwright/p4-locked.png'), fullPage: true, animations: 'disabled' })
   locked = false
   await page.getByRole('button', { name: '重试连接', exact: true }).click()
   await waitRows(page, 2)

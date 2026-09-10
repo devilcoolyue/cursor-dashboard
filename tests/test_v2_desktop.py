@@ -20,6 +20,7 @@ from cursor_dashboard.infrastructure.persistence.models import Credential
 from cursor_dashboard.local.api import create_local_app
 from cursor_dashboard.local.archive import export_archive, import_archive, read_archive, seal
 from cursor_dashboard.local.keys import DesktopKeys
+from cursor_dashboard.local.cursor import CursorInstallation
 from cursor_dashboard.local.runtime import DesktopRuntime
 from cursor_dashboard.local.switching import SwitchExecutor, validate_delivery
 from cursor_dashboard.runtime.lock import RuntimeLock
@@ -331,6 +332,37 @@ class ExecutorTest(unittest.TestCase):
             with self.assertRaises(Conflict):
                 self.executor.execute(self.delivery)
         self.assertEqual(self.rows(), before)
+
+
+class DiscoveryTest(unittest.TestCase):
+    def test_windows_default_install_and_data_paths_without_scanning_user_processes(self):
+        with tempfile.TemporaryDirectory(prefix='p4-discovery-') as temporary:
+            root = Path(temporary).resolve()
+            executable = root / 'local/Programs/cursor/Cursor.exe'
+            executable.parent.mkdir(parents=True)
+            executable.touch()
+            package = executable.parent / 'resources/app/package.json'
+            package.parent.mkdir(parents=True)
+            package.write_text('{}')
+            database = root / 'roaming/Cursor/User/globalStorage/state.vscdb'
+            database.parent.mkdir(parents=True)
+            database.touch()
+            with patch('cursor_dashboard.local.cursor.sys.platform', 'win32'), patch.dict('os.environ',
+                {'LOCALAPPDATA': str(root / 'local'), 'APPDATA': str(root / 'roaming'),
+                 'ProgramFiles': str(root / 'programs'), 'ProgramFiles(x86)': str(root / 'programs-x86')}):
+                installation = CursorInstallation()
+                installation.require()
+                self.assertEqual(installation.executable, executable)
+                self.assertEqual(installation.database, database)
+                package.unlink()
+                with self.assertRaises(Conflict):
+                    CursorInstallation().require()
+
+    def test_unsupported_platform_never_opens_a_client_database(self):
+        with patch('cursor_dashboard.local.cursor.sys.platform', 'linux'):
+            installation = CursorInstallation()
+            self.assertFalse(installation.detect()['available'])
+            self.assertIsNone(installation.database)
 
 
 if __name__ == '__main__':

@@ -19,7 +19,7 @@ class CursorInstallation:
             self.database = user_dir / "Library/Application Support/Cursor/User/globalStorage/state.vscdb"
             for app in (Path("/Applications/Cursor.app"), user_dir / "Applications/Cursor.app"):
                 executable = app / "Contents/MacOS/Cursor"
-                if executable.is_file():
+                if executable.is_file() and (app / "Contents/Resources/app/bin/cursor").is_file():
                     self.app, self.executable = app, executable
                     break
         elif self.platform == "windows":
