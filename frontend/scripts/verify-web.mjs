@@ -90,8 +90,10 @@ try {
   await shared.getByLabel('更多账号操作').click()
   await shared.getByRole('button', { name: '账号授权', exact: true }).click()
   await visible(owner.getByRole('dialog'))
-  await owner.getByLabel('viewer@example.test的账号权限').selectOption('view')
-  await owner.waitForResponse(response => response.url().endsWith('/grants') && response.request().method() === 'GET')
+  await Promise.all([
+    owner.waitForResponse(response => response.url().endsWith('/grants') && response.request().method() === 'GET'),
+    owner.getByLabel('viewer@example.test的账号权限').selectOption('view'),
+  ])
   await owner.keyboard.press('Escape')
   await click(viewer, '重载列表'); await waitRows(viewer, 1)
   assert.equal(await viewer.getByRole('button', { name: '切换', exact: true }).count(), 0)
