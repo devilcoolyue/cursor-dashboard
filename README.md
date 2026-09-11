@@ -1,99 +1,93 @@
-# Cursor 额度面板
+# Cursor Panel
 
-按部门查看多个 Cursor 账号的套餐、剩余额度、账单周期和模型用量。提供 Web 面板和命令行，共用额度组装与桌面凭证管理逻辑；服务端无需桌面或浏览器。
+管理个人与团队的 Cursor 账号、额度与授权。一套 Python 业务核心提供已认证 API、Vue Web 界面、独立桌面和远程 CLI；个人空间默认隔离，团队账号按 view/use 权限共享。
 
-当前包版本为 `1.4.0`。文档按 2026-09-07 的代码整理，核查范围、验证结果和已知限制见[阶段归档](docs/archive/2026-09-07.md)。数据来自 Cursor 非公开接口，不能视为官方计费或兼容性承诺。
+当前发布版本为 [`v0.0.1`](https://github.com/devilcoolyue/cursor-dashboard/releases/tag/v0.0.1)，发布内容与下载说明见 [版本归档](docs/archive/v0.0.1.md)。V2 按 [实施计划](docs/plans/v2-architecture.md) 分阶段推进。P0–P4 开发与阶段自动验证已完成，Web 与服务端交付的验证记录见 [P3 报告](docs/plans/p3-verification.md)。P4 已接入独立桌面，平台验证见 [P4 报告](docs/plans/p4-verification.md)，操作见 [桌面使用说明](docs/v2-desktop-operations.md)。P5 已实现远程连接、浏览器登录、设备会话与远程账号操作，并通过三平台自动验证，见 [连接使用说明](docs/v2-connected-operations.md) 和 [P5 报告](docs/plans/p5-verification.md)；真实 Cursor 续期竞争待验证，生产远程切换保持关闭。
 
-## 启动
+P6 发布与维护收口已完成，包含[候选产物与手动更新流程](docs/v2-release-operations.md)、[支持平台表](docs/supported-platforms.md)和[贡献指南](CONTRIBUTING.md)，三平台候选 CI 已通过，实施与剩余验收见 [P6 报告](docs/plans/p6-verification.md)。候选包使用 `v2-preview` 标识，尚非正式签名发行，项目采用 [MIT 许可证](LICENSE)。
 
-需要 Python 3.10+ 和 [uv](https://docs.astral.sh/uv/)。在项目根目录执行：
+## 启动 V2 Web
+
+推荐使用 Docker Compose，完整步骤见 [Web 部署与使用](docs/v2-web-operations.md)。在仓库根目录执行：
 
 ```bash
-uv sync --locked
-uv run --frozen cursor-panel
+cp deploy/v2/.env.example deploy/v2/.env
+# 将 CURSOR_PANEL_DOMAIN 改成指向本服务器的域名。
+docker compose --env-file deploy/v2/.env -f deploy/v2/compose.yaml build panel
+docker compose --env-file deploy/v2/.env -f deploy/v2/compose.yaml run --rm maintenance \
+  cursor-core --key-file /run/cursor-secrets/master.json keygen
+docker compose --env-file deploy/v2/.env -f deploy/v2/compose.yaml run --rm maintenance \
+  cursor-core server-init --login owner@example.com
+docker compose --env-file deploy/v2/.env -f deploy/v2/compose.yaml up -d panel proxy
 ```
 
-默认打开 `http://127.0.0.1:8787`。端口冲突时指定 `--port 9000`；无桌面环境加 `--no-open`。前端资源随项目提供，无 npm 构建步骤或 CDN 依赖。
+在终端隐藏输入初始化密码，随后访问自己的 HTTPS 域名登录。Caddy 提供 HTTPS，数据库和独立主密钥使用不同持久卷。服务端首版为单实例、单业务进程；维护时需先停服务，更新前备份数据库和匹配密钥。
 
-首次启动若未设置 `ADMIN_PASSWORD`，终端显示一次随机管理员密码；之后使用数据库中保存的密码哈希。访问 `/admin` 登录，系统管理与额度面板共用侧栏和主题。
+源码运行需要 Python 3.10+、uv、Node 22.12+：`uv sync --locked`、`npm --prefix frontend ci`、`uv run --frozen python dev/build-web.py`，再按 [API 运行文档](docs/v2-api-operations.md) 初始化并启动 `cursor-api`。
 
-服务器部署、环境变量、数据库迁移和备份见[部署与运行](docs/operations.md)。对外监听前设置 `PANEL_TOKEN`，并配置 HTTPS；程序缺少口令时只警告，不会拒绝启动。
+## V2 当前能力
 
-## 当前功能
+| 功能 | 行为 |
+| --- | --- |
+| 用户与空间 | 用户登录、退出、改密码与会话撤销；个人空间、团队邀请、固定角色及 Owner 转移 |
+| 权限 | Member/Viewer 默认看不到团队账号；view 查看额度与明细，use 还可刷新和手工切换 |
+| 账号维护 | Owner/Admin 添加、修改名称与标签、重新授权、删除；空间内去重，跨空间独立 |
+| 额度与明细 | 最后成功快照、套餐与周期、综合/Cursor/Other Models 额度、Grok 周额度、按 tier 分组的模型用量 |
+| 刷新 | 手工刷新与按需明细，统一节流与凭证续期；失败保留成功快照，显示更新时间与状态；尚无 V2 周期调度 |
+| Web 手工切换 | 生成短命令，终端持一次性链接下载固定 macOS/Windows 脚本后执行；下载时复查当前权限 |
+| 桌面连接实例 | 系统浏览器登录、S256 PKCE、系统凭证库设备令牌、可撤销设备会话；区分本地与多个远程实例 |
+| 设置与审计 | 空间成员/授权管理、空间审计、实例用户启停及实例审计；实例管理员不自动获得他人空间权限 |
+| 显示与交互 | 六种皮肤与独立明暗、移动布局、焦点恢复、减少动态效果；切换空间/用户取消旧请求 |
+| 运行维护 | 加密凭证、进程锁、显式 schema 升级、旧版迁移、离线一致备份及新环境恢复 |
 
-| 功能 | 当前行为 |
-|---|---|
-| 额度卡片 | 套餐、Cursor Models、Other Models、综合剩余、消费、按量付费状态、统计与重置时间 |
-| 分组与检索 | 部门过滤；在当前部门内按姓名、邮箱、部门搜索；按添加顺序、综合剩余或重置时间排序 |
-| 账号维护 | 添加、重新授权、调整部门、删除；同邮箱授权更新已有记录 |
-| 刷新 | 后台逐账号更新快照；可见的额度页面每 60 秒读快照，切回标签页也会读取；单卡可手动刷新 |
-| 模型明细 | 点击额度行，按账单周期查看模型的输入、输出、缓存写、缓存读 token 和花费 |
-| 系统管理 | 管理员登录、凭证时间与状态列表、搜索分页、访客切换开放范围 |
-| 本机切换 | 生成可检查的 macOS / Windows 命令，由使用者在本机执行 |
-| 显示偏好 | 经典、液态玻璃、赛博朋克、石墨极简、青野绿意、工程蓝图；明暗及跟随系统；卡片显示项 |
-| 命令行 | 实时串行查询，终端或 JSON 输出；支持临时读取旧 JSON 文件 |
-
-部门、排序、皮肤、明暗和卡片显示项保存在浏览器 localStorage。搜索只作用于已选部门，要跨部门搜索先选择全部账号。显示开关不改变后台取数范围。
-
-## 添加与重新授权
-
-1. 在浏览器登录 `cursor.com`，打开开发者工具的 Application / Cookies / `https://cursor.com`。
-2. 复制 `WorkosCursorSessionToken` 的完整 Value。
-3. 面板点击添加账号，填写姓名、部门和 Cookie；已有账号使用钥匙按钮重新授权。
-
-保存时先校验网页身份，再经 PKCE 登录回调换取桌面访问凭证 AT 和刷新凭证 RT，验证桌面身份及额度后原子保存。失败不会覆盖已有凭证。当前仅提供手工粘贴 Cookie 的授权入口。
-
-后续额度、明细和切换使用保存的桌面凭证，按需续期并落库。没有 RT 的旧账号会尝试用旧 Cookie 迁移；Cookie 已失效时需要重新授权。网页 Cookie 过期不等于桌面授权失效，但远端撤销会话仍可能使授权不可用。
-
-## 如何看数据
-
-剩余百分比由 Cursor 返回的已用百分比计算，美元上限是反解或同套餐观测补齐的估算值。无法推算时不显示上限；不应将套餐包含金额当作综合额度分母，也不应把界面金额用于结算。
-
-Grok Bot 周额度独立显示：无包含额度或缺少用量时隐藏，已用尽时仍显示 0%。重置时间优先使用接口明确返回的时间，否则按周期起点加 7 天计算。其普通接口错误只省略该行，认证错误和限流仍参与整个账号的刷新判定。
-
-卡片的「最后统计」是最近成功取数时间。刷新失败保留成功数据并提示陈旧；已有数据的账号连续两次认证失败才标记失效，没有成功数据的账号首次认证失败就提示重新授权。显示时区为浏览器本地时区。
-
-单卡刷新、明细查询和命令生成共用操作配额。刚成功刷新的账号在冷却期内返回已有快照；明细短期重复打开可命中缓存。后台目标周期默认为 15 分钟，受请求耗时、空闲降速和限流退避影响，并非实时刷新保证。
-
-## 管理与权限
-
-`PANEL_TOKEN` 是共享面板口令。普通使用者可查看所有部门，并可添加、重新授权、改部门和删除账号；本项目没有普通用户登录、只读角色或按访客所属部门隔离数据的功能。
-
-管理员使用独立登录会话，不能用面板口令访问管理接口。凭证列表只展示 AT/RT 是否存在、声明到期时间、最近保存/续期时间和续期窗口，不显示凭证原文。会话有效期为 12 小时，更换管理员密码会撤销旧会话。
-
-访客切换默认关闭，管理员始终可切换。开放范围可选全部、部门、指定账号，按并集生效；部门指目标账号的当前部门。由于普通使用者也能调整部门，部门开放不构成不可绕过的账号隔离。指定账号授权绑定数据库记录，删除再添加不会继承原指定授权。
-
-## 切换本机 Cursor
-
-账号允许切换时，点击双向箭头生成命令；可选择系统并查看完整脚本。macOS 在终端执行，Windows 在 PowerShell 执行。生成或复制命令不会修改本机登录状态。
-
-复制的是短链接下载命令，完整下载成功后才执行。每次生成的链接最多 5 分钟有效，且不超过桌面访问凭证的到期时间；macOS / Windows 共用一次下载机会，任一系统下载后两条命令均失效。下载中断、执行失败或过期时点击「重新生成」。执行时本机需能访问浏览器所用的面板地址，服务重启也会使未使用的链接失效。
-
-下载时再次检查账号授权与切换权限；收回访客开放范围、管理员退出登录、账号删除、重新授权或凭证续期都会使相应旧链接失效。页面保留完整脚本供检查，已获取的脚本及凭证无法通过收回链接撤回。
-
-执行前保存工作。脚本检测 Cursor 安装，请求正常退出并等待最多约 30 秒，然后使用 Cursor 自带 Node/SQLite 创建包含已提交 WAL 数据的备份，在事务中更新登录字段，成功后重启 Cursor。备份或写入失败会停止；写入失败回滚。
-
-命令以中文展示五个步骤：检查安装、检查运行环境、退出 Cursor、备份并写入账号、重新打开 Cursor。交互终端显示加载动画及等待时间，完成标记为 `✓`，失败标记为 `✗` 并保留错误详情；输出重定向时使用静态步骤日志。
-
-macOS 请使用系统「终端」运行，避免在即将退出的 Cursor 内置终端执行。若停在「等待 Cursor 安全退出」（旧命令为 `Closing Cursor`），请查看 Cursor 的保存确认及 macOS 的自动化授权弹窗；退出请求也包含在约 30 秒的等待期限内。超时会停止，不修改账号，也不强制关闭 Cursor。可先保存工作并用 `Cmd+Q` 完全退出 Cursor，再在系统终端重新执行。Windows 请使用独立 PowerShell 窗口。
-
-支持 macOS 的 `/Applications/Cursor.app`、`~/Applications/Cursor.app` 和 Windows 常规安装；Windows 依次从运行进程、默认目录、PATH、注册表和桌面/开始菜单的 Cursor 快捷方式识别安装位置，支持安装在其他盘符。找不到时，可先打开 Cursor 后重试，或在 PowerShell 设置 `$env:CURSOR_EXE = 'D:\软件\Cursor\Cursor.exe'`（替换为快捷方式属性中的实际目标路径），再执行切换命令；手动路径优先，且会检查安装目录是否完整。仅处理默认用户数据目录，不支持 Linux 切换、便携版或自定义 `--user-data-dir`。依赖 Cursor 内部字段及自带 SQLite 模块，切换后需在客户端核对账号。
-
-备份位于原库旁，文件名为 `state.vscdb.cursor-panel-时间戳-进程号.bak`。命令中的临时链接可获取登录凭证，完整脚本和备份也含凭证，都应按账号密钥保管。命令使用与面板相同的桌面会话，客户端退出或撤销该会话可能影响面板查询；收回切换权限不能撤回已复制的凭证。
+额度百分比沿用 Cursor 返回口径，美元上限仅作推算；数据来自非公开接口，不能视为官方计费或兼容性承诺。列表显示快照时间，不能视为实时数据。拥有 use 权限的人能领取账号凭证，撤权不能收回已复制的凭证。
 
 ## 命令行
 
 ```bash
-uv run --frozen cursor-quota
-uv run --frozen cursor-quota --json
-uv run --frozen cursor-quota -c other.json
+cursor-remote --server https://panel.example.com --login owner@example.com workspaces
+cursor-remote --server https://panel.example.com --login owner@example.com list
+cursor-remote --server https://panel.example.com --login owner@example.com \
+  detail --workspace 空间UUID --account 账号UUID
 ```
 
-默认读取共享 SQLite 库，直接查询 Cursor，可迁移或续期并更新账号凭证，但不更新 Web 快照。`-c` 使用[旧 JSON 格式](accounts.example.json)，每次临时换取桌面凭证，不读写本地账号库。全部成功退出 0，账号查询失败退出 1。
+每次命令隐藏输入密码，会话只在内存保存，结束时撤销。`cursor-core` 是持有数据目录锁的离线运维入口，不能用其 Actor 参数替代远程用户登录。
 
-## 维护资料
+## 模拟预览与检查
 
-- [部署与运行](docs/operations.md)：启动参数、配置、权限边界、迁移、备份与排障。
-- [实现与维护](docs/maintenance.md)：模块、请求链路、接口、数据口径、前端约束和测试入口。
-- [阶段归档](docs/archive/2026-09-07.md)：本次核查依据、说明删减、验证结果与遗留问题。
-- [CLAUDE.md](CLAUDE.md)：仓库维护时的简要约束。
+```bash
+uv sync --locked
+npm --prefix frontend ci
+npm --prefix frontend run build
+uv run --frozen python dev/preview-v2.py --port 18763
+```
+
+访问 `http://127.0.0.1:18763`。合成用户 `owner@example.test`、`member@example.test`、`viewer@example.test`，密码均为 `Preview password 42!`。预览创建临时数据库与密钥，不请求 Cursor；预览切换脚本在访问本机 Cursor 前停止。
+
+```bash
+uv run --frozen python -m unittest discover -s tests -v
+npx --prefix frontend playwright install chromium
+npm --prefix frontend run test:e2e
+npm --prefix frontend run test:connected
+```
+
+验证使用模拟网关和临时数据。前端 API 类型由 OpenAPI 生成并通过 CI 检查漂移；容器、wheel 和三平台检查见 [P3 报告](docs/plans/p3-verification.md)。
+
+## Legacy 兼容入口
+
+`cursor-panel` / `cursor-quota` 继续提供旧版共享面板与查询，不使用 V2 的登录、空间或数据库。旧 `PANEL_TOKEN`、独立管理员口令与访客开放规则不能访问 V2。旧版源码基线保存在远端 `legacy` 分支，详见 [旧版使用说明](docs/legacy-usage.md)、[旧版部署](docs/operations.md)和[维护文档](docs/maintenance.md)。
+
+不要让旧版直接打开新版数据库。迁移、重复导入检查与回退说明见 [核心运维](docs/core-operations.md)。真实 Cookie、AT/RT、密钥、运行数据库和生成切换命令不应提交到仓库。
+
+## 文档
+
+- [Web 部署、备份恢复、远程 CLI](docs/v2-web-operations.md)
+- [独立桌面安装与使用](docs/v2-desktop-operations.md)
+- [桌面连接实例与设备登录](docs/v2-connected-operations.md)
+- [V2 认证与 API 约定](docs/v2-api-operations.md)
+- [核心运行与旧版迁移](docs/core-operations.md)
+- [架构与分阶段计划](docs/plans/v2-architecture.md)
+- [P3 交付决策](docs/adr/0005-p3-web-delivery.md)
+- [版本、校验、手动更新和签名方案](docs/v2-release-operations.md)
+- [支持平台与验证边界](docs/supported-platforms.md)
+- [贡献与问题报告](CONTRIBUTING.md)

@@ -1,10 +1,16 @@
 # 部署与运行
 
+V2 桌面连接见 [连接文档](v2-connected-operations.md)，候选版本识别、镜像固定、手动更新与回退见 [发行运维](v2-release-operations.md)。支持范围以 [平台表](supported-platforms.md) 和各阶段报告为准。
+
+P4 独立桌面入口为 `desktop/` 与 `cursor_dashboard/local/`，使用同一业务核心及原生系统密钥库；安装、切换、托盘和加密归档见 [桌面运行文档](v2-desktop-operations.md)，平台边界见 [P4 报告](plans/p4-verification.md)。
+
+V2 Web 使用独立的 [Dockerfile/Compose 与运行文档](v2-web-operations.md)，通过 `cursor-api` 启动；本文以下仍描述 legacy `cursor-panel` / `cursor-quota`。
+
 [返回 README](../README.md) · [实现与维护](maintenance.md) · [阶段归档](archive/2026-09-07.md)
 
 ## 启动与部署
 
-运行依赖为 Python 3.10+、FastAPI、Uvicorn、Requests；版本约束在 [pyproject.toml](../pyproject.toml)，解析结果在 `uv.lock`。在项目根目录执行 `uv sync --locked` 安装锁定依赖。
+运行依赖为 Python 3.10+、FastAPI、Uvicorn、Requests；V2 核心另使用 SQLAlchemy、Alembic、cryptography，随同一个包安装。版本约束在 [pyproject.toml](../pyproject.toml)，解析结果在 `uv.lock`。在项目根目录执行 `uv sync --locked` 安装锁定依赖。本文描述现有 Web/CLI 兼容入口，新核心见[运行与迁移说明](core-operations.md)，P2 独立认证 API 的初始化、启动和权限接口见 [V2 API 运行](v2-api-operations.md)。
 
 `cursor-panel` 参数：`--host` 默认 `127.0.0.1`，`--port` 默认 `8787`，`--no-open` 禁止自动打开浏览器。仅本机 host 会自动开浏览器。
 

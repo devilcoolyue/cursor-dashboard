@@ -1,0 +1,100 @@
+name: V2 desktop and connected fixtures
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/v2-p4, feat/v2-p5]
+    paths: ['cursor_dashboard/**', 'desktop/**', 'frontend/**', 'tests/**', 'dev/preview-connected.py', '.github/workflows/p4-desktop.yml', 'uv.lock', 'pyproject.toml']
+  pull_request:
+    paths: ['cursor_dashboard/**', 'desktop/**', 'frontend/**', 'tests/**', 'dev/preview-connected.py', '.github/workflows/p4-desktop.yml']
+permissions:
+  contents: read
+env:
+  PYTHONUTF8: '1'
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15-intel, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.11.3'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+          cache-on-failure: 'true'
+      - name: Locked dependencies
+        run: |
+          uv sync --locked --python 3.12
+          uv sync --project desktop/sidecar --frozen
+          npm --prefix frontend ci --no-audit --no-fund
+          npm --prefix desktop ci --no-audit --no-fund
+      - name: Core desktop failure and recovery contracts
+        run: |
+          uv run --frozen python -m unittest discover -s tests -p test_v2_desktop.py -v
+          uv run --frozen python -m unittest discover -s tests -p test_v2_connected.py -v
+          uv run --frozen python -m unittest discover -s tests -p test_v2_upgrade.py -v
+      - name: Native backend and system key store
+        timeout-minutes: 5
+        run: npm --prefix desktop test
+      - name: Native Cursor adapter with isolated application
+        run: uv run --project desktop/sidecar --frozen python desktop/scripts/verify-native.py
+      - name: Bundle production application
+        run: npm --prefix desktop run build
+      - name: Restricted Rust routes
+        run: cargo test --manifest-path desktop/src-tauri/Cargo.toml --bin cursor-panel-desktop
+      - name: Frozen runtime contracts
+        timeout-minutes: 5
+        shell: python
+        run: |
+          import os, pathlib, subprocess, sys
+          suffix = '.exe' if sys.platform == 'win32' else ''
+          binary = pathlib.Path(f'desktop/sidecar/dist/cursor-local/cursor-local{suffix}').resolve()
+          env = dict(os.environ, P4_BACKEND_BINARY=str(binary))
+          subprocess.run(['uv', 'run', '--project', 'desktop/sidecar', '--frozen', 'python', '-m', 'unittest', 'discover', '-s', 'desktop/tests', '-p', 'test_local_backend.py', '-v'], env=env, check=True)
+      - name: Installed application cold and warm start and crash cleanup
+        shell: python
+        run: |
+          import os, pathlib, subprocess, sys
+          release = pathlib.Path('desktop/src-tauri/target/release')
+          if sys.platform == 'win32':
+              install_dir = pathlib.Path(os.environ['RUNNER_TEMP']) / 'P4 installed with spaces'
+              installer = next((release / 'bundle/nsis').glob('*.exe'))
+              subprocess.run(f'"{installer.resolve()}" /S /D={install_dir}', check=True, timeout=120)
+              executable = install_dir / 'cursor-panel-desktop.exe'
+          else:
+              executable = release / 'bundle/macos/Cursor Panel.app/Contents/MacOS/cursor-panel-desktop'
+          subprocess.run(['uv', 'run', '--project', 'desktop/sidecar', '--frozen', 'python', 'desktop/scripts/desktop-smoke.py', str(executable), '--output', 'desktop/output/p4-install.json'], check=True)
+      - name: Install browser fixture runtime
+        timeout-minutes: 5
+        run: npm --prefix frontend exec -- playwright install chromium
+      - name: Local desktop browser business flows
+        timeout-minutes: 5
+        run: npm --prefix frontend run test:desktop
+      - name: Web browser business flows
+        timeout-minutes: 5
+        run: npm --prefix frontend run test:e2e
+      - name: Connected desktop browser business flows
+        timeout-minutes: 5
+        run: npm --prefix frontend run test:connected
+      - name: Full regression
+        if: matrix.os == 'macos-14'
+        run: uv run --frozen python -m unittest discover -s tests -v
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p4-${{ matrix.os }}
+          path: |
+            desktop/output/*.json
+            desktop/src-tauri/target/release/bundle/dmg/*.dmg
+            desktop/src-tauri/target/release/bundle/nsis/*.exe
+            output/playwright/p4-*.png
+            output/playwright/p5-*.png

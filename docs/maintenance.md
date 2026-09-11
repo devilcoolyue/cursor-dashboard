@@ -1,6 +1,14 @@
 # 实现与维护
 
+P5 连接与设备身份见 [连接文档](v2-connected-operations.md)。P6 的版本一致性、候选构建、内容检查、更新和失败回退见 [发行运维](v2-release-operations.md)与 [P6 报告](plans/p6-verification.md)；平台证据集中在 [支持表](supported-platforms.md)，贡献流程见 [CONTRIBUTING](../CONTRIBUTING.md)。`dev/release.py` 只生成 unsigned preview 清单，不发布或签名。
+
+P4 独立桌面入口为 `desktop/` 与 `cursor_dashboard/local/`，使用同一业务核心及原生系统密钥库；安装、切换、托盘和加密归档见 [桌面运行文档](v2-desktop-operations.md)，平台边界见 [P4 报告](plans/p4-verification.md)。
+
+P3 新 Web 位于 `frontend/`，通过 OpenAPI 生成类型；手工切换适配位于 `api/manual_switch.py`，与票据消费共享事务。容器、备份恢复、远程 CLI 及验证见 [Web 交付文档](v2-web-operations.md)和 [P3 报告](plans/p3-verification.md)。
+
 [返回 README](../README.md) · [部署与配置](operations.md) · [阶段归档](archive/2026-09-07.md)
+
+本文主要描述现有 `cursor-panel` / `cursor-quota` 兼容入口。P1 新增的 `cursor-core` 使用独立 V2 数据库与显式配置，运行、迁移和模块边界见[新核心运行文档](core-operations.md)及 [P1 报告](plans/p1-verification.md)。P2 新增独立 `cursor-api`、统一身份/权限与审计，见 [API 运行](v2-api-operations.md)、[P2 报告](plans/p2-verification.md)及 [ADR 0004](adr/0004-p2-identity-and-authorization.md)。
 
 ## 模块与入口
 

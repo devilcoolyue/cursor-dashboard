@@ -311,7 +311,7 @@ class PowerShellDiscoveryTest(unittest.TestCase):
         self.stale.touch()
 
     def run_discovery(self, setup='', running='@()', real_source=''):
-        helpers = desktop.SCRIPTS.joinpath('switch-windows.ps1').read_text().split('\ntry {\n', 1)[0]
+        helpers = desktop.SCRIPTS.joinpath('switch-windows.ps1').read_text(encoding='utf-8').split('\ntry {\n', 1)[0]
         script = helpers + f"\n$env:CURSOR_EXE = $null\n$env:LOCALAPPDATA = '{self.root}/missing'\n"
         script += f"$env:ProgramFiles = '{self.root}/missing'\n${{env:ProgramFiles(x86)}} = '{self.root}/missing'\n"
         for source in ('Path', 'Registry', 'Shortcut'):
@@ -330,11 +330,15 @@ try {{
         command = ("& ([scriptblock]::Create([Text.Encoding]::UTF8.GetString("
                    f"[Convert]::FromBase64String('{encoded}'))))")
         return subprocess.run(['pwsh', '-NoLogo', '-NoProfile', '-Command', command],
-                              text=True, capture_output=True, timeout=20)
+                              text=True, encoding='utf-8', capture_output=True, timeout=20)
 
     def assert_found(self, result):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('FOUND:' + str(self.exe), result.stdout)
+        found = next((line.removeprefix('FOUND:') for line in result.stdout.splitlines()
+                      if line.startswith('FOUND:')), None)
+        self.assertIsNotNone(found, result.stdout)
+        # Windows temp paths may use an 8.3 alias that PowerShell expands.
+        self.assertEqual(Path(found).resolve(), self.exe.resolve())
 
     def test_running_custom_install_is_preferred(self):
         self.assert_found(self.run_discovery(running=f"@([pscustomobject]@{{ Path = '{self.exe}' }})"))
@@ -385,7 +389,7 @@ function Get-ItemProperty {{
 @unittest.skipUnless(shutil.which('pwsh') and shutil.which('node'), 'PowerShell and Node are required')
 class PowerShellProgressTest(unittest.TestCase):
     def run_runtime(self, source):
-        helpers = desktop.SCRIPTS.joinpath('switch-windows.ps1').read_text().split('\ntry {\n', 1)[0]
+        helpers = desktop.SCRIPTS.joinpath('switch-windows.ps1').read_text(encoding='utf-8').split('\ntry {\n', 1)[0]
         node = shutil.which('node').replace("'", "''")
         source_literal = source.replace("'", "''")
         script = helpers + f'''
@@ -403,8 +407,13 @@ try {{
         encoded = base64.b64encode(script.encode()).decode()
         command = ("& ([scriptblock]::Create([Text.Encoding]::UTF8.GetString("
                    f"[Convert]::FromBase64String('{encoded}'))))")
-        return subprocess.run(['pwsh', '-NoLogo', '-NoProfile', '-Command', command],
-                              text=True, capture_output=True, timeout=20)
+        # Preserve the copied command's nested scope without exceeding Windows'
+        # command-line length limit in the deliberately large pipe-buffer test.
+        with tempfile.TemporaryDirectory() as directory:
+            script_path = Path(directory) / 'runtime.ps1'
+            script_path.write_text(command, encoding='utf-8')
+            return subprocess.run(['pwsh', '-NoLogo', '-NoProfile', '-File', str(script_path)],
+                                  text=True, encoding='utf-8', capture_output=True, timeout=20)
 
     def test_utf8_input_and_arguments_survive_native_runtime(self):
         # Exceed pipe buffers in both directions to catch synchronous-I/O deadlocks.

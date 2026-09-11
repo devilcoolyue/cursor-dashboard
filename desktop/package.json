@@ -1,0 +1,16 @@
+{
+  "name": "cursor-panel-desktop",
+  "private": true,
+  "version": "0.0.1",
+  "scripts": {
+    "sidecar": "node scripts/build-sidecar.mjs",
+    "dev": "npm run sidecar && tauri dev",
+    "build": "npm run sidecar && tauri build",
+    "test": "uv run --project sidecar --frozen python -m unittest discover -s tests -v",
+    "build:probe": "node scripts/build-probe-sidecar.mjs && tauri build --config src-tauri/tauri.probe.conf.json --features p0-probe"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.11.4"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,64 @@
+# V2 独立桌面
+
+P4 桌面使用本机数据库与系统凭证库，不需要先部署 Cursor Panel 服务端。安装产物、平台实测及已知边界见 [P4 验证报告](plans/p4-verification.md)。当前版本为 `0.0.1`，P5 远程连接已接入，使用与限制见 [连接实例说明](v2-connected-operations.md)；真实远程切换与正式签名发行尚未完成。候选包校验、手动更新/回退和签名方案见 [发行运维](v2-release-operations.md)，最新平台边界见 [支持表](supported-platforms.md)。
+
+## 本地使用
+
+打开 Cursor Panel 自动建立本地用户与个人空间。使用“添加账号”输入 Cursor 网页会话材料，授权与额度查询由共用 Python 业务核心完成。列表只显示最后成功快照及其时间；断网仍可读旧快照，手工刷新与明细需要联网。
+
+默认数据位置由 Tauri 的系统应用数据目录确定：macOS 为 `~/Library/Application Support/dev.cursor-panel.desktop`，Windows 为 `%APPDATA%\dev.cursor-panel.desktop`。数据库是 `core.db`，主密钥单独保存在系统 Keychain / Credential Manager。不得使用旧版本程序打开该数据库。
+
+正常情况下每个应用只打开一个窗口，同一数据目录只允许一个后台。CLI 维护与桌面同时访问会被目录锁拒绝。不要通过结束数据库写入进程来绕过锁。
+
+默认关闭窗口即退出后台。个人设置中启用“关闭窗口后驻留托盘并定期刷新”后，关闭窗口会隐藏到托盘；使用托盘“退出 Cursor Panel”完全退出。后台依次处理账号，休眠恢复后分散查询；失败保留旧快照。窗口顶部和个人设置显示后台与最近操作状态。
+
+## 在本机切换 Cursor
+
+首先安装并打开一次 Cursor。P4 检测默认用户数据目录及常见安装位置：macOS 的 `/Applications/Cursor.app` 或 `~/Applications/Cursor.app`，Windows 的 `%LOCALAPPDATA%\Programs\cursor`、Program Files 下的 Cursor。便携版、自定义数据目录、符号链接目录及 Linux 原生切换不在本轮范围。
+
+在账号列表点击“切换”，保存工作后勾选确认。应用验证授权、正常退出 Cursor、创建包含已提交 WAL 数据的一致备份、事务更新登录并重启。macOS 可能显示请求控制 Cursor 的自动化提示；Windows 通过正常关闭窗口请求让 Cursor 处理保存提示。取消保存、拒绝退出、超时或另一安装仍在运行时停止，绝不强杀 Cursor。
+
+弹窗默认使用“开始切换”直接执行，无需下载脚本或打开终端。本地账号另有“终端执行”备用入口：确认后在应用私有目录 `switch-scripts/` 生成固定脚本，仅返回本地执行命令；不会请求 Web 服务下载脚本。命令最长 5 分钟有效，请保持桌面应用打开；执行后自动删除脚本，后台定期清理超时文件，退出应用也会清理。生成命令不会退出或修改 Cursor，可随时返回直接切换。远程连接仍沿用实例的原生切换能力限制。
+
+切换页显示进度。关闭对话框后操作会继续，个人设置可以查看状态；退出面板会等待已开始操作收尾。完成表示本地数据库更新与进程重启已验证，请在 Cursor 内核对账号。真实上游续期与多客户端共享会话行为不属于本轮模拟验证结论。
+
+切换备份位于应用数据目录的 `cursor-backups/`。备份包含登录材料，目录限制为当前系统用户访问。个人设置可打开目录或选择恢复，恢复前会备份当前状态。写入失败事务回滚；写入成功但重启失败可手动打开 Cursor 或从备份恢复。意外退出后会显示中断状态，备份保留。
+
+## 加密导出、导入与密钥恢复
+
+在个人设置选择“导出加密归档”，输入并确认至少 12 位口令，再通过系统文件对话框选择新文件。文件后缀为 `.cursorarchive`。归档包含账号凭证、标签、最后成功快照与本机密钥恢复材料，全部用独立口令加密。不会把明文凭证交给 WebView 或写入剪贴板。
+
+保留归档和口令，建议分开保存。导出拒绝覆盖现有文件，请使用新的文件名。归档不包含团队授权、用户会话或完整审计历史，不能作为完整实例数据库备份的替代品。
+
+导入仅允许空的个人空间。输入原归档口令并选择文件后，在单个事务内生成新账号 UUID，用本机主密钥重新加密凭证，保留原快照时间。导入不会调用 Cursor，也不会把旧数据显示为刚刚刷新。当前不提供合并导入或覆盖已有账号。
+
+系统凭证库锁定时先解锁再点“重试连接”。若条目丢失，界面进入锁定状态，不生成替代密钥。使用该实例之前导出的加密归档恢复原密钥，恢复前会验证它能解密当前数据库。无原密钥且无有效恢复归档时，已有凭证无法解密；保留旧目录另行恢复，不删除原库尝试修复。
+
+密钥在后台解锁后保留于进程内存，重新锁定系统凭证库不会抹除运行中后台的内存；需要结束面板后台后再重新打开。持有系统用户权限或已解锁进程的操作者位于信任边界内。
+
+## 从源码构建与验证
+
+开发机需要 Rust、Node、uv；安装包的使用者不需要这些工具。
+
+```bash
+uv sync --locked
+uv sync --project desktop/sidecar --frozen
+npm --prefix frontend ci
+npm --prefix desktop ci
+npm --prefix desktop run build
+```
+
+产物在 `desktop/src-tauri/target/release/bundle/`：macOS 为 `.app` / DMG，Windows 为 NSIS。Python 后台作为 onedir 资源随包携带，不复制运行数据或开发环境。
+
+验证只使用临时库、合成凭证和临时编译的隔离 GUI，不访问真实 Cursor：
+
+```bash
+uv run --frozen python -m unittest discover -s tests -p test_v2_desktop.py -v
+npm --prefix desktop test
+uv run --project desktop/sidecar --frozen python desktop/scripts/verify-native.py
+npm --prefix frontend run test:desktop
+```
+
+安装包探测入口是 `desktop/scripts/desktop-smoke.py`，它复制产物到中文空格临时目录，移除开发工具 PATH，验证两次启动、DOM 回执与异常退出清理，最后删除自己创建的系统凭证库合成条目。正常运行不得添加 `--desktop-smoke`；该参数专用于临时模拟数据，不连接真实上游或 Cursor。
+
+P0 原型保留 `npm --prefix desktop run build:probe`，仅用于历史打包验证。正式桌面不会显示 P0 页面。

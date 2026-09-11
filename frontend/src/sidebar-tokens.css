@@ -1,0 +1,85 @@
+/* Approved sidebar palette. Local tokens also follow menus into the top layer. */
+.sidebar {
+  --fg: light-dark(#252b3a, #e7ebf5);
+  --dim: light-dark(#626c80, #a4afc4);
+  --dimmer: light-dark(#747d90, #8e9bb4);
+  --line: light-dark(#e4e7ee, #30394c);
+  --accent: light-dark(#4862cc, #a6b9ff);
+  --accent-bg: light-dark(#e9edfc, #2b3858);
+  --row-hover-bg: light-dark(#eef0f6, #293143);
+  --card: light-dark(#ffffff, #232b3b);
+  --count-bg: light-dark(#f0f2f7, #1b2332);
+  --sidebar-bg: light-dark(#fbfcfe, #1b2230);
+  --sidebar-canvas: none;
+  --sidebar-shadow-color: light-dark(#27364c1c, #050a1570);
+  --ok: light-dark(#4f9d73, #72bd97);
+  --card-popover: var(--card);
+  --card-hi: var(--card);
+  --input-bg: var(--count-bg);
+  --line-popover: var(--line);
+  --line-subtle: var(--line);
+  --btn-bg: transparent;
+  --btn-hover-bg: var(--row-hover-bg);
+  --blur-panel: none;
+  --shadow-popover: 0 10px 30px var(--sidebar-shadow-color);
+  --ui-control-shadow: none;
+  --ui-focus-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+  --ui-option-hover-bg: var(--row-hover-bg);
+  --ui-option-selected-bg: var(--accent-bg);
+  --ui-option-selected-shadow: none;
+  --radius-ctl: 8px;
+  --ui-option-radius: 7px;
+}
+html[data-skin=glass] .sidebar {
+  --sidebar-canvas: linear-gradient(165deg, light-dark(#f5f2fc, #232337) 0%, light-dark(#fafbfe, #1a2130) 50%, light-dark(#eff4fc, #1e293e) 100%);
+}
+html[data-skin=cyberpunk] .sidebar {
+  --fg: light-dark(#233638, #e5eeee);
+  --dim: light-dark(#50676a, #a9b7ba);
+  --dimmer: light-dark(#657d80, #8d9fa2);
+  --line: light-dark(#cde0e0, #2d3a3d);
+  --accent: light-dark(#167a83, #71dfe6);
+  --accent-bg: light-dark(#e0f2f3, #1e3236);
+  --row-hover-bg: light-dark(#eaf3f3, #222e30);
+  --card: light-dark(#f8fdfd, #1b2224);
+  --count-bg: light-dark(#e9f0f0, #141a1b);
+  --sidebar-bg: light-dark(#f5faf9, #141819);
+  --sidebar-brand-line: light-dark(#bd589b, #d272b8);
+}
+html[data-skin=graphite] .sidebar {
+  --fg: light-dark(#292a2b, #eeeeef);
+  --dim: light-dark(#5d5f62, #b5b7bb);
+  --dimmer: light-dark(#77797c, #95979b);
+  --line: light-dark(#dedfe0, #353739);
+  --accent: light-dark(#343638, #e1e2e4);
+  --accent-bg: light-dark(#e7e8e9, #333537);
+  --row-hover-bg: light-dark(#eeeeef, #2a2c2e);
+  --card: light-dark(#ffffff, #252729);
+  --count-bg: light-dark(#f0f0f1, #191b1d);
+  --sidebar-bg: light-dark(#fafafa, #1c1e20);
+}
+html[data-skin=verdant] .sidebar {
+  --fg: light-dark(#2c3c32, #e4ede4);
+  --dim: light-dark(#5d7164, #aebfae);
+  --dimmer: light-dark(#708173, #96aa9a);
+  --line: light-dark(#dce4d7, #37483d);
+  --accent: light-dark(#407052, #a6d1ac);
+  --accent-bg: light-dark(#e4eddd, #344c3b);
+  --row-hover-bg: light-dark(#edf1e7, #2d3e32);
+  --card: light-dark(#fdfef9, #29382e);
+  --count-bg: light-dark(#eef1e7, #1f2c24);
+  --sidebar-bg: light-dark(#f5f7ed, #202d25);
+}
+html[data-skin=blueprint] .sidebar {
+  --fg: light-dark(#233b60, #e5efff);
+  --dim: light-dark(#536c90, #acc1e1);
+  --dimmer: light-dark(#6b82a3, #91a9cc);
+  --line: light-dark(#d1ddec, #304c73);
+  --accent: light-dark(#2d63af, #a0c5ff);
+  --accent-bg: light-dark(#dfebfc, #254467);
+  --row-hover-bg: light-dark(#e8f0fb, #233a58);
+  --card: light-dark(#fafdff, #1c304b);
+  --count-bg: light-dark(#e9f0fa, #14253e);
+  --sidebar-bg: light-dark(#f3f7fd, #162942);
+  --sidebar-canvas: linear-gradient(light-dark(#b8cdeb20, #9fbfeb07) 1px, transparent 1px), linear-gradient(90deg, light-dark(#b8cdeb20, #9fbfeb07) 1px, transparent 1px);
+}

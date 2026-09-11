@@ -1,0 +1,84 @@
+name: P3 Web and server delivery
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/v2-p3, feat/v2-p5]
+    paths: ['cursor_dashboard/**', 'frontend/**', 'tests/**', 'dev/**', 'deploy/v2/**', 'Dockerfile', '.dockerignore', 'pyproject.toml', 'uv.lock', '.github/workflows/p3-web.yml']
+  pull_request:
+    paths: ['cursor_dashboard/**', 'frontend/**', 'tests/**', 'dev/**', 'deploy/v2/**', 'Dockerfile', '.dockerignore', 'pyproject.toml', 'uv.lock', '.github/workflows/p3-web.yml']
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUTF8: '1'
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.11.3'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: uv sync --locked --python 3.12
+      - run: npm --prefix frontend ci
+      - name: Check generated API contract
+        run: |
+          uv run --frozen python dev/export-openapi.py
+          npm --prefix frontend run api:generate
+          git diff --exit-code -- frontend/openapi.json frontend/src/api.generated.ts
+      - name: Build production Web and independent desktop probe
+        run: |
+          npm --prefix frontend run build:probe
+          uv run --frozen python dev/build-web.py
+      - run: npx --prefix frontend playwright install --with-deps chromium
+      - name: Browser business flows with disposable backend
+        run: npm --prefix frontend run test:e2e
+      - name: Container delivery and recovery
+        run: |
+          docker build -t cursor-panel-v2:p3 .
+          uv run --frozen python dev/verify-v2-container.py cursor-panel-v2:p3
+          CURSOR_PANEL_DOMAIN=panel.example.test docker compose -f deploy/v2/compose.yaml config --quiet
+  core:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.10'
+          - os: macos-14
+            python: '3.12'
+          - os: windows-latest
+            python: '3.12'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.11.3'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: uv sync --locked --python ${{ matrix.python }}
+      - run: uv run --frozen python -m unittest discover -s tests -p test_core.py -v
+      - run: uv run --frozen python -m unittest discover -s tests -p test_identity.py -v
+      - run: uv run --frozen python -m unittest discover -s tests -p 'test_v2*.py' -v
+      - name: Full regression including platform scripts
+        if: runner.os == 'macOS'
+        run: python desktop/scripts/legacy-baseline.py
+      - run: npm --prefix frontend ci
+      - run: uv run --frozen python dev/build-web.py
+      - name: Installable wheel, Web assets and authenticated remote CLI
+        shell: python
+        run: |
+          import pathlib, subprocess
+          subprocess.run(['uv', 'build', '--wheel', '--out-dir', 'output/p3/wheels'], check=True)
+          wheel = next(pathlib.Path('output/p3/wheels').glob('*.whl'))
+          subprocess.run(['python', 'dev/verify-core-wheel.py', str(wheel), '--web'], check=True)

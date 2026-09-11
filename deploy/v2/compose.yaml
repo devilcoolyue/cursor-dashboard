@@ -1,0 +1,58 @@
+name: cursor-panel-v2
+services:
+  panel:
+    image: ${CURSOR_PANEL_IMAGE:-cursor-panel-v2:local}
+    build:
+      context: ../..
+      args:
+        APP_VERSION: ${CURSOR_PANEL_VERSION:-0.0.1}
+        SOURCE_REVISION: ${CURSOR_PANEL_REVISION:-unrecorded}
+    environment:
+      CURSOR_PUBLIC_ORIGIN: https://${CURSOR_PANEL_DOMAIN:?Set CURSOR_PANEL_DOMAIN in .env}
+    volumes:
+      - data:/var/lib/cursor-panel
+      - secrets:/run/cursor-secrets:ro
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777,size=128m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    stop_grace_period: 45s
+  maintenance:
+    image: ${CURSOR_PANEL_IMAGE:-cursor-panel-v2:local}
+    profiles: [maintenance]
+    environment:
+      CURSOR_PUBLIC_ORIGIN: https://${CURSOR_PANEL_DOMAIN:?Set CURSOR_PANEL_DOMAIN in .env}
+    volumes:
+      - data:/var/lib/cursor-panel
+      - secrets:/run/cursor-secrets
+      - backups:/backups
+    command: [cursor-core, verify]
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+  proxy:
+    image: caddy:2-alpine
+    environment:
+      CURSOR_PANEL_DOMAIN: ${CURSOR_PANEL_DOMAIN}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+    depends_on:
+      panel:
+        condition: service_healthy
+volumes:
+  data:
+  secrets:
+  backups:
+  caddy_data:
+  caddy_config:

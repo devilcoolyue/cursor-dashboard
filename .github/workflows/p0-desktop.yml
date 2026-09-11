@@ -1,0 +1,88 @@
+name: P0 desktop verification
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/v2-p0]
+    paths: ['desktop/**', 'frontend/**', 'tests/test_desktop.py', '.github/workflows/p0-desktop.yml', 'uv.lock']
+  pull_request:
+    paths: ['desktop/**', 'frontend/**', 'tests/test_desktop.py', '.github/workflows/p0-desktop.yml']
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUTF8: '1'
+
+jobs:
+  packaged-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.11.3'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+          cache-on-failure: 'true'
+      - name: Install locked dependencies
+        run: |
+          npm --prefix frontend ci --no-audit --no-fund
+          npm --prefix desktop ci --no-audit --no-fund
+          uv sync --locked --python 3.12
+      - name: Legacy baseline in a temporary database
+        run: python desktop/scripts/legacy-baseline.py
+      - name: Backend contracts
+        run: npm --prefix desktop test
+      - name: Build release bundle
+        working-directory: desktop
+        run: npm run build:probe
+      - name: Test frozen backend
+        shell: python
+        run: |
+          import os, pathlib, subprocess, sys
+          suffix = '.exe' if sys.platform == 'win32' else ''
+          binary = pathlib.Path(f'desktop/sidecar/dist/p0-backend{suffix}').resolve()
+          env = dict(os.environ, P0_BACKEND_BINARY=str(binary))
+          subprocess.run(['npm', '--prefix', 'desktop', 'test'], env=env, check=True, shell=sys.platform == 'win32')
+      - name: Relocated bundle, private runtime, keyring and shutdown
+        shell: python
+        run: |
+          import pathlib, subprocess, sys
+          release = pathlib.Path('desktop/src-tauri/target/release')
+          executable = (release / 'cursor-panel-p0.exe' if sys.platform == 'win32' else
+                        release / 'bundle/macos/Cursor Panel P0.app/Contents/MacOS/cursor-panel-p0')
+          if sys.platform == 'win32':
+              import os
+              install_dir = pathlib.Path(os.environ['RUNNER_TEMP']) / 'P0 installed with spaces'
+              installer = next((release / 'bundle/nsis').glob('*.exe'))
+              # NSIS requires /D to be the final, unquoted argument, including spaces.
+              # Pass a Windows command line directly; shell=False avoids shell expansion.
+              subprocess.run(f'"{installer.resolve()}" /S /D={install_dir}', check=True, timeout=120)
+              executable = install_dir / 'cursor-panel-p0.exe'
+              assert executable.is_file(), f'Installed executable missing: {executable}'
+              assert (install_dir / 'p0-backend.exe').is_file(), 'Installed sidecar missing'
+          for mode, extra in [('normal', []), ('crash', ['--kill-shell'])]:
+              subprocess.run(['uv', 'run', '--project', 'desktop/sidecar', '--frozen', 'python',
+                              'desktop/scripts/smoke.py', str(executable), '--output',
+                              f'desktop/output/{mode}.json', *extra], check=True)
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p0-${{ matrix.os }}
+          path: |
+            desktop/output/*.json
+            desktop/output/*.txt
+            desktop/src-tauri/target/release/bundle/dmg/*.dmg
+            desktop/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: warn

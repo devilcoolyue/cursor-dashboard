@@ -1,0 +1,31 @@
+{
+  "name": "cursor-panel-frontend",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 1420 --strictPort",
+    "build": "vue-tsc --noEmit && vite build",
+    "dev:probe": "vite --mode desktop-probe --host 127.0.0.1 --port 1420 --strictPort",
+    "build:probe": "vue-tsc --noEmit && vite build --mode desktop-probe",
+    "api:generate": "openapi-typescript openapi.json -o src/api.generated.ts",
+    "test:e2e": "node scripts/verify-web.mjs",
+    "test:desktop": "node scripts/verify-desktop.mjs",
+    "test:connected": "node scripts/verify-connected.mjs"
+  },
+  "dependencies": {
+    "@lucide/vue": "1.44.0",
+    "@tauri-apps/api": "2.11.1",
+    "vue": "3.5.42",
+    "vue-router": "5.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "6.0.8",
+    "openapi-typescript": "7.13.0",
+    "playwright": "1.63.0",
+    "typescript": "5.9.3",
+    "vite": "8.2.2",
+    "vue-tsc": "3.3.11"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,7 @@
+{
+  "fixture": "p0-bundled-demo-v1",
+  "accounts": [
+    {"id": "demo-personal", "label": "个人工作账号", "email": "personal@example.test", "remaining_pct": 82},
+    {"id": "demo-project", "label": "项目验证账号", "email": "project@example.test", "remaining_pct": 46}
+  ]
+}

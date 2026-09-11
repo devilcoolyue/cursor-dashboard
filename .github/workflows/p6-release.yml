@@ -1,0 +1,144 @@
+name: P6 preview delivery and recovery
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, feat/v2-p6]
+  pull_request:
+    paths: ['LICENSE', 'dev/release.py', 'tests/test_release*.py', 'Dockerfile', '.dockerignore', 'deploy/v2/**', 'pyproject.toml', 'uv.lock', 'frontend/package*.json', 'desktop/**', '.github/workflows/p6-release.yml']
+
+# This workflow produces unsigned CI candidates. It cannot publish a release,
+# push an image, or access signing credentials.
+permissions:
+  contents: read
+
+env:
+  PYTHONUTF8: '1'
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.11.3'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: uv sync --locked --python 3.12
+      - name: Versions, tracked source and recovery rehearsals
+        run: |
+          uv run --frozen python dev/release.py check
+          uv run --frozen python -m unittest discover -s tests -v
+      - name: Build and verify installable Web wheel
+        run: |
+          npm --prefix frontend ci
+          uv run --frozen python dev/export-openapi.py
+          npm --prefix frontend run api:generate
+          git diff --exit-code -- frontend/openapi.json frontend/src/api.generated.ts
+          uv run --frozen python dev/build-web.py
+          uv build --wheel --out-dir output/p6/wheel
+          python dev/verify-core-wheel.py output/p6/wheel/*.whl --web
+          python dev/release.py manifest --target web-python --artifact output/p6/wheel/*.whl --output output/p6/web-python
+      - name: Build identifiable server image and rehearse recovery
+        run: |
+          version=$(uv run --frozen python -c 'import cursor_dashboard; print(cursor_dashboard.__version__)')
+          docker build --build-arg APP_VERSION="$version" --build-arg SOURCE_REVISION="$GITHUB_SHA" --build-arg BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" -t cursor-panel-v2:p6 .
+          uv run --frozen python dev/verify-v2-container.py cursor-panel-v2:p6
+          docker run --rm -v "$PWD/dev/release.py:/audit/release.py:ro" --entrypoint python cursor-panel-v2:p6 /audit/release.py audit-tree /opt/venv/lib/python3.12/site-packages/cursor_dashboard
+          docker run --rm --entrypoint cat cursor-panel-v2:p6 /usr/share/licenses/cursor-panel/LICENSE > output/p6/image-license.txt
+          cmp LICENSE output/p6/image-license.txt
+          docker image inspect cursor-panel-v2:p6 > output/p6/image.json
+          docker save --output output/p6/cursor-panel-linux-amd64.tar cursor-panel-v2:p6
+          python dev/release.py manifest --target linux-amd64 --artifact output/p6/cursor-panel-linux-amd64.tar --image-metadata output/p6/image.json --output output/p6/linux-amd64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p6-web-and-linux-amd64
+          if-no-files-found: error
+          path: |
+            output/p6/web-python/
+            output/p6/linux-amd64/
+
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: macos-arm64
+          - os: macos-15-intel
+            target: macos-x64
+          - os: windows-latest
+            target: windows-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.11.3'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+          cache-on-failure: 'true'
+      - name: Locked dependencies and recovery contracts
+        run: |
+          uv sync --locked --python 3.12
+          uv sync --project desktop/sidecar --frozen
+          npm --prefix frontend ci --no-audit --no-fund
+          npm --prefix desktop ci --no-audit --no-fund
+          uv run --frozen python dev/release.py check
+          uv run --frozen python -m unittest discover -s tests -p 'test_release*.py' -v
+          uv run --frozen python -m unittest discover -s tests -p test_v2_upgrade.py -v
+          uv run --frozen python -m unittest discover -s tests -p test_local_commands.py -v
+          npm --prefix desktop test
+      - name: Freeze and inspect desktop runtime
+        run: |
+          npm --prefix desktop run sidecar
+          uv run --frozen python dev/release.py audit-tree desktop/src-tauri/runtime
+      - name: Build candidate and check Rust routes
+        working-directory: desktop
+        run: |
+          npm exec -- tauri build --ci --verbose
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --bin cursor-panel-desktop
+      - name: Installed candidate smoke and checksummed delivery
+        shell: python
+        env:
+          DELIVERY_TARGET: ${{ matrix.target }}
+        run: |
+          import os, pathlib, subprocess, sys
+          release = pathlib.Path('desktop/src-tauri/target/release')
+          output = pathlib.Path('output/p6')
+          output.mkdir(parents=True, exist_ok=True)
+          target = os.environ['DELIVERY_TARGET']
+          if sys.platform == 'win32':
+              installer = next((release / 'bundle/nsis').glob('*.exe'))
+              install_dir = pathlib.Path(os.environ['RUNNER_TEMP']) / 'P6 installed with spaces'
+              subprocess.run(f'"{installer.resolve()}" /S /D={install_dir}', check=True, timeout=120)
+              executable = install_dir / 'cursor-panel-desktop.exe'
+              license_path = install_dir / 'LICENSE'
+          else:
+              installer = next((release / 'bundle/dmg').glob('*.dmg'))
+              executable = release / 'bundle/macos/Cursor Panel.app/Contents/MacOS/cursor-panel-desktop'
+              license_path = release / 'bundle/macos/Cursor Panel.app/Contents/Resources/LICENSE'
+          assert license_path.read_bytes() == pathlib.Path('LICENSE').read_bytes(), 'Installed MIT license missing or changed'
+          subprocess.run(['uv', 'run', '--project', 'desktop/sidecar', '--frozen', 'python', 'desktop/scripts/desktop-smoke.py', str(executable), '--output', str(output / 'installed-smoke.json')], check=True)
+          subprocess.run([sys.executable, 'dev/release.py', 'manifest', '--target', target, '--artifact', str(installer), '--output', str(output / target)], check=True)
+      - name: Source status after build (filenames only)
+        if: always()
+        run: |
+          git status --short
+          git diff -- desktop/src-tauri/Cargo.toml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p6-${{ matrix.target }}
+          if-no-files-found: error
+          path: |
+            output/p6/${{ matrix.target }}/
+            output/p6/installed-smoke.json

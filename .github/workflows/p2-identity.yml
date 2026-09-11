@@ -1,0 +1,55 @@
+name: P2 identity and authorization
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/v2-p2]
+    paths: ['cursor_dashboard/**', 'tests/**', 'pyproject.toml', 'uv.lock', 'dev/verify-core-wheel.py', '.github/workflows/p2-identity.yml']
+  pull_request:
+    paths: ['cursor_dashboard/**', 'tests/**', 'pyproject.toml', 'uv.lock', 'dev/verify-core-wheel.py', '.github/workflows/p2-identity.yml']
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUTF8: '1'
+
+jobs:
+  identity:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.10'
+          - os: macos-14
+            python: '3.12'
+          - os: windows-latest
+            python: '3.12'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.11.3'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: uv sync --locked --python ${{ matrix.python }}
+      - name: P1 core regression
+        run: uv run --frozen python -m unittest discover -s tests -p test_core.py -v
+      - name: Identity, roles, audit and credential delivery races
+        run: uv run --frozen python -m unittest discover -s tests -p test_identity.py -v
+      - name: Authenticated HTTP and P1 upgrade
+        run: uv run --frozen python -m unittest discover -s tests -p 'test_v2*.py' -v
+      - name: Full behavior regression
+        if: runner.os == 'macOS'
+        run: python desktop/scripts/legacy-baseline.py
+      - name: Installed wheel and real HTTP process
+        shell: python
+        run: |
+          import pathlib, subprocess
+          subprocess.run(['uv', 'build', '--wheel', '--out-dir', 'output/p2/wheels'], check=True)
+          wheel = next(pathlib.Path('output/p2/wheels').glob('*.whl'))
+          subprocess.run(['python', 'dev/verify-core-wheel.py', str(wheel)], check=True)
