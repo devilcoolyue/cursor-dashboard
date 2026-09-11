@@ -96,13 +96,17 @@ try {
   await visible(runtimeStatus)
   for (const [width, height] of [[1440, 960], [1180, 780], [900, 600]]) {
     await page.setViewportSize({ width, height })
-    await page.waitForFunction(() => {
+    // Resize events update Vue's density classes after Chromium changes the viewport.
+    await page.waitForFunction(({ width, height }) => {
       const brand = document.querySelector('.sidebar-brand').getBoundingClientRect()
       const toolbar = document.querySelector('.accounts-toolbar').getBoundingClientRect()
-      return Math.abs(brand.top - toolbar.top) < 1 && Math.abs(brand.bottom - toolbar.bottom) < 1
-    })
+      const footer = document.querySelector('.sidebar-footer').getBoundingClientRect()
+      return innerWidth === width && innerHeight === height
+        && Math.abs(brand.top - toolbar.top) < 1 && Math.abs(brand.bottom - toolbar.bottom) < 1
+        && footer.bottom <= height + 1
+    }, { width, height }, { timeout: 12000 })
     const footer = await sidebar.locator('.sidebar-footer').boundingBox()
-    assert.ok(footer.y + footer.height <= height + 1, 'Desktop status must fit in the sidebar footer')
+    assert.ok(footer.y + footer.height <= height + 1, `Desktop status must fit in the ${width}×${height} sidebar footer: ${JSON.stringify(footer)}`)
   }
   await runtimeStatus.click()
   const statusDetails = page.getByRole('dialog', { name: '桌面运行状态', exact: true })
