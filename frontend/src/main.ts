@@ -9,6 +9,8 @@ async function start() {
   }
   await import('./theme')
   await import('./styles.css')
+  await import('./sidebar.css')
+  await import('./settings.css')
   const [{ default: App }, { initialize }, { router }] = await Promise.all([import('./App.vue'), import('./state'), import('./router')])
   const { isDesktop } = await import('./platform')
   if (!isDesktop) await initialize()

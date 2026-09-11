@@ -1,0 +1,147 @@
+/* Settings share the account workspace's toolbar, surfaces and form controls. */
+.settings-page { max-width: none; min-width: 0; }
+.settings-toolbar { position: sticky; top: 0; z-index: 20; gap: 16px; }
+.settings-toolbar .workspace-title { flex: 1; }
+.settings-context { color: var(--dim); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-toolbar-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.settings-toolbar-actions button { min-height: 34px; font-size: 12px; }
+.settings-content { padding: 22px 24px 40px; max-width: 1320px; animation: enter .18s ease-out; }
+.settings-surface { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-card); }
+.settings-section { display: grid; grid-template-columns: 176px minmax(0, 1fr); gap: 32px; padding: 26px; border-top: 1px solid var(--line); }
+.settings-section:first-child { border-top: 0; }
+.settings-section-info h2 { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 14px; line-height: 1.6; margin: 0 0 6px; }
+.settings-section-info .account-count { font-size: 10px; padding: 0 6px; font-weight: 400; }
+.settings-section-info > p { font-size: 11.5px; line-height: 1.8; color: var(--dim); margin: 0; }
+.settings-section-body { min-width: 0; }
+.settings-form { gap: 18px; }
+.settings-form label { font-size: 12px; font-weight: 500; color: var(--fg); gap: 7px; }
+.settings-form input, .settings-form textarea { font-size: 13px; font-weight: 400; transition: border-color .15s ease, box-shadow .15s ease; }
+.settings-form :is(input, textarea):focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+.settings-form :is(input, textarea)::placeholder { color: var(--dimmer); }
+.settings-form :is(input, textarea):disabled { opacity: .6; cursor: default; }
+.settings-form .ui-select-trigger { min-height: 41px; font-size: 13px; font-weight: 400; }
+.settings-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.settings-form .field-hint { margin: -8px 0 0; font-weight: 400; }
+.settings-form-actions { display: flex; align-items: center; gap: 10px; }
+.settings-page button { font-size: 12px; }
+.settings-form-actions > button { min-height: 34px; }
+.invite-form-fields { display: grid; grid-template-columns: minmax(160px, 1fr) 140px auto; align-items: end; gap: 12px; }
+.invite-form-fields > button { height: 41px; }
+.password-form { max-width: 680px; }
+.subtle-button { background: transparent; border-color: transparent; color: var(--dim); }
+.subtle-button:hover { background: var(--row-hover-bg); border-color: var(--line); color: var(--fg); }
+.subtle-button.danger-text:hover { color: var(--bad); background: var(--ui-danger-bg); border-color: transparent; }
+.settings-list-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 7px; }
+.settings-list-toolbar .field-hint { margin: 0; }
+.settings-list-toolbar > button { flex: none; }
+.settings-list { min-width: 0; }
+.settings-list .setting-row { padding: 14px 0; gap: 14px; }
+.settings-list .setting-row:first-child { padding-top: 0; }
+.settings-list .setting-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.setting-identity { display: flex; align-items: center; gap: 11px; flex: 1; min-width: 0; }
+.setting-identity > div { min-width: 0; }
+.settings-list .setting-identity strong { font-size: 12px; font-weight: 500; line-height: 1.7; }
+.settings-list .setting-identity small { font-size: 10.5px; line-height: 1.8; margin-top: 2px; }
+.settings-avatar { width: 34px; height: 34px; flex: 0 0 34px; border-radius: 9px; background: var(--accent-bg); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }
+.settings-avatar.neutral { color: var(--dim); background: var(--count-bg); border: 1px solid var(--line-subtle); }
+.settings-badge { display: inline-flex; vertical-align: middle; margin-left: 7px; padding: 0 5px; border: 1px solid var(--line); border-radius: 4px; font-size: 9px; font-weight: 400; line-height: 1.7; color: var(--dim); white-space: nowrap; }
+.settings-badge.accent { color: var(--accent); background: var(--accent-bg); border-color: transparent; }
+.setting-row-actions { justify-content: flex-end; flex: none; gap: 4px; }
+.setting-row-actions .ui-select-trigger { font-size: 11px; padding: 6px 9px; min-height: 32px; }
+.setting-row-actions button { padding: 6px 8px; font-size: 11px; }
+.session-expiry { display: inline-block; margin-left: 12px; }
+.settings-list-head { color: var(--dimmer); font-size: 10px; padding: 0 0 12px; border-bottom: 1px solid var(--line); }
+.settings-list-head > span:last-child { text-align: right; padding-right: 12px; }
+.settings-list .instance-user-row { display: grid; grid-template-columns: minmax(0, 1fr) 88px 68px 84px; gap: 14px; align-items: center; }
+.settings-role { font-size: 11px; color: var(--dim); }
+.settings-status { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--dim); }
+.settings-status > i { width: 5px; height: 5px; border-radius: 50%; background: var(--ok); }
+.settings-status.inactive > i { background: var(--dimmer); }
+.settings-user-action { text-align: right; }
+.settings-user-action button { padding: 6px 10px; font-size: 11px; }
+.settings-empty { display: flex; align-items: center; justify-content: center; gap: 9px; color: var(--dimmer); font-size: 12px; margin: 0; padding: 24px 12px; background: var(--input-bg); border: 1px dashed var(--line); border-radius: var(--radius-ctl); }
+.settings-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 14px; margin-top: 10px; border-top: 1px solid var(--line); color: var(--dimmer); font-size: 11px; }
+.settings-pagination button { padding: 5px 10px; font-size: 11px; }
+.settings-management { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 54px; }
+.settings-management > p { font-size: 11.5px; color: var(--dim); margin: 0; }
+.settings-management .danger-text { flex: none; }
+.settings-page .audit-list { max-height: 380px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line-popover) transparent; padding-right: 8px; }
+.audit-row { padding: 12px 0; }
+.audit-row:first-child { padding-top: 0; }
+.audit-row:last-child { border-bottom: 0; }
+.audit-row .audit-event-heading { display: flex; align-items: center; gap: 10px; }
+.audit-event-heading > strong { font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
+.audit-event-heading > time { margin-left: auto; font-size: 10.5px; color: var(--dimmer); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.audit-result { font-size: 9px; padding: 0 5px; border-radius: 4px; color: var(--bad); background: var(--ui-danger-bg); white-space: nowrap; }
+.audit-result.is-success { color: var(--dim); background: var(--count-bg); }
+.audit-row summary { display: flex; align-items: center; gap: 5px; list-style: none; font-size: 10.5px; color: var(--dimmer); width: fit-content; max-width: 100%; }
+.audit-row summary::-webkit-details-marker { display: none; }
+.audit-row summary > span { overflow-wrap: anywhere; }
+.audit-row summary > svg { transition: transform .15s ease; }
+.audit-row details[open] summary > svg { transform: rotate(90deg); }
+.audit-row summary:hover { color: var(--fg); }
+.audit-detail-label { color: var(--dim); margin-left: 5px; }
+.audit-details { display: grid; gap: 4px; margin: 10px 0; font-size: 10.5px; }
+.audit-details > div { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 10px; }
+.audit-details dt { color: var(--dimmer); }
+.audit-details dd { margin: 0; overflow-wrap: anywhere; color: var(--dim); }
+.settings-check { font-size: 12px; color: var(--fg); }
+.archive-operation { max-width: 300px; }
+.form-note { display: flex; align-items: flex-start; gap: 10px; padding: 14px; background: var(--input-bg); border: 1px solid var(--line-subtle); border-radius: var(--radius-ctl); color: var(--dim); }
+.form-note > svg { margin-top: 2px; color: var(--accent); }
+.form-note p { margin: 0; font-size: 11.5px; line-height: 1.8; overflow-wrap: anywhere; }
+.form-note strong { display: block; color: var(--fg); font-weight: 500; }
+.form-success { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--accent); }
+.confirmation-copy { color: var(--dim); font-size: 13px; line-height: 1.9; margin: 0; overflow-wrap: anywhere; }
+.confirmation-copy + .error { margin-top: 16px; margin-bottom: 0; }
+.team-menu { padding: 6px; }
+.sidebar-menu.team-menu h2 { margin: 0; padding: 7px 8px 10px; font-size: 11px; font-weight: 500; color: var(--dimmer); }
+.sidebar-menu.team-menu > button { width: 100%; padding: 12px 8px; gap: 10px; white-space: normal; }
+.team-menu-icon { width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 8px; display: grid; place-items: center; color: var(--accent); background: var(--accent-bg); flex: none; }
+.team-menu > button > span:nth-child(2) { flex: 1; min-width: 0; text-align: left; }
+.team-menu strong { display: block; font-size: 12px; font-weight: 500; color: var(--fg); }
+.team-menu small { display: block; font-size: 10px; font-weight: 400; margin-top: 3px; color: var(--dimmer); }
+.team-menu > button > svg:last-child { color: var(--dimmer); transition: transform .15s ease; }
+.team-menu > button:hover > svg:last-child { transform: translateX(2px); }
+@media (max-width: 1200px) {
+  .settings-section { grid-template-columns: 146px minmax(0, 1fr); gap: 22px; padding: 22px; }
+  .member-row { flex-wrap: wrap; }
+  .member-row .setting-row-actions { margin-left: auto; }
+}
+@media (max-width: 1020px) {
+  .settings-section { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .settings-section-info > p { max-width: 540px; }
+}
+@media (max-width: 900px) {
+  .invite-form-fields { grid-template-columns: minmax(0, 1fr) auto; }
+  .invite-form-fields > label:first-child { grid-column: 1 / -1; }
+}
+@media (max-width: 760px) {
+  .settings-toolbar { padding: 12px 16px; flex-wrap: wrap; gap: 8px; }
+  .settings-toolbar .workspace-title { width: auto; min-width: 0; }
+  .settings-context { max-width: 130px; }
+  .settings-toolbar-actions button { font-size: 11px; padding: 6px 8px; }
+  .settings-content { padding: 18px 14px 28px; }
+  .settings-section { padding: 20px 16px; gap: 18px; }
+  .settings-form-grid { grid-template-columns: minmax(0, 1fr); }
+  .invite-form-fields { grid-template-columns: minmax(0, 1fr) auto; }
+  .invite-form-fields > label:first-child { grid-column: 1 / -1; }
+  .settings-list .setting-row { align-items: center; gap: 12px; }
+  .settings-list .setting-identity { flex-basis: 100%; }
+  .settings-list .setting-row > button { margin-left: 45px; }
+  .settings-list .setting-row-actions { width: auto; margin-left: 45px; justify-content: flex-start; flex-wrap: wrap; }
+  .settings-list .setting-row-actions .ui-select { max-width: 140px; }
+  .settings-management { align-items: flex-start; flex-direction: column; gap: 14px; }
+  .settings-list .settings-list-head { display: none; }
+  .settings-list .instance-user-row { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; }
+  .instance-user-row .setting-identity { grid-column: 1 / -1; }
+  .instance-user-row .settings-role { padding-left: 45px; }
+  .instance-user-row .settings-status { grid-column: 1; padding-left: 45px; }
+  .instance-user-row .settings-user-action { grid-column: 2; grid-row: 2 / 4; align-self: center; }
+  .session-expiry { display: block; margin-left: 0; }
+  .settings-list-toolbar { flex-wrap: wrap; gap: 4px; }
+  .settings-list-toolbar .field-hint { font-size: 10.5px; }
+  .audit-row .audit-event-heading { gap: 6px; flex-wrap: wrap; }
+  .audit-event-heading > time { font-size: 10px; }
+  .settings-page .audit-list { max-height: 350px; padding-right: 0; }
+}

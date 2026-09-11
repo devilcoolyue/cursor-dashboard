@@ -29,7 +29,7 @@ async function checked<T>(command: string, args: Record<string, unknown>): Promi
   if (result.status >= 400) throw new DesktopError(desktopMessage(result.status))
   return result.body
 }
-export const native = <T>(operation: 'status' | 'unlock' | 'detect' | 'switch' | 'switch_status' | 'backups' | 'restore' | 'background' | 'resume', body?: unknown) =>
+export const native = <T>(operation: 'status' | 'unlock' | 'detect' | 'switch' | 'switch_command' | 'switch_status' | 'backups' | 'restore' | 'background' | 'resume', body?: unknown) =>
   checked<T>('desktop_request', { operation, body })
 export const archive = (operation: 'export' | 'import' | 'recover', password: string, workspace?: string) =>
   checked<{ count?: number; cancelled?: boolean; phase?: string }>('desktop_archive', { operation, password, workspace })

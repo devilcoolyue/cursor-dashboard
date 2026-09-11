@@ -3,8 +3,11 @@ from __future__ import annotations
 from contextlib import closing
 from dataclasses import replace
 import json
+import os
 from pathlib import Path
 import sqlite3
+import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -65,7 +68,7 @@ class DesktopTest(unittest.IsolatedAsyncioTestCase):
 
     def open(self, directory=None, store=None):
         return DesktopRuntime(directory or self.directory, store=store or self.store,
-            gateway=PreviewGateway(), installation=self.installation)
+            gateway=PreviewGateway(), installation=self.installation, script_preview=True)
 
     async def cleanup(self):
         await self.runtime.shutdown()
@@ -232,6 +235,42 @@ class DesktopTest(unittest.IsolatedAsyncioTestCase):
             subject = connection.execute("SELECT value FROM ItemTable WHERE key='cursorAuth/stripeMembershipAuthId'").fetchone()[0]
             self.assertTrue(subject.startswith('auth0|'))
         self.assertEqual((await self.request('GET', '/native/backups'))[0], 200)
+        self.assertEqual(list(self.runtime.commands.directory.iterdir()), [])
+
+    async def test_terminal_command_is_opt_in_local_private_and_does_not_switch(self):
+        fields = {'workspace_id': self.workspace, 'account_id': self.accounts[0]['id'],
+                  'platform': 'macos', 'confirmed': False}
+        self.assertEqual((await self.request('POST', '/native/switch-command', fields))[0], 409)
+        fields['confirmed'] = True
+        self.assertEqual((await self.request('POST', '/native/switch-command', {**fields, 'platform': 'linux'}))[0], 422)
+        self.assertEqual((await self.request('POST', '/native/switch-command', {**fields, 'path': '/tmp/injected'}))[0], 422)
+        status, result, headers = await self.request('POST', '/native/switch-command', fields)
+        self.assertEqual(status, 200)
+        self.assertEqual(set(result), {'platform', 'expires_at', 'command'})
+        self.assertEqual(headers['cache-control'], 'no-store')
+        for forbidden in ('https:', 'http:', 'base64', 'preview-user_desktop', 'fixture-cookie'):
+            self.assertNotIn(forbidden, result['command'])
+        self.assertEqual(self.runtime.executor.status()['stage'], 'idle')
+        self.assertIsNone(self.runtime.job)
+        paths = list(self.runtime.commands.directory.iterdir())
+        self.assertEqual(len(paths), 1)
+        self.assertTrue(paths[0].read_text().startswith('exit 1 # 仅供预览'))
+        if os.name != 'nt':
+            self.assertEqual(paths[0].stat().st_mode & 0o777, 0o600)
+        if shutil.which('bash'):
+            # Preview exits before touching Cursor; even failure removes the local credential file.
+            run = subprocess.run([shutil.which('bash'), '-c', result['command']], capture_output=True, timeout=10)
+            self.assertNotEqual(run.returncode, 0)
+            self.assertFalse(paths[0].exists())
+        await self.request('POST', '/native/switch-command', {**fields, 'platform': 'windows'})
+        windows = next(self.runtime.commands.directory.glob('*.ps1'))
+        self.assertTrue(windows.read_text().startswith("throw '仅供预览"))
+        with patch('cursor_dashboard.local.commands.time.time', return_value=time.time() + 301):
+            self.runtime.commands.prune()
+        self.assertEqual(list(self.runtime.commands.directory.iterdir()), [])
+        await self.request('POST', '/native/switch-command', fields)
+        self.runtime.commands.prune(all_files=True)
+        self.assertEqual(list(self.runtime.commands.directory.iterdir()), [])
 
     async def test_background_preferences_and_wake_stagger_persist(self):
         self.runtime.set_background(True)

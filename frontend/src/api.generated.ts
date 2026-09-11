@@ -571,6 +571,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/accounts/{account_id}/switch-command": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Manual Command */
+        post: operations["manual_command_api_v1_workspaces__workspace_id__accounts__account_id__switch_command_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/switch/{token}/{platform}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Manual Download */
+        get: operations["manual_download_api_v1_switch__token___platform__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/manual-switch/consume": {
         parameters: {
             query?: never;
@@ -1047,15 +1081,15 @@ export interface components {
         /** ManualConsume */
         ManualConsume: {
             /**
-             * Token
-             * Format: password
-             */
-            token: string;
-            /**
              * Platform
              * @enum {string}
              */
             platform: "macos" | "windows";
+            /**
+             * Token
+             * Format: password
+             */
+            token: string;
         };
         /** ManualScript */
         ManualScript: {
@@ -1064,12 +1098,12 @@ export interface components {
              * @enum {string}
              */
             platform: "macos" | "windows";
-            /** Script */
-            script: string;
             /** Command */
             command: string;
             /** Expires At */
             expires_at: number;
+            /** Script */
+            script: string;
         };
         /** Me */
         Me: {
@@ -1232,12 +1266,32 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** SwitchCommand */
+        SwitchCommand: {
+            /**
+             * Platform
+             * @enum {string}
+             */
+            platform: "macos" | "windows";
+            /** Command */
+            command: string;
+            /** Expires At */
+            expires_at: number;
+        };
         /** SwitchIssued */
         SwitchIssued: {
             /** Token */
             token: string;
             /** Expires At */
             expires_at: number;
+        };
+        /** SwitchPlatform */
+        SwitchPlatform: {
+            /**
+             * Platform
+             * @enum {string}
+             */
+            platform: "macos" | "windows";
         };
         /** Usage */
         Usage: {
@@ -2500,6 +2554,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SwitchIssued"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    manual_command_api_v1_workspaces__workspace_id__accounts__account_id__switch_command_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SwitchPlatform"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SwitchCommand"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    manual_download_api_v1_switch__token___platform__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+                platform: "macos" | "windows";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
                 };
             };
             /** @description Validation Error */

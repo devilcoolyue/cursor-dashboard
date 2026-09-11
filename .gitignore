@@ -35,3 +35,5 @@ venv/
 .vscode/
 .playwright-cli/
 output/
+# SpecStory explanation file
+.specstory/.what-is-this.md

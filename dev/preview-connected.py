@@ -86,7 +86,7 @@ async def main():
             connections = Connections(local_dir, store=MemoryDevices(), transport=http,
                                       browser=lambda url: opened.append(url) or True)
             runtime = DesktopRuntime(local_dir, store=MemoryKeys(), gateway=PreviewGateway(),
-                installation=FixtureInstallation(local_dir), connections=connections)
+                installation=FixtureInstallation(local_dir), connections=connections, script_preview=True)
             await seed_local(runtime)
             local = create_local_app(runtime, token, local_port)
 

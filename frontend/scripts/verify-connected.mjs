@@ -9,6 +9,7 @@ import { randomBytes } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
 import { chromium } from 'playwright'
 import { stopFixture } from './fixture-process.mjs'
+import { selectOption } from './ui-controls.mjs'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const token = randomBytes(32).toString('hex')
@@ -111,7 +112,7 @@ try {
   await visible(page.getByRole('link', { name: 'Studio 远程 · 切换实例' }))
   assert.equal(await page.getByRole('button', { name: '切换', exact: true }).count(), 0)
   await visible(page.getByText('此实例尚未开放远程切换。你可以查看额度并执行获授权的账号操作。', { exact: true }))
-  await page.getByLabel('当前空间').selectOption({ label: '团队 · Studio 开发组' })
+  await selectOption(page, '当前空间', '团队 · Studio 开发组')
   await rows(page, 3)
   await page.screenshot({ path: join(root, 'output/playwright/p5-remote-accounts.png'), fullPage: true, animations: 'disabled' })
   holdDetail = true; detailEntered = new Promise(resolve => { enteredDetail = resolve })
@@ -134,7 +135,7 @@ try {
   await visible(page.getByText('Cursor 已重新打开，请在 Cursor 中核对当前账号。', { exact: true }))
   await page.keyboard.press('Escape')
   await page.getByRole('link', { name: '个人设置' }).click()
-  await visible(page.getByText('Cursor Panel Desktop · 当前设备', { exact: true }))
+  await visible(page.locator('.session-row').filter({ hasText: 'Cursor Panel Desktop' }).getByText('当前设备', { exact: true }))
   assert.equal(await page.getByRole('heading', { name: '加密归档', exact: true }).count(), 0)
   await page.getByRole('link', { name: 'Studio 远程 · 切换实例' }).click()
   await page.screenshot({ path: join(root, 'output/playwright/p5-connections.png'), fullPage: true, animations: 'disabled' })
@@ -147,7 +148,7 @@ try {
   await rows(page, 2)
   await approval.goto(ready.server_origin + '/#/settings')
   await visible(approval.getByText('Cursor Panel Desktop', { exact: true }))
-  await approval.getByText('Cursor Panel Desktop', { exact: true }).locator('..').locator('..').getByRole('button', { name: '撤销会话', exact: true }).click()
+  await approval.locator('.session-row').filter({ hasText: 'Cursor Panel Desktop' }).getByRole('button', { name: '撤销会话', exact: true }).click()
   await page.locator('[data-account]').first().getByRole('button', { name: '明细', exact: true }).click()
   await visible(page.getByRole('heading', { name: '实例连接', exact: true }))
   assert.equal(await page.locator('[data-account]').count(), 0)

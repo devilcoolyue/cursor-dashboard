@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
@@ -23,6 +23,7 @@ from ..desktop import DesktopSessionError
 from ..domain.core import (CoreError, Forbidden, NotFound, SecretError,
                             Throttled, Unauthenticated)
 from ..infrastructure.persistence.policy import audit
+from ..switch_links import download_command
 
 import requests
 
@@ -82,9 +83,12 @@ class Authorization(Input):
     tags: list[str] = Field(default_factory=list, max_length=100)
 
 
-class ManualConsume(Input):
-    token: SecretStr = Field(min_length=20, max_length=128)
+class SwitchPlatform(Input):
     platform: Literal["macos", "windows"]
+
+
+class ManualConsume(SwitchPlatform):
+    token: SecretStr = Field(min_length=20, max_length=128)
 
 
 class DeviceApproval(Input):
@@ -448,6 +452,22 @@ def create_app(core, *, public_origin, web_dir=None, manual_switch_preview=False
     @app.post("/api/v1/workspaces/{workspace_id}/accounts/{account_id}/manual-switch", response_model=dto.SwitchIssued)
     async def manual_ticket(workspace_id: uuid.UUID, account_id: uuid.UUID, actor=Depends(browser_actor)):
         return await core.switches.issue(actor, str(workspace_id), str(account_id))
+
+    @app.post("/api/v1/workspaces/{workspace_id}/accounts/{account_id}/switch-command", response_model=dto.SwitchCommand)
+    async def manual_command(workspace_id: uuid.UUID, account_id: uuid.UUID, body: SwitchPlatform,
+                             actor=Depends(browser_actor)):
+        issued = await core.switches.issue(actor, str(workspace_id), str(account_id))
+        url = f"{public_origin}/api/v1/switch/{issued['token']}/{body.platform}"
+        return {"platform": body.platform, "expires_at": issued["expires_at"],
+                "command": download_command(url, body.platform)}
+
+    @app.get("/api/v1/switch/{token}/{platform}", response_class=PlainTextResponse)
+    def manual_download(token: str, platform: Literal["macos", "windows"], request: Request):
+        script = core.switches.download(token, request_id=request.state.request_id,
+            render=lambda delivery: render_script(delivery, platform, preview=manual_switch_preview)["script"])
+        suffix = "sh" if platform == "macos" else "ps1"
+        return PlainTextResponse(script, headers={
+            "Content-Disposition": f'attachment; filename="switch-account.{suffix}"'})
 
     @app.post("/api/v1/manual-switch/consume", response_model=dto.ManualScript)
     def manual_consume(body: ManualConsume, actor=Depends(browser_actor)):

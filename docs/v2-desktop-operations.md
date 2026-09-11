@@ -1,6 +1,6 @@
 # V2 独立桌面
 
-P4 桌面使用本机数据库与系统凭证库，不需要先部署 Cursor Panel 服务端。安装产物、平台实测及已知边界见 [P4 验证报告](plans/p4-verification.md)。当前版本为 `1.4.0`，P5 远程连接已接入，使用与限制见 [连接实例说明](v2-connected-operations.md)；真实远程切换与正式签名发行尚未完成。候选包校验、手动更新/回退和签名方案见 [发行运维](v2-release-operations.md)，最新平台边界见 [支持表](supported-platforms.md)。
+P4 桌面使用本机数据库与系统凭证库，不需要先部署 Cursor Panel 服务端。安装产物、平台实测及已知边界见 [P4 验证报告](plans/p4-verification.md)。当前版本为 `0.0.1`，P5 远程连接已接入，使用与限制见 [连接实例说明](v2-connected-operations.md)；真实远程切换与正式签名发行尚未完成。候选包校验、手动更新/回退和签名方案见 [发行运维](v2-release-operations.md)，最新平台边界见 [支持表](supported-platforms.md)。
 
 ## 本地使用
 
@@ -17,6 +17,8 @@ P4 桌面使用本机数据库与系统凭证库，不需要先部署 Cursor Pan
 首先安装并打开一次 Cursor。P4 检测默认用户数据目录及常见安装位置：macOS 的 `/Applications/Cursor.app` 或 `~/Applications/Cursor.app`，Windows 的 `%LOCALAPPDATA%\Programs\cursor`、Program Files 下的 Cursor。便携版、自定义数据目录、符号链接目录及 Linux 原生切换不在本轮范围。
 
 在账号列表点击“切换”，保存工作后勾选确认。应用验证授权、正常退出 Cursor、创建包含已提交 WAL 数据的一致备份、事务更新登录并重启。macOS 可能显示请求控制 Cursor 的自动化提示；Windows 通过正常关闭窗口请求让 Cursor 处理保存提示。取消保存、拒绝退出、超时或另一安装仍在运行时停止，绝不强杀 Cursor。
+
+弹窗默认使用“开始切换”直接执行，无需下载脚本或打开终端。本地账号另有“终端执行”备用入口：确认后在应用私有目录 `switch-scripts/` 生成固定脚本，仅返回本地执行命令；不会请求 Web 服务下载脚本。命令最长 5 分钟有效，请保持桌面应用打开；执行后自动删除脚本，后台定期清理超时文件，退出应用也会清理。生成命令不会退出或修改 Cursor，可随时返回直接切换。远程连接仍沿用实例的原生切换能力限制。
 
 切换页显示进度。关闭对话框后操作会继续，个人设置可以查看状态；退出面板会等待已开始操作收尾。完成表示本地数据库更新与进程重启已验证，请在 Cursor 内核对账号。真实上游续期与多客户端共享会话行为不属于本轮模拟验证结论。
 

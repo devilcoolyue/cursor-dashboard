@@ -2,7 +2,7 @@ name: P5 connected desktop browser contracts
 on:
   workflow_dispatch:
   push:
-    branches: [feat/v2-p5]
+    branches: [main, feat/v2-p5]
     paths: ['cursor_dashboard/**', 'frontend/**', 'dev/**', 'desktop/sidecar/**', '.github/workflows/p5-connected.yml']
   pull_request:
     paths: ['cursor_dashboard/**', 'frontend/**', 'dev/**', 'desktop/sidecar/**', '.github/workflows/p5-connected.yml']

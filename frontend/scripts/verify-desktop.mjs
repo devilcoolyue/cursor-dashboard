@@ -11,6 +11,7 @@ import { randomBytes } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
 import { chromium } from 'playwright'
 import { stopFixture } from './fixture-process.mjs'
+import { selectOption } from './ui-controls.mjs'
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const directory = await mkdtemp(join(tmpdir(), 'cursor-p4-browser-'))
 const dataDir = join(directory, 'data')
@@ -56,6 +57,8 @@ try {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } })
   let locked = false
   let starting = true
+  let unavailable = false
+  let refreshGate
   await context.exposeBinding('nativeInvoke', async (_, command, args) => {
     if (command === 'frontend_ready' || command === 'desktop_open_backups') return null
     if (command === 'connection_request') return request('/native/connections')
@@ -63,9 +66,10 @@ try {
       return request(args.operation === 'recover' ? '/native/recover' : `/native/archive/${args.operation}`, 'POST', { path: archivePath, password: args.password, workspace_id: args.workspace })
     }
     if (command === 'desktop_request') {
+      if (args.operation === 'status' && unavailable) throw Error('Fixture connection unavailable')
       if (args.operation === 'status' && starting) { starting = false; return { status: 200, body: { phase: 'starting', background: false } } }
       if (args.operation === 'status' && locked) return { status: 200, body: { phase: 'locked', background: false } }
-      const routes = { status: ['status'], unlock: ['unlock', 'POST'], detect: ['cursor'], switch: ['switch', 'POST'], switch_status: ['switch'], backups: ['backups'], restore: ['restore', 'POST'], background: ['background', 'PUT'], resume: ['resume', 'POST'] }
+      const routes = { status: ['status'], unlock: ['unlock', 'POST'], detect: ['cursor'], switch: ['switch', 'POST'], switch_command: ['switch-command', 'POST'], switch_status: ['switch'], backups: ['backups'], restore: ['restore', 'POST'], background: ['background', 'PUT'], resume: ['resume', 'POST'] }
       const [path, method = 'GET'] = routes[args.operation]
       return request('/native/' + path, method, args.body)
     }
@@ -74,6 +78,7 @@ try {
     const account = `${base}/accounts/${args.account}`
     const routes = { bootstrap: ['/api/v1/bootstrap'], me: ['/api/v1/me'], list: [`${base}/accounts`], get: [account], add: [`${base}/accounts`, 'POST'], reauthorize: [`${account}/authorization`, 'POST'], edit: [account, 'PATCH'], delete: [account, 'DELETE'], refresh: [`${account}/refresh`, 'POST'], detail: [`${account}/detail`], audit: [`${base}/audit`] }
     const [path, method = 'GET'] = routes[args.operation]
+    if (args.operation === 'refresh' && refreshGate) await refreshGate
     return request(path + (Object.keys(args.query || {}).length ? '?' + new URLSearchParams(args.query) : ''), method, args.body)
   })
   await context.addInitScript(() => {
@@ -86,8 +91,51 @@ try {
   await waitRows(page, 2)
   assert.equal(await page.getByText('团队协作', { exact: true }).count(), 0)
   assert.equal(await page.getByText('退出登录', { exact: true }).count(), 0)
+  const sidebar = page.getByRole('complementary', { name: '侧栏导航' })
+  const runtimeStatus = sidebar.getByRole('button', { name: '本地就绪 · 查看运行状态', exact: true })
+  await visible(runtimeStatus)
+  for (const [width, height] of [[1440, 960], [1180, 780], [900, 600]]) {
+    await page.setViewportSize({ width, height })
+    await page.waitForFunction(() => {
+      const brand = document.querySelector('.sidebar-brand').getBoundingClientRect()
+      const toolbar = document.querySelector('.accounts-toolbar').getBoundingClientRect()
+      return Math.abs(brand.top - toolbar.top) < 1 && Math.abs(brand.bottom - toolbar.bottom) < 1
+    })
+    const footer = await sidebar.locator('.sidebar-footer').boundingBox()
+    assert.ok(footer.y + footer.height <= height + 1, 'Desktop status must fit in the sidebar footer')
+  }
+  await runtimeStatus.click()
+  const statusDetails = page.getByRole('dialog', { name: '桌面运行状态', exact: true })
+  await visible(statusDetails.getByText('关闭窗口即退出。', { exact: true }))
+  await page.keyboard.press('Escape')
+  assert.equal(await runtimeStatus.evaluate(el => el === document.activeElement), true)
+  await sidebar.getByRole('button', { name: '收起侧栏', exact: true }).click()
+  await page.waitForFunction(() => Math.round(document.querySelector('.sidebar').getBoundingClientRect().width) === 64)
+  await runtimeStatus.click(); await visible(statusDetails)
+  const statusBounds = await statusDetails.boundingBox()
+  assert.ok(statusBounds.x >= 0 && statusBounds.y >= 0 && statusBounds.x + statusBounds.width <= 900)
+  await page.keyboard.press('Escape')
+  await sidebar.getByRole('button', { name: '展开侧栏', exact: true }).click()
+  unavailable = true
+  await visible(sidebar.getByRole('button', { name: '后台连接中断 · 查看运行状态', exact: true }))
+  assert.equal(await page.locator('[data-account]').count(), 2, 'A status failure must retain loaded accounts')
+  unavailable = false
+  await visible(runtimeStatus)
+  await page.setViewportSize({ width: 1280, height: 900 })
   await mkdir(join(root, 'output/playwright'), { recursive: true })
   await page.screenshot({ path: join(root, 'output/playwright/p4-accounts.png'), fullPage: true, animations: 'disabled' })
+  let releaseRefresh
+  refreshGate = new Promise(resolve => { releaseRefresh = resolve })
+  const refreshingCard = page.locator('[data-account]').first()
+  await refreshingCard.getByRole('button', { name: '刷新', exact: true }).click()
+  await visible(refreshingCard.locator('.card-refresh-skeleton'))
+  assert.equal(await refreshingCard.getAttribute('aria-busy'), 'true')
+  assert.equal(await refreshingCard.getByRole('progressbar').count(), 0)
+  assert.equal(await page.locator('[data-account]').nth(1).getByRole('progressbar').count(), 3)
+  await page.screenshot({ path: join(root, 'output/playwright/p4-refresh-skeleton.png'), animations: 'disabled' })
+  releaseRefresh(); refreshGate = undefined
+  await refreshingCard.locator('.card-refresh-skeleton').waitFor({ state: 'detached' })
+  assert.equal(await refreshingCard.getByRole('progressbar').count(), 3)
   await page.locator('[data-account]').first().getByRole('button', { name: '明细', exact: true }).click()
   await visible(page.getByText('Claude Sonnet', { exact: true }))
   await page.keyboard.press('Escape')
@@ -95,6 +143,17 @@ try {
   await switchButton.click()
   await visible(page.getByRole('heading', { name: '切换本机 Cursor', exact: true }))
   assert.equal(await page.getByRole('button', { name: '开始切换', exact: true }).isEnabled(), false)
+  assert.equal(await page.getByLabel('切换命令').count(), 0)
+  await page.getByRole('button', { name: '终端执行', exact: true }).click()
+  await page.getByRole('checkbox').check()
+  await page.getByRole('button', { name: '生成终端命令', exact: true }).click()
+  await visible(page.getByLabel('切换命令'))
+  const localCommand = await page.getByLabel('切换命令').inputValue()
+  assert.ok(localCommand.includes('switch-scripts'))
+  assert.ok(!/https?:|curl|base64|preview-user_desktop/.test(localCommand))
+  assert.equal((await request('/native/switch')).body.stage, 'idle')
+  await page.getByRole('button', { name: '返回直接切换', exact: true }).click()
+  assert.equal(await page.getByLabel('切换命令').count(), 0)
   await page.getByRole('checkbox').check()
   await page.getByRole('button', { name: '开始切换', exact: true }).click()
   await visible(page.getByText('Cursor 已重新打开，请在 Cursor 中核对当前账号。', { exact: true }))
@@ -121,7 +180,7 @@ try {
   const space = identity.workspaces[0].id
   const accounts = (await request(`/api/v1/workspaces/${space}/accounts`)).body.items
   for (const account of accounts) assert.equal((await request(`/api/v1/workspaces/${space}/accounts/${account.id}`, 'DELETE')).status, 204)
-  await page.getByLabel('归档操作', { exact: true }).selectOption('import')
+  await selectOption(page, '归档操作', '导入到空的个人空间')
   await page.getByLabel('归档口令', { exact: true }).fill('fixture archive 42')
   await page.getByRole('button', { name: '选择归档并导入', exact: true }).click()
   await visible(page.getByText('已导入 2 个账号。', { exact: true }))

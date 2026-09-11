@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from pydantic import Field, SecretStr
 
 from ..api.app import Input
+from ..api.models import SwitchCommand
 from ..domain.core import CoreError, SecretError
 from .archive import export_archive, import_archive
 from .remote import RemoteError
@@ -28,6 +29,13 @@ class SwitchInput(Input):
 class ConnectionInput(Input):
     name: str = Field(min_length=1, max_length=128)
     origin: str = Field(min_length=1, max_length=2048)
+
+
+class LocalCommandInput(Input):
+    workspace_id: uuid.UUID
+    account_id: uuid.UUID
+    confirmed: bool = Field(strict=True)
+    platform: Literal["macos", "windows"]
 
 
 class ConnectionSelect(Input):
@@ -128,6 +136,12 @@ def create_local_app(runtime, token, port):
     @app.get("/native/connections")
     def connections():
         return runtime.connections.snapshot()
+
+    @app.post("/native/switch-command", response_model=SwitchCommand)
+    async def switch_command(body: LocalCommandInput):
+        if not body.confirmed:
+            return JSONResponse({"detail": "Save and confirm before generating a command"}, status_code=409)
+        return await runtime.switch_command(str(body.workspace_id), str(body.account_id), body.platform)
 
     @app.post("/native/connections")
     def add_connection(body: ConnectionInput):

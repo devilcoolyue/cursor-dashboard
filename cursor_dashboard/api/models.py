@@ -270,11 +270,14 @@ class SwitchIssued(BaseModel):
     expires_at: float
 
 
-class ManualScript(BaseModel):
+class SwitchCommand(BaseModel):
     platform: Literal['macos', 'windows']
-    script: str
     command: str
     expires_at: float
+
+
+class ManualScript(SwitchCommand):
+    script: str
 
 
 class Health(BaseModel):

@@ -77,7 +77,7 @@ uv run --frozen cursor-core --data-dir ./v2-data --key-file ./v2-secrets/master.
 ```bash
 uv run --frozen python -m unittest discover -s tests -p test_core.py -v
 uv build --wheel --out-dir output/p1/wheels
-python dev/verify-core-wheel.py output/p1/wheels/cursor_dashboard-1.4.0-py3-none-any.whl
+python dev/verify-core-wheel.py output/p1/wheels/cursor_dashboard-0.0.1-py3-none-any.whl
 ```
 
 测试和 wheel 验证创建自己的临时库与模拟凭证，不使用生产账号，也不发起 Cursor 授权/续期。wheel 验证会在临时环境安装构建产物，随后清理环境。

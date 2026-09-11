@@ -1,19 +1,21 @@
 # V2 候选交付、更新与回退
 
-当前包版本为 `1.4.0`，API 主版本为 `1`，数据库为 `0003_devices`。版本号不代表完成了全部 V2 阶段：P0–P4 已有阶段验证，P5 远程查看/管理可用，真实远程切换仍关闭。P6 的验证结果见 [报告](plans/p6-verification.md)，平台范围见 [支持表](supported-platforms.md)。
+当前包版本为 `0.0.1`，API 主版本为 `1`，数据库为 `0003_devices`。版本号不代表完成了全部 V2 阶段：P0–P4 已有阶段验证，P5 远程查看/管理可用，真实远程切换仍关闭。P6 的验证结果见 [报告](plans/p6-verification.md)，平台范围见 [支持表](supported-platforms.md)。
 
 ## 候选产物与来源
 
+`v0.0.1` 的发布内容与附件说明见[版本归档](archive/v0.0.1.md)。合并 `main` 后，P6 工作流构建交付文件，P5 工作流验证三平台页面流程；维护者下载并验证本次提交的全部产物后，将其连同源码 ZIP/tar.gz、验证报告和总 SHA-256 发布至对应 GitHub Release。此步骤不改变桌面产物的未签名状态。
+
 [P6 工作流](../.github/workflows/p6-release.yml) 从干净提交构建包含 Web 的 wheel、Linux amd64 镜像归档、macOS arm64/x64 DMG 和 Windows x64 NSIS。它只上传 CI artifact，不推送镜像、不创建 Release、不访问签名密钥。桌面候选不具有发行者签名/公证，不等同于正式安装发行。
 
-每个目标目录包含安装文件、MIT `LICENSE`、`release-manifest.json` 和 `SHA256SUMS`。许可全文也进入校验文件清单，manifest 声明 `license=MIT`；项目许可证不替代第三方依赖原有许可。清单记录包版本、`v2-preview` 通道、目标架构、完整源码提交、CI run/attempt、依赖锁摘要、工具版本、API/schema、签名状态以及文件大小和 SHA-256。容器另记录 image ID、仓库 digest（如果存在）和 OCI 来源标签。候选的标识是版本、完整提交与构建运行，不能仅靠相同的 `1.4.0` 文件名区分新旧。
+每个目标目录包含安装文件、MIT `LICENSE`、`release-manifest.json` 和 `SHA256SUMS`。许可全文也进入校验文件清单，manifest 声明 `license=MIT`；项目许可证不替代第三方依赖原有许可。清单记录包版本、`v2-preview` 通道、目标架构、完整源码提交、CI run/attempt、依赖锁摘要、工具版本、API/schema、签名状态以及文件大小和 SHA-256。容器另记录 image ID、仓库 digest（如果存在）和 OCI 来源标签。候选的标识是版本、完整提交与构建运行，不能仅靠相同的 `0.0.1` 文件名区分新旧。
 
 源码与依赖锁可追踪不代表字节级可复现：基础镜像标签、Rust stable、runner 和签名时间戳仍可能变化。正式发行应保存本次锁、清单、验证报告和实际镜像 digest；不要覆盖已有候选文件。
 
 在已配置仓库权限的维护机上运行：
 
 ```bash
-gh workflow run p6-release.yml --ref feat/v2-p6
+gh workflow run p6-release.yml --ref main
 gh run list --workflow p6-release.yml
 gh run download 运行ID --pattern 'p6-*' --dir /外部目录/p6-candidate
 python3 dev/release.py verify /外部目录/p6-candidate/某个目标目录
@@ -30,7 +32,7 @@ uv run --frozen python dev/build-web.py
 uv build --wheel --out-dir output/p6/wheel
 uv run --frozen python dev/release.py check
 uv run --frozen python dev/release.py manifest --target web-python \
-  --artifact output/p6/wheel/cursor_dashboard-1.4.0-py3-none-any.whl \
+  --artifact output/p6/wheel/cursor_dashboard-0.0.1-py3-none-any.whl \
   --output output/p6/web-python
 python3 dev/release.py verify output/p6/web-python
 ```

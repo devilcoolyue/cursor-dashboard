@@ -318,6 +318,7 @@ enum NativeOperation {
     Unlock,
     Detect,
     Switch,
+    SwitchCommand,
     SwitchStatus,
     Backups,
     Restore,
@@ -340,6 +341,7 @@ async fn desktop_request(
         let (method, path) = match operation {
             Status => ("GET", "/native/status"), Unlock => ("POST", "/native/unlock"), Detect => ("GET", "/native/cursor"),
             Switch => ("POST", "/native/switch"), SwitchStatus => ("GET", "/native/switch"), Backups => ("GET", "/native/backups"),
+            SwitchCommand => ("POST", "/native/switch-command"),
             Restore => ("POST", "/native/restore"), Background => ("PUT", "/native/background"), Resume => ("POST", "/native/resume"),
         };
         let response = connection(&app)?.request(method, path, body)?;

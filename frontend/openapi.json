@@ -1623,6 +1623,118 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/accounts/{account_id}/switch-command": {
+      "post": {
+        "summary": "Manual Command",
+        "operationId": "manual_command_api_v1_workspaces__workspace_id__accounts__account_id__switch_command_post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Account Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SwitchPlatform"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SwitchCommand"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/switch/{token}/{platform}": {
+      "get": {
+        "summary": "Manual Download",
+        "operationId": "manual_download_api_v1_switch__token___platform__get",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token"
+            }
+          },
+          {
+            "name": "platform",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "macos",
+                "windows"
+              ],
+              "type": "string",
+              "title": "Platform"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/manual-switch/consume": {
       "post": {
         "summary": "Manual Consume",
@@ -2879,14 +2991,6 @@
       },
       "ManualConsume": {
         "properties": {
-          "token": {
-            "type": "string",
-            "maxLength": 128,
-            "minLength": 20,
-            "format": "password",
-            "title": "Token",
-            "writeOnly": true
-          },
           "platform": {
             "type": "string",
             "enum": [
@@ -2894,13 +2998,21 @@
               "windows"
             ],
             "title": "Platform"
+          },
+          "token": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 20,
+            "format": "password",
+            "title": "Token",
+            "writeOnly": true
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "token",
-          "platform"
+          "platform",
+          "token"
         ],
         "title": "ManualConsume"
       },
@@ -2914,10 +3026,6 @@
             ],
             "title": "Platform"
           },
-          "script": {
-            "type": "string",
-            "title": "Script"
-          },
           "command": {
             "type": "string",
             "title": "Command"
@@ -2925,14 +3033,18 @@
           "expires_at": {
             "type": "number",
             "title": "Expires At"
+          },
+          "script": {
+            "type": "string",
+            "title": "Script"
           }
         },
         "type": "object",
         "required": [
           "platform",
-          "script",
           "command",
-          "expires_at"
+          "expires_at",
+          "script"
         ],
         "title": "ManualScript"
       },
@@ -3340,6 +3452,33 @@
         "type": "object",
         "title": "Spend"
       },
+      "SwitchCommand": {
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": [
+              "macos",
+              "windows"
+            ],
+            "title": "Platform"
+          },
+          "command": {
+            "type": "string",
+            "title": "Command"
+          },
+          "expires_at": {
+            "type": "number",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "platform",
+          "command",
+          "expires_at"
+        ],
+        "title": "SwitchCommand"
+      },
       "SwitchIssued": {
         "properties": {
           "token": {
@@ -3357,6 +3496,24 @@
           "expires_at"
         ],
         "title": "SwitchIssued"
+      },
+      "SwitchPlatform": {
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": [
+              "macos",
+              "windows"
+            ],
+            "title": "Platform"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "platform"
+        ],
+        "title": "SwitchPlatform"
       },
       "Usage": {
         "properties": {

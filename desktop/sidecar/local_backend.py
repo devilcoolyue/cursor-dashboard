@@ -34,7 +34,7 @@ def main():
     if fixture:
         from desktop_fixture import FixtureInstallation, PreviewGateway, seed
         Path(data_dir).mkdir(parents=True, exist_ok=True)
-        kwargs = {"gateway": PreviewGateway(), "installation": FixtureInstallation(data_dir)}
+        kwargs = {"gateway": PreviewGateway(), "installation": FixtureInstallation(data_dir), "script_preview": True}
     runtime = DesktopRuntime(Path(data_dir), **kwargs)
     if fixture and runtime.core:
         asyncio.run(seed(runtime))

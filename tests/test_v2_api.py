@@ -54,7 +54,9 @@ class APIClient:
                     else:
                         self.cookies[name] = morsel.value
         content = b"".join(m.get("body", b"") for m in messages if m["type"] == "http.response.body")
-        return start["status"], json.loads(content) if content else None, response_headers
+        result = (json.loads(content) if 'application/json' in response_headers.get('content-type', '')
+                  else content.decode()) if content else None
+        return start["status"], result, response_headers
 
     async def login(self, login="first@example.test"):
         result = await self.request("POST", "/api/v1/auth/login", {"login": login, "password": PASSWORD})

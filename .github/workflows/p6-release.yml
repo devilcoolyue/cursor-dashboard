@@ -3,7 +3,7 @@ name: P6 preview delivery and recovery
 on:
   workflow_dispatch:
   push:
-    branches: [feat/v2-p6]
+    branches: [main, feat/v2-p6]
   pull_request:
     paths: ['LICENSE', 'dev/release.py', 'tests/test_release*.py', 'Dockerfile', '.dockerignore', 'deploy/v2/**', 'pyproject.toml', 'uv.lock', 'frontend/package*.json', 'desktop/**', '.github/workflows/p6-release.yml']
 
@@ -31,11 +31,13 @@ jobs:
       - name: Versions, tracked source and recovery rehearsals
         run: |
           uv run --frozen python dev/release.py check
-          uv run --frozen python -m unittest discover -s tests -p 'test_release*.py' -v
-          uv run --frozen python -m unittest discover -s tests -p 'test_v2*.py' -v
+          uv run --frozen python -m unittest discover -s tests -v
       - name: Build and verify installable Web wheel
         run: |
           npm --prefix frontend ci
+          uv run --frozen python dev/export-openapi.py
+          npm --prefix frontend run api:generate
+          git diff --exit-code -- frontend/openapi.json frontend/src/api.generated.ts
           uv run --frozen python dev/build-web.py
           uv build --wheel --out-dir output/p6/wheel
           python dev/verify-core-wheel.py output/p6/wheel/*.whl --web
@@ -94,6 +96,7 @@ jobs:
           uv run --frozen python dev/release.py check
           uv run --frozen python -m unittest discover -s tests -p 'test_release*.py' -v
           uv run --frozen python -m unittest discover -s tests -p test_v2_upgrade.py -v
+          uv run --frozen python -m unittest discover -s tests -p test_local_commands.py -v
           npm --prefix desktop test
       - name: Freeze and inspect desktop runtime
         run: |

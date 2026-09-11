@@ -68,9 +68,9 @@ class PreviewGateway:
         if name == 'desktop_aggregated':
             await asyncio.sleep(.1)
             return {'aggregations': [
-                {'modelIntent': 'Composer', 'tier': 'default', 'totalCents': 550, 'inputTokens': 190000, 'outputTokens': 13000},
-                {'modelIntent': 'Claude Sonnet', 'tier': 'other', 'totalCents': 890, 'inputTokens': 285000, 'outputTokens': 18000},
-                {'modelIntent': 'Grok', 'tier': 'default', 'totalCents': 160, 'inputTokens': 64000, 'outputTokens': 4200},
+                {'modelIntent': 'Composer', 'tier': 2, 'totalCents': 550, 'inputTokens': 190000, 'outputTokens': 13000},
+                {'modelIntent': 'Claude Sonnet', 'tier': 1, 'totalCents': 890, 'inputTokens': 285000, 'outputTokens': 18000},
+                {'modelIntent': 'Grok', 'tier': 2, 'totalCents': 160, 'inputTokens': 64000, 'outputTokens': 4200},
             ]}
         raise RuntimeError('Unknown preview provider operation')
 

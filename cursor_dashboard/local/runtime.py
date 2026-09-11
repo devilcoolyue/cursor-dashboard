@@ -14,6 +14,7 @@ from ..runtime.lock import RuntimeLock
 from ..runtime.settings import CoreConfig
 from .archive import read_archive
 from .cursor import CursorInstallation
+from .commands import LocalCommands
 from .files import private_directory, write_new
 from .identity import LocalIdentity
 from .keys import DesktopKeys, SystemKeyStore
@@ -22,7 +23,7 @@ from .switching import SwitchExecutor
 
 
 class DesktopRuntime:
-    def __init__(self, data_dir, *, store=None, gateway=None, installation=None, connections=None):
+    def __init__(self, data_dir, *, store=None, gateway=None, installation=None, connections=None, script_preview=False):
         self.directory = private_directory(Path(data_dir))
         self.lock = RuntimeLock(self.directory / ".desktop.lock").acquire()
         self.store = store or SystemKeyStore(self.directory)
@@ -33,6 +34,7 @@ class DesktopRuntime:
         self.phase = "starting"
         self.open_lock = threading.Lock()
         self.executor = SwitchExecutor(self.directory, installation or CursorInstallation())
+        self.commands = LocalCommands(self.directory, preview=script_preview)
         self.connections = connections or Connections(self.directory)
         self.job = None
         self.background = False
@@ -109,6 +111,7 @@ class DesktopRuntime:
         while True:
             await asyncio.sleep(10)
             now = time.time()
+            self.commands.prune()
             if now - previous > 30 or now < previous:
                 self.resume()
             previous = now
@@ -129,6 +132,13 @@ class DesktopRuntime:
                 self.refresh_error = "Refresh failed; the last successful snapshot is retained" if row["error_kind"] else None
             except Exception:
                 self.refresh_error = "Refresh failed; the last successful snapshot is retained"
+
+    async def switch_command(self, workspace_id, account_id, platform):
+        core = self.require()
+        actor = self.identity.actor()
+        issued = await core.switches.issue(actor, workspace_id, account_id)
+        return core.switches.consume(actor, issued["token"],
+            render=lambda delivery: self.commands.render(delivery, platform))
 
     def start_switch(self, workspace_id, account_id):
         core = self.require()
@@ -208,6 +218,7 @@ class DesktopRuntime:
         if self.job is not None:
             await self.job
         self.connections.close()
+        self.commands.prune(all_files=True)
         if self.core:
             try:
                 self.identity.close()

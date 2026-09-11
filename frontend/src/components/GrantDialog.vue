@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import UiDialog from './UiDialog.vue'
+import UiSelect from './UiSelect.vue'
 import { api, accountPath, spacePath, message, type Account, type Schema } from '../api'
 import { roleText } from '../format'
 const props = defineProps<{ account: Account }>()
@@ -17,11 +18,10 @@ async function load() {
   grants.value = Object.fromEntries(access.map(g => [g.user_id, g.level]))
 }
 onMounted(async () => { busy.value = true; try { await load() } catch (reason) { error.value = message(reason) } finally { busy.value = false } })
-async function change(userId: string, event: Event) {
-  const level = (event.target as HTMLSelectElement).value
+async function change(userId: string, level: string) {
   busy.value = true; error.value = ''
   try { await api.request(accountPath(props.account) + '/grants/' + userId, level ? 'PUT' : 'DELETE', level ? { level } : undefined, controller.signal); await load() }
-  catch (reason) { error.value = message(reason); (event.target as HTMLSelectElement).value = grants.value[userId] || '' }
+  catch (reason) { error.value = message(reason) }
   finally { busy.value = false }
 }
 </script>
@@ -30,7 +30,7 @@ async function change(userId: string, event: Event) {
     <p class="muted">查看权限允许查看额度和明细；使用权限还允许刷新与手工切换。所有者和管理员自动管理全部账号。</p>
     <p v-if="error" class="error" role="alert">{{ error }}</p><p v-if="!members.length && !busy">暂无普通成员，请先在空间设置中邀请成员。</p>
     <div v-for="member in members" :key="member.id" class="setting-row"><div><strong>{{ member.login }}</strong><small>{{ roleText(member.role) }}{{ member.active ? '' : ' · 已停用' }}</small></div>
-      <select :aria-label="`${member.login}的账号权限`" :value="grants[member.id] || ''" :disabled="busy" @change="change(member.id, $event)"><option value="">无权限</option><option value="view">查看</option><option v-if="member.role !== 'viewer'" value="use">使用</option></select>
+      <UiSelect :aria-label="`${member.login}的账号权限`" :model-value="grants[member.id] || ''" :options="[{ value: '', label: '无权限' }, { value: 'view', label: '查看' }, ...(member.role !== 'viewer' ? [{ value: 'use', label: '使用' }] : [])]" :disabled="busy" @update:model-value="change(member.id, $event)" />
     </div>
   </UiDialog>
 </template>

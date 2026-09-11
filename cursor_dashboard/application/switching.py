@@ -11,7 +11,7 @@ import time
 
 from sqlalchemy import delete, select
 
-from ..domain.core import Conflict, NotFound, Secrets, Unauthenticated
+from ..domain.core import Actor, Conflict, NotFound, Secrets, Unauthenticated
 from ..infrastructure.persistence.models import Credential, SwitchTicket, UserSession
 from ..infrastructure.persistence.policy import audit, authorize
 from .security import Limiter, digest
@@ -58,10 +58,24 @@ class SwitchService:
             return {"token": token, "expires_at": expires}
 
     def consume(self, actor, token, *, render=None):
+        if actor is None:
+            raise Unauthenticated("Switch consumption requires an authenticated session")
+        return self._consume(actor, token, render=render)
+
+    def download(self, token, *, render, request_id=None):
+        """A Web ticket authorizes one fixed script download without browser cookies."""
+        return self._consume(None, token, render=render, request_id=request_id)
+
+    def _consume(self, actor, token, *, render, request_id=None):
         """Check, decrypt, consume and audit in one write transaction, with no await."""
         with self.db.transaction(write=True) as session:
             ticket = session.scalar(select(SwitchTicket).where(SwitchTicket.token_hash == digest(token)))
-            if (ticket is None or ticket.user_id != actor.user_id or ticket.session_id != actor.session_id
+            if actor is None and ticket is not None:
+                login = session.get(UserSession, ticket.session_id)
+                # Device tickets must never bypass their authenticated native transport.
+                if login is not None and login.kind == "web":
+                    actor = Actor(ticket.user_id, ticket.session_id, request_id)
+            if (ticket is None or actor is None or ticket.user_id != actor.user_id or ticket.session_id != actor.session_id
                     or ticket.consumed_at is not None or ticket.expires_at <= time.time()):
                 raise NotFound("Switch ticket is unavailable")
             account = authorize(session, actor, "use", ticket.workspace_id, ticket.account_id)

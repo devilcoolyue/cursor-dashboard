@@ -86,6 +86,8 @@ API 不开启跨域请求。响应使用 `Cache-Control: no-store`。错误不�
 | `/instance/users`、`/instance/users/{id}` | GET 用户 / PUT `{active: true或false}`（实例管理员） |
 | `/workspaces/{w}/accounts/{a}/manual-switch` | POST 签发当前会话绑定的短期票据 |
 | `/manual-switch/consume` | POST `{token, platform: macos或windows}` 原子领取固定脚本，仅限 use |
+| `/workspaces/{w}/accounts/{a}/switch-command` | POST `{platform: macos或windows}` 生成终端短命令，仅限 use，要求当前 Web 会话与 CSRF |
+| `/switch/{token}/{platform}` | GET 持一次性 Web 票据下载固定脚本，无需浏览器 Cookie；原子消费前复查会话、权限和凭证版本 |
 | `/health` | GET 健康检查，仍校验 Host/Origin |
 | `/instance/audit` | GET 实例事件，不包含他人空间事件 |
 
@@ -102,7 +104,7 @@ uv run --frozen python -m unittest discover -s tests -p test_identity.py -v
 uv run --frozen python -m unittest discover -s tests -p 'test_v2*.py' -v
 python desktop/scripts/legacy-baseline.py
 uv build --wheel --out-dir output/p2/wheels
-python dev/verify-core-wheel.py output/p2/wheels/cursor_dashboard-1.4.0-py3-none-any.whl
+python dev/verify-core-wheel.py output/p2/wheels/cursor_dashboard-0.0.1-py3-none-any.whl
 ```
 
 测试全部使用临时库、合成凭证和模拟上游。wheel 验证另建环境，从独立目录运行安装后的 CLI 和真实 HTTP 进程，不接触真实 Cursor 客户端或账号。
