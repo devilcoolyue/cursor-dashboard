@@ -15,6 +15,10 @@ permissions:
 env:
   PYTHONUTF8: '1'
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   web:
     runs-on: ubuntu-latest

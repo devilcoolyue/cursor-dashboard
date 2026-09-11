@@ -10,6 +10,9 @@ permissions:
   contents: read
 env:
   PYTHONUTF8: '1'
+defaults:
+  run:
+    shell: bash
 jobs:
   browser:
     strategy:

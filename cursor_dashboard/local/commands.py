@@ -36,6 +36,7 @@ class LocalCommands:
                        f"switch_result=$?; /bin/rm -f {quoted}; exit \"$switch_result\")")
         else:
             quoted = "'" + str(path).replace("'", "''") + "'"
-            command = (f"& {{ try {{ & ([scriptblock]::Create([IO.File]::ReadAllText({quoted}))) }} "
+            command = (f"& {{ $ErrorActionPreference = 'Stop'; "
+                       f"try {{ & ([scriptblock]::Create([IO.File]::ReadAllText({quoted}))) }} "
                        f"finally {{ Remove-Item -LiteralPath {quoted} -Force -ErrorAction SilentlyContinue }} }}")
         return {"platform": platform, "expires_at": script["expires_at"], "command": command}
