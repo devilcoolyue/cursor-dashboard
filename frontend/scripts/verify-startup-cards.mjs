@@ -40,8 +40,11 @@ try {
     await delay(100)
   }
   for (const [engine, launcher] of Object.entries({ chromium, webkit }).filter(([name]) => !process.env.PLAYWRIGHT_BROWSER || process.env.PLAYWRIGHT_BROWSER === name)) {
+    console.log(`CHECK ${engine}: launch and Web startup`)
     browser = await launcher.launch({ headless: true })
     const context = await fixtureContext(browser, { viewport: { width: 1180, height: 780 } })
+    context.setDefaultTimeout(15000)
+    context.setDefaultNavigationTimeout(15000)
     const page = await context.newPage()
     const errors = []
     page.on('pageerror', error => errors.push(error.message))
@@ -78,6 +81,7 @@ try {
     await page.getByLabel('密码', { exact: true }).fill('Preview password 42!')
     await click(page, '登录')
     await visible(page.locator('[data-account]').nth(1))
+    console.log(`CHECK ${engine}: account controls and focus`)
     assert.equal(await page.locator('[data-account]').first().locator('.quota-limit').count(), 3)
     assert.match(await page.locator('[data-account]').first().locator('.spend-limit').innerText(), /50/)
 
@@ -151,6 +155,7 @@ try {
       await route.fulfill({ response, json: data })
     })
     await page.reload()
+    console.log(`CHECK ${engine}: quota limits and card settings`)
     const card = page.locator('[data-account]').first()
     await visible(card.getByRole('heading', { name: '额度用尽 · 演示' }))
     assert.equal(await card.locator('.quota-limit').count(), 3)
@@ -212,6 +217,9 @@ try {
 
     // Native IPC is mocked only in this isolated browser; no Keychain, user data or real Cursor access.
     const nativeContext = await browser.newContext({ viewport: { width: 1180, height: 780 } })
+    nativeContext.setDefaultTimeout(15000)
+    nativeContext.setDefaultNavigationTimeout(15000)
+    console.log(`CHECK ${engine}: native startup and recovery`)
     const nativePage = await nativeContext.newPage()
     let interrupted = false
     await nativeContext.exposeBinding('nativeInvoke', (_, command, args) => {

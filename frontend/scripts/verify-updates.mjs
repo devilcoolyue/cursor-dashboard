@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import { readFile, mkdir } from 'node:fs/promises'
 import { once } from 'node:events'
-import { resolve, extname, join } from 'node:path'
+import { resolve, extname, join, relative, isAbsolute, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
 
@@ -13,7 +13,8 @@ const server = createServer(async (request, response) => {
   try {
     const pathname = new URL(request.url, 'http://localhost').pathname
     const path = resolve(dist, '.' + (pathname === '/' ? '/index.html' : pathname))
-    if (!path.startsWith(dist + '/')) throw Error('Invalid path')
+    const relativePath = relative(dist, path)
+    if (relativePath === '..' || relativePath.startsWith('..' + sep) || isAbsolute(relativePath)) throw Error('Invalid path')
     response.setHeader('Content-Type', ({ '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml' })[extname(path)] || 'application/octet-stream')
     response.end(await readFile(path))
   } catch { response.writeHead(404).end() }

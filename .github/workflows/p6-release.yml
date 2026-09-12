@@ -129,6 +129,7 @@ jobs:
               license_path = install_dir / 'LICENSE'
           else:
               installer = next((release / 'bundle/dmg').glob('*.dmg'))
+              subprocess.run(['codesign', '--verify', '--deep', '--strict', str(release / 'bundle/macos/Cursor Panel.app')], check=True)
               executable = release / 'bundle/macos/Cursor Panel.app/Contents/MacOS/cursor-panel-desktop'
               license_path = release / 'bundle/macos/Cursor Panel.app/Contents/Resources/LICENSE'
           assert license_path.read_bytes() == pathlib.Path('LICENSE').read_bytes(), 'Installed MIT license missing or changed'
