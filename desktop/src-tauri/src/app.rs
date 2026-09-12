@@ -21,6 +21,8 @@ use tauri::{
 
 #[path = "connected.rs"]
 mod connected;
+#[path = "backup_retention.rs"]
+mod backup_retention;
 
 fn nonce() -> String {
     let mut bytes = [0u8; 32];
@@ -519,10 +521,12 @@ pub(crate) fn backup_for_update(app: &tauri::AppHandle) -> Result<(), String> {
         .join("update-backups");
     let id = nonce();
     let temporary = backups.join(format!(".partial-{id}"));
-    if copy_directory(&directory, &temporary).and_then(|_| fs::rename(&temporary, backups.join(id))).is_err() {
+    if copy_directory(&directory, &temporary).and_then(|_| fs::rename(&temporary, backups.join(&id))).is_err() {
         let _ = fs::remove_dir_all(temporary);
         return Err("升级前备份未完成，当前应用未被替换，请检查磁盘空间后重试。".into());
     }
+    backup_retention::prune(&backups, &id, 3, 1024 * 1024 * 1024)
+        .map_err(|_| "升级备份已保存，但旧备份清理失败；请检查备份目录权限和磁盘空间。")?;
     Ok(())
 }
 

@@ -185,7 +185,7 @@ class AgentTest(unittest.TestCase):
                 self.assertEqual(status["stage"], "failed")
                 self.assertIn("CURSOR_PANEL_IMAGE=sha256:" + "a" * 64, env.read_text())
                 self.assertIn("CURSOR_PANEL_DATA_VOLUME=original-data", env.read_text())
-                self.assertIn("up", calls[-1])
+                self.assertTrue(any(call[0] == "compose" and "up" in call and "proxy" in call for call in calls))
 
     def test_failed_download_does_not_stop_the_running_server(self):
         _, env, original, calls, status = self.run_upgrade(fail_at="load")

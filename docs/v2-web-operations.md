@@ -25,7 +25,13 @@ Compose 使用独立命名卷：`data` 保存数据库，`secrets` 保存主密�
 
 如改用宿主目录挂载，预先建立目录并赋予 UID 10001 访问权限，密钥文件必须为 0600；不要把运行数据或密钥放进源码目录/镜像构建上下文。
 
-Caddy 自动申请 HTTPS 证书，保持 Host，并将请求转发到内部 8000 端口。业务端口不发布到宿主。若使用已有代理，只启动 panel，让代理加入同一网络；保持原 Host，设置精确 HTTPS origin，禁止代理记录 Cookie、请求体和完整查询串。服务不信任转发 IP，代理后的用户共享登录来源限额。
+Caddy 自动申请 HTTPS 证书，保持 Host，并将请求转发到内部 8000 端口。业务端口不发布到宿主。标准 Compose 使用独立网段 `172.30.87.0/24`，将 Caddy 固定为 `172.30.87.2`，后端只信任该地址的转发头；Caddy 覆盖 X-Forwarded-For 为实际连接来源，客户端不能伪造限流身份。网段冲突时，在 `.env` 中同时修改 `CURSOR_PANEL_SUBNET`、`CURSOR_PANEL_DYNAMIC_RANGE` 和 `CURSOR_PANEL_PROXY_IP`；动态分配段默认 `172.30.87.128/25`，必须属于网段且不包含代理固定 IP，避免业务容器先启动时占用代理地址。
+
+若使用已有代理，只启动 panel，让代理加入同一网络，并将 `CURSOR_TRUSTED_PROXIES` 指定为其实际 IP 或受控 CIDR；源码运行可用同名环境变量或 `cursor-api --trusted-proxies`，默认空值不信任转发头，拒绝 `*` 和全网 CIDR。保持原 Host，设置精确 HTTPS origin，禁止代理记录 Cookie、请求体和完整查询串。前面还有 CDN/负载均衡时，需在可信边界内配置真实来源解析，不能直接透传客户端提供的转发头。
+
+panel、proxy、maintenance 均配置 Docker `json-file` 日志轮转：每份 10 MiB、最多 5 份。应用仍关闭访问日志以避免记录切换票据。已有容器需要重新创建才会采用新日志配置；旧容器日志不由应用直接删除。更改 Compose 网段同样需要维护窗口重建网络和容器，保留命名数据卷，不能使用 `down -v`。
+
+V2 每分钟分批清理审计和过期认证记录；审计默认保留最近 90 天，且全实例最多保留 100,000 条，任一上限达到即从最旧记录开始删除。可通过 `CURSOR_AUDIT_RETENTION_DAYS`、`CURSOR_AUDIT_MAX_EVENTS` 设置正整数；后台按每批最多 5,000 条处理已有积压。需要更长审计历史时先备份或外部归档。普通删除回收的 SQLite 页面会被后续写入复用；需要缩小历史大文件时，停止 panel 后运行 `cursor-core maintain --compact`，该命令持有数据目录锁并执行清理、checkpoint 和 VACUUM。应用与维护容器使用相同的审计保留配置。
 
 `GET /api/v1/health` 检查数据库可读性，所有入口仍检查 Host/Origin。Docker 健康检查在容器内使用配置的 Host。服务启动前校验密钥、schema 和认证初始化状态。
 

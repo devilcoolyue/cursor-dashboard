@@ -3,5 +3,6 @@
     header Strict-Transport-Security "max-age=31536000"
     reverse_proxy panel:8000 {
         header_up Host {host}
+        header_up X-Forwarded-For {remote_host}
     }
 }

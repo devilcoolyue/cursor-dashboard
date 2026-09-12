@@ -178,7 +178,7 @@ class PersistenceTest(CoreFixture, unittest.TestCase):
             self.account()
         self.assertFalse((self.root / "forbidden.db").exists())
         with self.core.db.transaction() as session:
-            self.assertEqual(session.execute(text("SELECT version_num FROM alembic_version")).scalar(), "0003_devices")
+            self.assertEqual(session.execute(text("SELECT version_num FROM alembic_version")).scalar(), "0004_retention")
         with self.assertRaises(Conflict):
             self.repo.create_workspace("first@example.test", "Bad", "enterprise")
 

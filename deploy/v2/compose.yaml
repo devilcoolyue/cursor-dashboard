@@ -1,14 +1,23 @@
 name: cursor-panel-v2
+x-logging: &bounded-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
 services:
   panel:
+    logging: *bounded-logging
     image: ${CURSOR_PANEL_IMAGE:-cursor-panel-v2:local}
     build:
       context: ../..
       args:
-        APP_VERSION: ${CURSOR_PANEL_VERSION:-0.0.2}
+        APP_VERSION: ${CURSOR_PANEL_VERSION:-0.0.3}
         SOURCE_REVISION: ${CURSOR_PANEL_REVISION:-unrecorded}
     environment:
       CURSOR_PUBLIC_ORIGIN: https://${CURSOR_PANEL_DOMAIN:?Set CURSOR_PANEL_DOMAIN in .env}
+      CURSOR_TRUSTED_PROXIES: ${CURSOR_PANEL_PROXY_IP:-172.30.87.2}
+      CURSOR_AUDIT_RETENTION_DAYS: ${CURSOR_AUDIT_RETENTION_DAYS:-90}
+      CURSOR_AUDIT_MAX_EVENTS: ${CURSOR_AUDIT_MAX_EVENTS:-100000}
     volumes:
       - data:/var/lib/cursor-panel
       - secrets:/run/cursor-secrets:ro
@@ -22,10 +31,13 @@ services:
     cap_drop: [ALL]
     stop_grace_period: 45s
   maintenance:
+    logging: *bounded-logging
     image: ${CURSOR_PANEL_IMAGE:-cursor-panel-v2:local}
     profiles: [maintenance]
     environment:
       CURSOR_PUBLIC_ORIGIN: https://${CURSOR_PANEL_DOMAIN:?Set CURSOR_PANEL_DOMAIN in .env}
+      CURSOR_AUDIT_RETENTION_DAYS: ${CURSOR_AUDIT_RETENTION_DAYS:-90}
+      CURSOR_AUDIT_MAX_EVENTS: ${CURSOR_AUDIT_MAX_EVENTS:-100000}
     volumes:
       - data:/var/lib/cursor-panel
       - secrets:/run/cursor-secrets
@@ -36,6 +48,7 @@ services:
       - no-new-privileges:true
     cap_drop: [ALL]
   proxy:
+    logging: *bounded-logging
     image: caddy:2-alpine
     environment:
       CURSOR_PANEL_DOMAIN: ${CURSOR_PANEL_DOMAIN}
@@ -47,9 +60,18 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     restart: unless-stopped
+    networks:
+      default:
+        ipv4_address: ${CURSOR_PANEL_PROXY_IP:-172.30.87.2}
     depends_on:
       panel:
         condition: service_healthy
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${CURSOR_PANEL_SUBNET:-172.30.87.0/24}
+          ip_range: ${CURSOR_PANEL_DYNAMIC_RANGE:-172.30.87.128/25}
 volumes:
   data:
     name: ${CURSOR_PANEL_DATA_VOLUME:-cursor-panel-v2_data}

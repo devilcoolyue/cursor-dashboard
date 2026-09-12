@@ -425,7 +425,7 @@ class WorkspaceService:
                 authorize(session, actor, "audit", workspace_id)
             # Instance admins see instance events only; workspace events require membership.
             rows = session.scalars(select(AuditEvent).where(AuditEvent.workspace_id == workspace_id)
-                .order_by(AuditEvent.created_at.desc(), AuditEvent.id).limit(limit).offset(offset))
+                .order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc()).limit(limit).offset(offset))
             return [{"id": e.id, "actor_id": e.actor_id, "workspace_id": e.workspace_id,
                      "resource_id": e.resource_id, "action": e.action, "result": e.result,
                      "created_at": e.created_at, "request_id": e.request_id, "changes": e.changes} for e in rows]

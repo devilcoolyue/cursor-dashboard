@@ -19,6 +19,7 @@ import requests
 
 from .control import atomic_json, read_json
 from .releases import UpdateError, server_manifest, version_tuple
+from .retention import UpdateRetention
 
 
 def docker(*args, timeout=300):
@@ -78,6 +79,7 @@ class Agent:
         self.private = Path(state_dir)
         self.runner, self.manifest, self.downloader = runner, manifest, downloader
         self.journal = self.private / "recovery.json"
+        self.retention = UpdateRetention(self)
 
     def compose(self, *args, timeout=300):
         return self.runner("compose", "--env-file", str(self.env_file),
@@ -99,17 +101,20 @@ class Agent:
         journal = read_json(self.journal)
         if journal.get("committed"):
             self.compose("up", "-d", "--no-build", "--wait", "--wait-timeout", "90", "panel", "proxy", timeout=150)
+            self.retention.remember(journal)
             self.status(journal, "complete")
         else:
             self.status(journal, "rolling_back", "上次升级被中断，正在恢复旧版本。")
             self.rollback(journal)
+            self.retention.remember(journal, failed=True)
             self.status(journal, "failed", "上次升级被中断，旧版本和原数据已恢复。")
         self.journal.unlink()
+        self.retention.prune()
         (self.control / "request.json").unlink(missing_ok=True)
         (self.control / "pending").unlink(missing_ok=True)
 
     def execute(self, job):
-        uuid.UUID(job["job_id"])
+        job = {**job, "job_id": str(uuid.UUID(job["job_id"]))}
         version_tuple(job["version"])
         version = job["version"]
         changed = False
@@ -143,6 +148,9 @@ class Agent:
             journal = {**job, "environment": updated_env(environment, {"CURSOR_PANEL_IMAGE": old_image,
                 "CURSOR_PANEL_DATA_VOLUME": old_volume}), "old_volume": old_volume, "old_image": old_image}
             image = manifest["image_id"]
+            new_volume = f"{old_volume.split('-update-')[0]}-update-{job['job_id']}"
+            journal.update(new_volume=new_volume, new_image=image)
+            self.retention.remember(journal, failed=True)
             self.status(job, "downloading")
             with tempfile.TemporaryDirectory(prefix="cursor-panel-update-") as directory:
                 artifact = Path(directory) / "image.tar"
@@ -155,11 +163,10 @@ class Agent:
                 raise UpdateError("更新镜像与签名清单不符。")
             if self.env_file.read_text() != environment:
                 raise UpdateError("部署配置已变化，请重新检查更新。")
-            new_volume = f"{old_volume.split('-update-')[0]}-update-{job['job_id']}"
-            self.runner("volume", "create", new_volume)
             atomic_json(self.journal, journal)
-            write_env(self.env_file.with_name(self.env_file.name + ".before-" + job["job_id"]), environment)
             changed = True
+            self.runner("volume", "create", "--label", f"{self.retention.label}={self.retention.owner}", new_volume)
+            write_env(self.env_file.with_name(self.env_file.name + ".before-" + job["job_id"]), environment)
             self.status(job, "backing_up")
             self.compose("stop", "--timeout", "90", "proxy", "panel", timeout=120)
             self.runner("run", "--rm", "--network", "none", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
@@ -179,6 +186,7 @@ class Agent:
             committed = True
             # After traffic is admitted, recovery must retain all writes to the new volume.
             self.compose("up", "-d", "--no-build", "proxy", timeout=60)
+            self.retention.remember(journal)
             self.status(job, "complete", "升级完成，原数据卷和旧镜像已保留。")
             self.journal.unlink()
         except Exception as error:
@@ -189,6 +197,7 @@ class Agent:
                 self.status(job, "rolling_back")
                 try:
                     self.rollback(journal)
+                    self.retention.remember(journal, failed=True)
                     self.journal.unlink(missing_ok=True)
                 except Exception:
                     self.status(job, "failed", "升级未完成，自动恢复仍需处理；原数据已保留，请联系服务器维护者。")
@@ -197,6 +206,7 @@ class Agent:
             else:
                 self.status(job, "failed", str(error) if isinstance(error, UpdateError) else "升级准备失败，当前服务未被替换。")
         finally:
+            self.retention.prune()
             (self.control / "request.json").unlink(missing_ok=True)
             (self.control / "pending").unlink(missing_ok=True)
 
@@ -227,6 +237,7 @@ def main():
         threading.Thread(target=heartbeat, daemon=True).start()
         if not (agent.control / "status.json").exists():
             atomic_json(agent.control / "status.json", {"stage": "idle", "job_id": None, "version": None, "message": None})
+        next_retention = 0
         while True:
             if agent.journal.exists():
                 agent.recover()
@@ -242,6 +253,9 @@ def main():
                     (agent.control / "pending").unlink(missing_ok=True)
             elif (agent.control / "pending").exists() and time.time() - (agent.control / "pending").stat().st_mtime > 60:
                 (agent.control / "pending").unlink(missing_ok=True)
+            if time.monotonic() >= next_retention:
+                agent.retention.prune()
+                next_retention = time.monotonic() + 3600
             time.sleep(1)
 
 

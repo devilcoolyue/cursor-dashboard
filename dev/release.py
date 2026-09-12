@@ -185,7 +185,7 @@ def manifest(args):
         "source_dirty": dirty, "local_verification_only": dirty,
         "source_url": "https://github.com/devilcoolyue/cursor-dashboard",
         "build_run": os.environ.get("GITHUB_RUN_ID"), "build_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
-        "api_major": 1, "schema": "0003_devices", "remote_switch": False,
+        "api_major": 1, "schema": "0004_retention", "remote_switch": False,
         "signing": "unsigned", "notarized": False,
         "source_files_checked": count,
         "lock_sha256": {name: sha256(ROOT / name) for name in LOCKS},

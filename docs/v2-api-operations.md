@@ -1,6 +1,6 @@
 # V2 身份与 API 运行
 
-P5 新增设备授权与会话接口：浏览器通过已登录且带 CSRF 的 `POST /api/v1/auth/devices/authorize` 审批，原生后台以 S256 verifier 调用 `POST /api/v1/auth/devices/exchange` 单次交换；`GET /api/v1/auth/devices` 和 `DELETE /api/v1/auth/devices/{session_id}` 查看/撤销设备。设备 API 使用独立类型的 Bearer 会话，拒绝网页 Cookie 或浏览器 Origin/Fetch 请求头，不能复用旧 `PANEL_TOKEN`。生产 `remote_switch=false`，结构化切换签发及领取拒绝；详情见 [桌面连接说明](v2-connected-operations.md)。升级此版本需停止旧进程并升级到 schema `0003_devices`。
+P5 新增设备授权与会话接口：浏览器通过已登录且带 CSRF 的 `POST /api/v1/auth/devices/authorize` 审批，原生后台以 S256 verifier 调用 `POST /api/v1/auth/devices/exchange` 单次交换；`GET /api/v1/auth/devices` 和 `DELETE /api/v1/auth/devices/{session_id}` 查看/撤销设备。设备 API 使用独立类型的 Bearer 会话，拒绝网页 Cookie 或浏览器 Origin/Fetch 请求头，不能复用旧 `PANEL_TOKEN`。生产 `remote_switch=false`，结构化切换签发及领取拒绝；详情见 [桌面连接说明](v2-connected-operations.md)。当前安全与容量维护版本需停止旧进程并升级到 schema `0004_retention`；审计保留与可信代理配置见 [Web 部署](v2-web-operations.md)。
 
 P3 已接入 Vue 界面、Web 手工脚本、容器与远程 CLI，见 [Web 部署与使用](v2-web-operations.md)。首次管理员初始化继续使用离线命令。
 P2 在 P1 核心上增加真实用户认证、团队成员、账号授权、审计及独立 `/api/v1`。入口是 `cursor-api`；旧 `cursor-panel` 保留原兼容服务。P3 在此基础上交付新版 Web 界面、容器和手工切换适配。
@@ -41,7 +41,7 @@ uv run --frozen cursor-core --data-dir ./v2-data --key-file ./v2-secrets/master.
   server-init --login 原P1空间Owner的登录邮箱
 ```
 
-`0001_core → 0002_identity → 0003_devices` 保留账号、密文、原成员与导入回执，增加会话、邀请、切换票据、审计和设备授权码；设备会话新增类型及标识，旧网页会话与票据继续保留。不会因升级自动授予实例管理员或公开数据。首次初始化保留同登录标识的旧用户 UUID/空间，并补建个人空间；再次初始化拒绝。原密钥继续使用，不重新 keygen。
+`0001_core → 0002_identity → 0003_devices → 0004_retention` 保留账号、密文、原成员与导入回执，增加会话、邀请、切换票据、审计和设备授权码；设备会话新增类型及标识，旧网页会话与票据继续保留。最后一步仅增加审计索引；保留期清理由运行时维护任务执行。不会因升级自动授予实例管理员或公开数据。首次初始化保留同登录标识的旧用户 UUID/空间，并补建个人空间；再次初始化拒绝。原密钥继续使用，不重新 keygen。
 
 其他 P1 无密码身份及忘记密码的恢复使用离线命令：
 

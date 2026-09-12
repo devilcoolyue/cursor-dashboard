@@ -15,6 +15,7 @@ import { isDesktop, connectionId } from './platform'
 import { startAutomaticUpdateChecks } from './updates'
 const route = useRoute(), router = useRouter()
 const collaborationMode = ref<'create' | 'join'>(), busy = ref(false), error = ref(''), sidebarCollapsed = ref(false)
+const sidebarMobileOpen = ref(false)
 const displayOpen = ref(false)
 let stopUpdateChecks: (() => void) | undefined
 watch(() => isDesktop || !!me.value, enabled => {
@@ -41,16 +42,16 @@ function focusMain() { document.getElementById('main-content')?.focus() }
   <StartupScreen v-else-if="startupError && route.path !== '/connections' && !route.meta.help" :busy="false" title="暂时无法打开面板" :description="startupError"><button @click="initialize">重试</button><RouterLink v-if="isDesktop" to="/connections">管理实例与返回本地</RouterLink><RouterLink to="/docs/troubleshooting">查看排查文档</RouterLink></StartupScreen>
   <template v-else>
     <div v-if="me && (!route.meta.public || route.meta.help || route.path === '/connections')" class="app-shell" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
-      <a class="skip-link" href="#main-content" @click.prevent="focusMain">跳到主要内容</a>
-      <AppSidebar v-model:collapsed="sidebarCollapsed" :busy="busy" @logout="logout" @create-team="collaborationMode = 'create'" @join-team="collaborationMode = 'join'" @display="displayOpen = true" />
-      <main id="main-content" class="main-content" tabindex="-1"><div v-if="!route.meta.help && !['/accounts', '/workspace', '/settings', '/instance', '/connections'].includes(route.path)" class="topbar"><span>{{ activeSpace?.name }}</span><span class="muted">Cursor · {{ isDesktop ? 'Desktop' : 'Web' }}</span></div><p v-if="error" role="alert" class="error global-error">{{ error }}</p><p v-if="connectionId && bootstrap && !bootstrap.capabilities.remote_switch && route.path === '/accounts'" class="notice">此实例尚未开放远程切换。你可以查看额度并执行获授权的账号操作。</p><RouterView :key="`${connectionId || 'local'}:${me.id}:${workspaceId}:${route.meta.help ? 'docs' : route.path}`" /></main>
+      <a class="skip-link" href="#main-content" :inert="sidebarMobileOpen" @click.prevent="focusMain">跳到主要内容</a>
+      <AppSidebar v-model:collapsed="sidebarCollapsed" v-model:mobile-open="sidebarMobileOpen" :busy="busy" @logout="logout" @create-team="collaborationMode = 'create'" @join-team="collaborationMode = 'join'" @display="displayOpen = true" />
+      <main id="main-content" class="main-content" tabindex="-1" :inert="sidebarMobileOpen"><div v-if="!route.meta.help && !['/accounts', '/workspace', '/settings', '/instance', '/connections'].includes(route.path)" class="topbar"><span>{{ activeSpace?.name }}</span><span class="muted">Cursor · {{ isDesktop ? 'Desktop' : 'Web' }}</span></div><p v-if="error" role="alert" class="error global-error">{{ error }}</p><p v-if="connectionId && bootstrap && !bootstrap.capabilities.remote_switch && route.path === '/accounts'" class="notice">此实例尚未开放远程切换。你可以查看额度并执行获授权的账号操作。</p><RouterView :key="`${connectionId || 'local'}:${me.id}:${workspaceId}:${route.meta.help ? 'docs' : route.path}`" /></main>
     </div>
     <RouterView v-else />
   </template>
   <CardDisplayDialog v-if="displayOpen && me" @close="displayOpen = false" />
   <TeamDialog v-if="collaborationMode && me" :mode="collaborationMode" @close="collaborationMode = undefined" />
   <GuideDialog v-if="guideOpen && (route.meta.help || (ready && !startupError && (!isDesktop || desktopStatus?.phase === 'ready')))" />
-  <aside v-else-if="guideProgress.active && ready && (route.meta.help || (me && !startupError && (!isDesktop || desktopStatus?.phase === 'ready')))" class="guide-resume" aria-label="继续新手指引">
+  <aside v-else-if="guideProgress.active && ready && (route.meta.help || (me && !startupError && (!isDesktop || desktopStatus?.phase === 'ready')))" class="guide-resume" aria-label="继续新手指引" :inert="sidebarMobileOpen">
     <button @click="openGuide"><UiIcon name="compass" :size="18" /><span><strong>继续新手指引</strong><small>{{ guideProgress.step + 1 }} / 6 · {{ guideSteps[guideProgress.step]?.title }}</small></span><UiIcon name="chevron" :size="14" /></button><button class="icon-button" aria-label="结束本次指引" @click="dismissGuide"><UiIcon name="close" :size="15" /></button>
   </aside>
 </template>

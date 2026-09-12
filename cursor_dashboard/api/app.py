@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import asyncio
+from contextlib import asynccontextmanager, suppress
 import uuid
 from pathlib import Path
 from typing import Literal
@@ -143,7 +145,18 @@ def create_app(core, *, public_origin, web_dir=None, manual_switch_preview=False
         raise CoreError("Initialize server authentication with cursor-core server-init before listening")
     secure = parsed.scheme == "https"
     cookie_name = "__Host-cursor_session" if secure else "cursor_session"
-    app = FastAPI(title="Cursor Dashboard V2", version="1", docs_url=None, redoc_url=None, openapi_url=None)
+    @asynccontextmanager
+    async def lifespan(app):
+        task = asyncio.create_task(core.retention.serve())
+        try:
+            yield
+        finally:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+
+    app = FastAPI(title="Cursor Dashboard V2", version="1", docs_url=None, redoc_url=None, openapi_url=None,
+                  lifespan=lifespan)
     app.state.core = core
     from cursor_dashboard import __version__
     from cursor_dashboard.updates import releases

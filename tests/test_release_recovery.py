@@ -107,7 +107,7 @@ class FailedUpgradeTest(unittest.TestCase):
                 self.assertEqual(core.repository.authorized(owner["workspace_id"], row.ref.account_id).secrets,
                                  Secrets("synthetic-cookie", "synthetic-at", "synthetic-rt"))
             with Core(config, upgrade=True) as core:
-                self.assertEqual(core.repository.verify()["schema"], "0003_devices")
+                self.assertEqual(core.repository.verify()["schema"], "0004_retention")
 
 
 class ServerRollbackTest(IdentityFixture, unittest.TestCase):

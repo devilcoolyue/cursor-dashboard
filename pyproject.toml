@@ -1,6 +1,6 @@
 [project]
 name = "cursor-dashboard"
-version = "0.0.2"
+version = "0.0.3"
 description = "查询多个 Cursor 账号的订阅套餐和额度余量（Web 面板 + 命令行）"
 readme = "README.md"
 license = "MIT"
@@ -13,7 +13,7 @@ dependencies = [
     "requests>=2.31",
     "sqlalchemy>=2.0,<3",
     "alembic>=1.16,<2",
-    "cryptography>=44,<47",
+    "cryptography>=50.0.1,<51",
 ]
 
 [dependency-groups]

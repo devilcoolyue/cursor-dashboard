@@ -213,7 +213,7 @@ class SwitchTicket(Base):
 
 class AuditEvent(Base):
     __tablename__ = "audit_events"
-    # Deliberately survives resource deletion. No payload, names or secrets.
+    # Survives resource deletion until the configured retention limit. No secrets.
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     actor_id: Mapped[str | None] = mapped_column(String(36))
     workspace_id: Mapped[str | None] = mapped_column(String(36), index=True)
@@ -223,3 +223,5 @@ class AuditEvent(Base):
     created_at: Mapped[float] = mapped_column(Float, default=time.time)
     request_id: Mapped[str | None] = mapped_column(String(36))
     changes: Mapped[dict | None] = mapped_column(JSON)
+    __table_args__ = (Index("audit_chronological", "created_at", "id"),
+                     Index("audit_workspace_chronological", "workspace_id", "created_at", "id"))

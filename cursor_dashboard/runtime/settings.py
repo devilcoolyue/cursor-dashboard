@@ -20,6 +20,8 @@ class CoreConfig:
     detail_ttl: float = 60
     lease_ttl: float = 300
     lease_wait: float = 180
+    audit_retention_days: int = 90
+    audit_max_events: int = 100000
 
     def __post_init__(self):
         object.__setattr__(self, "data_dir", Path(self.data_dir).expanduser().resolve())
@@ -35,6 +37,8 @@ class CoreConfig:
                 raise CoreError("Runtime intervals must be finite and non-negative")
         if self.lease_ttl <= 0 or not math.isfinite(self.lease_ttl) or self.request_concurrency < 1:
             raise CoreError("Invalid lease or concurrency configuration")
+        if any(type(value) is not int or value < 1 for value in (self.audit_retention_days, self.audit_max_events)):
+            raise CoreError("Audit retention days and maximum events must be positive integers")
 
     @property
     def database(self) -> Path:
@@ -49,5 +53,10 @@ class CoreConfig:
         values = os.environ if env is None else env
         if not values.get("CURSOR_CORE_DATA_DIR") or not values.get("CURSOR_CORE_KEY_FILE"):
             raise CoreError("Set CURSOR_CORE_DATA_DIR and CURSOR_CORE_KEY_FILE explicitly")
-        return cls(Path(values["CURSOR_CORE_DATA_DIR"]), Path(values["CURSOR_CORE_KEY_FILE"]),
-                   mode=values.get("CURSOR_CORE_MODE", "local"))
+        try:
+            return cls(Path(values["CURSOR_CORE_DATA_DIR"]), Path(values["CURSOR_CORE_KEY_FILE"]),
+                       mode=values.get("CURSOR_CORE_MODE", "local"),
+                       audit_retention_days=int(values.get("CURSOR_AUDIT_RETENTION_DAYS", "90")),
+                       audit_max_events=int(values.get("CURSOR_AUDIT_MAX_EVENTS", "100000")))
+        except ValueError:
+            raise CoreError("Audit retention settings must be positive integers") from None

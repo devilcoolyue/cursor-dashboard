@@ -47,6 +47,8 @@ def main(argv=None):
     sub.add_argument("source", type=Path)
     commands.add_parser("upgrade")
     commands.add_parser("verify")
+    sub = commands.add_parser("maintain")
+    sub.add_argument("--compact", action="store_true", help="Reclaim free SQLite pages while the server is stopped")
     for name in ("list", "refresh", "detail"):
         sub = commands.add_parser(name)
         sub.add_argument("--actor", required=True)
@@ -90,6 +92,22 @@ def main(argv=None):
                     result = backup(core, args.destination)
                 elif args.command in {"verify", "upgrade"}:
                     result = core.repository.verify()
+                elif args.command == "maintain":
+                    result = {}
+                    while True:
+                        removed = core.retention.prune()
+                        for table, count in removed.items():
+                            result[table] = result.get(table, 0) + count
+                        if not any(count >= core.retention.batch_size for count in removed.values()):
+                            break
+                    if args.compact:
+                        raw = core.db.engine.raw_connection()
+                        try:
+                            raw.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                            raw.execute("VACUUM")
+                        finally:
+                            raw.close()
+                    result["compacted"] = args.compact
                 elif args.command == "import-legacy":
                     result = import_backup(core.repository, Actor(args.actor), args.workspace, args.source)
                 elif args.command == "list":
