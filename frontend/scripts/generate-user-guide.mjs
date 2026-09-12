@@ -32,7 +32,7 @@ for (const article of articles) {
 }
 const result = lines.join('\n')
 if (process.argv.includes('--check')) {
-  assert.equal(await readFile(output, 'utf8'), result, 'Run npm --prefix frontend run docs:generate to update the handbook')
+  assert.equal((await readFile(output, 'utf8')).replaceAll('\r\n', '\n'), result, 'Run npm --prefix frontend run docs:generate to update the handbook')
   console.log(`Verified ${articles.length} handbook modules against in-app content.`)
 } else {
   await writeFile(output, result)
