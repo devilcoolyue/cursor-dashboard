@@ -13,7 +13,8 @@ dependencies = [
     "requests>=2.31",
     "sqlalchemy>=2.0,<3",
     "alembic>=1.16,<2",
-    "cryptography>=50.0.1,<51",
+    "cryptography>=50.0.1,<51; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+    "cryptography>=46.0.7,<47; sys_platform == 'darwin' and platform_machine == 'x86_64'",
 ]
 
 [dependency-groups]
