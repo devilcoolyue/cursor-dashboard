@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from contextlib import closing
 import json
 import os
 import sqlite3
@@ -44,7 +45,7 @@ class AdminCoreTest(unittest.TestCase):
         self.assertIsNone(admin.initialize_admin())
         self.assertEqual(admin.get_policy(), {"all_accounts": False, "departments": [], "account_ids": []})
         self.assertIsNotNone(admin.check_session(admin.login(generated, "first")["token"]))
-        with sqlite3.connect(store.DATABASE_PATH) as conn:
+        with closing(sqlite3.connect(store.DATABASE_PATH)) as conn, conn:
             stored = conn.execute("SELECT value FROM metadata WHERE key = 'admin_password_scrypt'").fetchone()[0]
         self.assertNotIn(generated, stored)
         self.assertTrue(stored.startswith("scrypt$"))
@@ -80,7 +81,7 @@ class AdminCoreTest(unittest.TestCase):
     def test_logout_and_no_raw_session_tokens_in_database(self):
         admin.initialize_admin("password")
         session = admin.login("password", "client")
-        with sqlite3.connect(store.DATABASE_PATH) as conn:
+        with closing(sqlite3.connect(store.DATABASE_PATH)) as conn, conn:
             record = conn.execute("SELECT token_hash FROM admin_sessions").fetchone()[0]
         self.assertNotEqual(record, session["token"])
         self.assertEqual(len(record), 64)
@@ -151,7 +152,7 @@ class AdminCoreTest(unittest.TestCase):
             policy = {**admin.get_policy(), **change}
             with self.assertRaises(ValueError):
                 admin.save_policy(policy)
-        with sqlite3.connect(store.DATABASE_PATH) as conn:
+        with closing(sqlite3.connect(store.DATABASE_PATH)) as conn, conn:
             conn.execute("UPDATE metadata SET value = 'broken' WHERE key = 'admin_switch_policy'")
         with self.assertRaises(store.AccountsError):
             admin.get_policy()

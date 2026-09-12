@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import stat
 import tempfile
@@ -47,7 +48,8 @@ class StoreTest(unittest.TestCase):
         self.assertEqual(
             [item["department"] for item in accounts], ["智慧运维", ""]
         )
-        self.assertEqual(stat.S_IMODE(store.DATABASE_PATH.stat().st_mode), 0o600)
+        if os.name != "nt":
+            self.assertEqual(stat.S_IMODE(store.DATABASE_PATH.stat().st_mode), 0o600)
         self.assertTrue(store.delete_account("one@example.com"))
         self.assertTrue(store.delete_account("备用号"))
 

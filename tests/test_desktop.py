@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from contextlib import closing
 import hashlib
 import json
 import os
@@ -85,8 +86,9 @@ class CommandTest(unittest.TestCase):
             self.assertNotIn("__SESSION_JSON__", value["script"])
             self.assertNotIn("__EXPIRES_AT__", value["script"])
             if platform == "macos":
-                result = subprocess.run(["/bin/bash", "-n"], input=value["script"], text=True, capture_output=True)
-                self.assertEqual(result.returncode, 0, result.stderr)
+                if Path("/bin/bash").is_file():
+                    result = subprocess.run(["/bin/bash", "-n"], input=value["script"], text=True, capture_output=True)
+                    self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_account_text_cannot_escape_the_script_here_document(self):
         email = "bad'\nCURSOR_PANEL_JS\n'@\n$(touch /tmp/unexpected)"
@@ -546,7 +548,7 @@ class DatabaseEngineTest(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name)
         self.database = self.root / "state.vscdb"
-        with sqlite3.connect(self.database) as db:
+        with closing(sqlite3.connect(self.database)) as db, db:
             db.execute("CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value BLOB)")
             db.executemany("INSERT INTO ItemTable VALUES (?, ?)", [
                 ("cursorAuth/accessToken", "old-token"), ("cursorAuth/cachedEmail", "old@example.test"),
@@ -588,7 +590,7 @@ exports.Database = class {
                               text=True, capture_output=True, timeout=15)
 
     def rows(self, filename=None):
-        with sqlite3.connect(filename or self.database) as db:
+        with closing(sqlite3.connect(filename or self.database)) as db, db:
             return dict(db.execute("SELECT key, value FROM ItemTable"))
 
     def test_switch_preserves_other_settings_and_backs_up_old_account(self):
@@ -608,7 +610,7 @@ exports.Database = class {
 
     def test_write_failure_rolls_back_every_login_field(self):
         before = self.rows()
-        with sqlite3.connect(self.database) as db:
+        with closing(sqlite3.connect(self.database)) as db, db:
             db.execute("""CREATE TRIGGER reject_email BEFORE INSERT ON ItemTable
                 WHEN NEW.key = 'cursorAuth/cachedEmail'
                 BEGIN SELECT RAISE(ABORT, 'simulated failure'); END""")
@@ -636,7 +638,7 @@ exports.Database = class {
         self.assertEqual(list(self.root.glob('*.bak')), [])
 
     def test_backup_includes_committed_wal_contents(self):
-        with sqlite3.connect(self.database) as writer:
+        with closing(sqlite3.connect(self.database)) as writer, writer:
             writer.execute('PRAGMA journal_mode = WAL')
             writer.execute('INSERT INTO ItemTable VALUES (?, ?)', ('editor.wal', 'latest'))
             writer.commit()

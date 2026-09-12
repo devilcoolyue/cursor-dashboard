@@ -18,7 +18,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, macos-15-intel, windows-latest]
+        # Playwright freezes WebKit on macOS 14; use current WebKit for browser checks.
+        os: [macos-15, macos-15-intel, windows-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:

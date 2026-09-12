@@ -33,6 +33,7 @@ async function centered(page) {
   })
 }
 let browser
+const releaseGates = []
 try {
   for (let attempt = 0; attempt < 100; attempt++) {
     if (backend.exitCode !== null) throw Error('Synthetic preview exited')
@@ -53,10 +54,12 @@ try {
     // Before the JavaScript bundle arrives, the document shell already has a centered, themed loader.
     let releaseBundle
     const bundleGate = new Promise(resolve => { releaseBundle = resolve })
+    releaseGates.push(releaseBundle)
     await page.route('**/assets/index-*.js', async route => { await bundleGate; await route.continue() })
     let failBootstrap = true
     let releaseBootstrap
     const bootstrapGate = new Promise(resolve => { releaseBootstrap = resolve })
+    releaseGates.push(releaseBootstrap)
     await page.route('**/api/v1/bootstrap', async route => {
       await bootstrapGate
       return failBootstrap ? route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }) : route.continue()
@@ -252,6 +255,7 @@ try {
     console.log(`PASS ${engine}: centered Web/native startup and retry, reduced motion, pointer/keyboard focus, all 12 card toggles, missing limits and help surfaces`)
   }
 } finally {
+  for (const release of releaseGates) release()
   await browser?.close()
   await stopFixture(backend)
 }

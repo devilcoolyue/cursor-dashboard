@@ -85,7 +85,8 @@ class PacingTest(unittest.TestCase):
             self.assertEqual(self.s._gap(500), 2.0)
 
     def test_idle_slows_down_and_a_visitor_speeds_it_back_up(self) -> None:
-        with patch("cursor_dashboard.scheduler.REFRESH_IDLE_AFTER", 0):
+        with patch("cursor_dashboard.scheduler.REFRESH_IDLE_AFTER", 0), \
+             patch("cursor_dashboard.scheduler.time.monotonic", return_value=self.s._last_seen + 1):
             self.assertTrue(self.s.idle)
             with patch("cursor_dashboard.scheduler.REFRESH_INTERVAL", 900), \
                  patch("cursor_dashboard.scheduler.REFRESH_IDLE_FACTOR", 4):
