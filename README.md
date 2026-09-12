@@ -268,3 +268,7 @@ Bug reports, documentation improvements, and focused pull requests are welcome. 
 If Cursor Panel makes managing your accounts easier, give the project a ⭐.
 
 </div>
+
+## Friend Links
+
+- [LINUX DO](https://linux.do)

@@ -268,3 +268,7 @@ uv run --frozen python dev/release.py check
 如果 Cursor Panel 让你的账号管理更轻松，欢迎点一个 ⭐。
 
 </div>
+
+## 友情链接
+
+- [LINUX DO](https://linux.do) - 新的理想型社区
