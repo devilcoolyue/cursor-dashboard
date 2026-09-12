@@ -1,8 +1,9 @@
 {
   "name": "cursor-panel-desktop",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.0.2",
   "scripts": {
+    "icons": "node scripts/sync-icons.mjs",
     "sidecar": "node scripts/build-sidecar.mjs",
     "dev": "npm run sidecar && tauri dev",
     "build": "npm run sidecar && tauri build",

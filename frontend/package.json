@@ -1,9 +1,12 @@
 {
   "name": "cursor-panel-frontend",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.0.2",
   "type": "module",
   "scripts": {
+    "docs:generate": "node scripts/generate-user-guide.mjs",
+    "docs:check": "node scripts/generate-user-guide.mjs --check",
+    "test:help:webkit": "node scripts/verify-desktop.mjs --help-only --webkit",
     "dev": "vite --host 127.0.0.1 --port 1420 --strictPort",
     "build": "vue-tsc --noEmit && vite build",
     "dev:probe": "vite --mode desktop-probe --host 127.0.0.1 --port 1420 --strictPort",
@@ -11,7 +14,9 @@
     "api:generate": "openapi-typescript openapi.json -o src/api.generated.ts",
     "test:e2e": "node scripts/verify-web.mjs",
     "test:desktop": "node scripts/verify-desktop.mjs",
-    "test:connected": "node scripts/verify-connected.mjs"
+    "test:connected": "node scripts/verify-connected.mjs",
+    "test:startup-cards": "node scripts/verify-startup-cards.mjs",
+    "test:updates": "node scripts/verify-updates.mjs"
   },
   "dependencies": {
     "@lucide/vue": "1.44.0",

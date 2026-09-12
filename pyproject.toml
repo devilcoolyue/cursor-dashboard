@@ -1,6 +1,6 @@
 [project]
 name = "cursor-dashboard"
-version = "0.0.1"
+version = "0.0.2"
 description = "查询多个 Cursor 账号的订阅套餐和额度余量（Web 面板 + 命令行）"
 readme = "README.md"
 license = "MIT"
@@ -15,6 +15,9 @@ dependencies = [
     "alembic>=1.16,<2",
     "cryptography>=44,<47",
 ]
+
+[dependency-groups]
+dev = ["psutil>=7,<8"]
 
 [project.scripts]
 cursor-panel = "cursor_dashboard.server:main"

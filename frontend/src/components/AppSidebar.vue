@@ -11,7 +11,10 @@ import UiSelect from './UiSelect.vue'
 import UiPopover from './UiPopover.vue'
 import AccountTagNavigation from './AccountTagNavigation.vue'
 import DesktopStatusBar from './DesktopStatusBar.vue'
+import VersionBadge from './VersionBadge.vue'
 import brandIcon from '../icon.svg'
+import { openGuide } from '../help/onboarding'
+import { appVersion } from '../version'
 
 defineProps<{ busy: boolean }>()
 const emit = defineEmits<{ logout: []; createTeam: []; joinTeam: []; display: [] }>()
@@ -19,9 +22,12 @@ const collapsed = defineModel<boolean>('collapsed', { default: false })
 const route = useRoute(), router = useRouter()
 const mobileOpen = ref(false), accountExpanded = ref(true)
 const preferencesOpen = ref(false), themesOpen = ref(false), teamOpen = ref(false), userOpen = ref(false), settingsOpen = ref(false)
+const helpOpen = ref(false)
+const versionOpen = ref(false)
 const sidebar = ref<HTMLElement>(), viewportHeight = ref(innerHeight), mobile = ref(innerWidth <= 760)
 const availableHeight = computed(() => viewportHeight.value - (mobile.value ? 56 : 0))
-const compact = computed(() => availableHeight.value < 800), minimal = computed(() => availableHeight.value < 640), tiny = computed(() => availableHeight.value < 480)
+// Include the persistent help row in the vertical navigation budget.
+const compact = computed(() => availableHeight.value < 840), minimal = computed(() => availableHeight.value < 680), tiny = computed(() => availableHeight.value < 520)
 const skinName = computed(() => skinOptions.find(option => option.value === skin.value)?.label || '液态玻璃')
 const extraSkin = computed(() => !['classic', 'glass'].includes(skin.value))
 const settings = computed(() => [
@@ -56,7 +62,12 @@ let themesPinned = false
 let themeFocus: 'first' | 'last' | undefined
 function cancelThemeClose() { clearTimeout(hoverTimer) }
 function dimensions() { viewportHeight.value = window.visualViewport?.height || innerHeight; mobile.value = innerWidth <= 760 }
-function closePanels() { preferencesOpen.value = false; themesOpen.value = false; teamOpen.value = false; userOpen.value = false; settingsOpen.value = false; themesPinned = false; clearTimeout(hoverTimer) }
+function closePanels() { preferencesOpen.value = false; themesOpen.value = false; teamOpen.value = false; userOpen.value = false; settingsOpen.value = false; helpOpen.value = false; versionOpen.value = false; themesPinned = false; clearTimeout(hoverTimer) }
+function startGuide() {
+  navigate()
+  sidebar.value?.querySelector<HTMLButtonElement>(mobile.value ? '.mobile-toggle' : '[title="帮助与文档"]')?.focus({ preventScroll: true })
+  openGuide()
+}
 function navigate() { mobileOpen.value = false; closePanels() }
 function openCollaboration(mode: 'create' | 'join') {
   navigate()
@@ -101,7 +112,7 @@ onBeforeUnmount(() => { headerObserver?.disconnect(); window.removeEventListener
 </script>
 <template>
   <aside v-if="me" ref="sidebar" class="sidebar" :class="{ expanded: mobileOpen, collapsed: collapsed && !mobile, 'density-compact': compact, 'density-minimal': minimal, 'density-tiny': tiny }" :style="{ '--sidebar-available-height': `${availableHeight}px` }" aria-label="侧栏导航" @keydown.esc="mobileOpen = false">
-    <div class="sidebar-brand"><RouterLink class="brand-link" to="/accounts" aria-label="Cursor 额度首页" @click="navigate"><img :src="brandIcon" alt="" width="32" height="32" /><span class="sidebar-brand-name">Cursor 额度</span><span class="live-dot" role="img" aria-label="已连接" /></RouterLink><button class="mobile-toggle" :aria-expanded="mobileOpen" :aria-label="mobileOpen ? '收起导航' : '展开导航'" aria-controls="sidebar-content" @click="mobileOpen = !mobileOpen"><UiIcon :name="mobileOpen ? 'close' : 'menu'" /></button></div>
+    <div class="sidebar-brand"><RouterLink class="brand-link" to="/accounts" aria-label="Cursor 额度首页" @click="navigate"><img :src="brandIcon" alt="" width="32" height="32" /><span class="sidebar-brand-name">Cursor 额度</span></RouterLink><VersionBadge v-model="versionOpen" /><span class="live-dot" role="img" aria-label="已连接" /><button class="mobile-toggle" :aria-expanded="mobileOpen" :aria-label="mobileOpen ? '收起导航' : '展开导航'" aria-controls="sidebar-content" @click="mobileOpen = !mobileOpen"><UiIcon :name="mobileOpen ? 'close' : 'menu'" /></button></div>
     <div id="sidebar-content" class="sidebar-content">
       <RouterLink v-if="isDesktop" to="/connections" class="connection-selector" :title="`${activeConnection?.name || '本地'} · 切换实例`" @click="navigate"><UiIcon name="building" /><span>{{ activeConnection?.name || '本地' }} · 切换实例</span></RouterLink>
       <div class="space-selector">
@@ -121,10 +132,14 @@ onBeforeUnmount(() => { headerObserver?.disconnect(); window.removeEventListener
         <UiPopover v-model="settingsOpen" label="设置导航" placement="right" class="sidebar-settings-compact"><template #trigger="{ toggle, open, id }"><button type="button" class="sidebar-nav-item" :class="{ 'router-link-active': settings.some(item => item.to === route.path) }" :aria-expanded="open" :aria-controls="id" title="设置" @click="toggle"><UiIcon name="sliders" :size="18" /><span class="sidebar-item-label">设置</span><UiIcon name="chevron" :size="14" class="sidebar-trailing" /></button></template><template #default><div class="sidebar-menu"><h2>设置</h2><RouterLink v-for="item in settings" :key="item.to" :to="item.to" @click="navigate"><UiIcon :name="item.icon" />{{ item.label }}</RouterLink></div></template></UiPopover>
       </nav>
       <footer class="sidebar-footer">
+        <UiPopover v-model="helpOpen" class="sidebar-help" label="帮助与文档" placement="top" :width="260" focus-on-open>
+          <template #trigger="{ toggle, open, id }"><button class="sidebar-nav-item" title="帮助与文档" aria-label="帮助与文档" :aria-expanded="open" :aria-controls="id" aria-haspopup="dialog" @click="toggle"><UiIcon name="help" :size="18" /><span class="sidebar-item-label">帮助与文档</span><UiIcon name="chevronDown" :size="13" class="sidebar-trailing sidebar-menu-chevron" /></button></template>
+          <template #default><div class="sidebar-menu"><h2>帮助与文档</h2><button @click="startGuide"><UiIcon name="compass" :size="16" />新手指引</button><RouterLink to="/docs/overview" @click="navigate"><UiIcon name="book" :size="16" />使用文档</RouterLink><RouterLink to="/about" @click="navigate"><UiIcon name="info" :size="16" />关于与更新 · v{{ appVersion }}</RouterLink></div></template>
+        </UiPopover>
         <DesktopStatusBar v-if="isDesktop" :updated="updated" />
         <div v-else class="sidebar-update" :title="updated"><span class="sidebar-icon-slot"><UiIcon name="refresh" :size="13" /></span><span>{{ updated }}</span></div>
         <UiPopover v-model="preferencesOpen" label="显示偏好" placement="top" :width="264">
-          <template #trigger="{ toggle, open, id }"><button type="button" class="sidebar-nav-item" :title="`显示偏好：${skinName}`" aria-label="显示偏好" :aria-expanded="open" :aria-controls="id" aria-haspopup="dialog" @click="toggle"><UiIcon name="palette" :size="18" /><span class="sidebar-item-label">显示偏好</span><small class="sidebar-current-skin" :class="{ custom: extraSkin }">{{ skinName }}</small><UiIcon name="chevronDown" :size="13" class="sidebar-trailing preference-chevron" /></button></template>
+          <template #trigger="{ toggle, open, id }"><button type="button" class="sidebar-nav-item" :title="`显示偏好：${skinName}`" aria-label="显示偏好" :aria-expanded="open" :aria-controls="id" aria-haspopup="dialog" @click="toggle"><UiIcon name="palette" :size="18" /><span class="sidebar-item-label">显示偏好</span><small class="sidebar-current-skin" :class="{ custom: extraSkin }">{{ skinName }}</small><UiIcon name="chevronDown" :size="13" class="sidebar-trailing sidebar-menu-chevron" /></button></template>
           <template #default="{ close }"><div class="sidebar-preferences"><header class="sidebar-popover-header"><strong>显示偏好</strong><button type="button" class="popover-close" aria-label="关闭显示偏好" @click="close"><UiIcon name="close" :size="15" /></button></header>
             <div class="preference-label"><span>界面风格</span><span class="selected-skin-name" aria-live="polite">{{ skinName }}</span></div>
             <div class="segmented skin-switch" role="group" aria-label="界面风格"><button v-for="option in skinOptions.slice(0, 2)" :key="option.value" :aria-pressed="skin === option.value" @click="selectTheme(option.value)"><i class="skin-swatch" :class="option.value" />{{ option.label }}</button><span class="extra-themes" @pointerenter="cancelThemeClose" @pointerleave="leaveThemes"><UiPopover v-model="themesOpen" label="更多界面风格" placement="top" :width="240" @shown="focusTheme"><template #trigger="{ open, id }"><button type="button" class="more-themes-button" :class="{ selected: extraSkin }" aria-label="更多界面风格" :aria-expanded="open" :aria-controls="id" @pointerenter="hoverThemes" @click="clickThemes" @keydown="openThemesKeyboard"><UiIcon :name="open ? 'chevronDown' : 'chevron'" :size="14" /><i v-if="extraSkin" class="more-themes-dot" /></button></template><template #default="{ close: closeThemes }"><div class="theme-options" @keydown="keyThemes" @pointerenter="cancelThemeClose"><button v-for="option in skinOptions.slice(2)" :key="option.value" class="theme-option" :aria-pressed="skin === option.value" @click="selectTheme(option.value); closeThemes()"><i class="skin-swatch" :class="option.value" /><span>{{ option.label }}</span><UiIcon name="check" :size="15" /></button></div></template></UiPopover></span></div>

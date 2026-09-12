@@ -10,6 +10,7 @@ from sqlalchemy.dialects.sqlite import insert
 
 from ...domain.core import (AccountRef, AuthorizedAccount, Conflict, NotFound,
                             SecretError)
+from ...pools import retain_own_limits
 from .policy import audit, authorize, capabilities, membership
 from .models import (Account, AccountTag, Credential, Grant, Lease, LegacyImport,
                      Membership, Metadata, Snapshot, Tag, User, Workspace, new_id)
@@ -270,7 +271,7 @@ class Repository:
                 snapshot.failures = snapshot.failures + 1 if snapshot.error_kind == error[0] else 1
                 snapshot.error_kind, snapshot.error_message = error
             else:
-                snapshot.data = data
+                snapshot.data = retain_own_limits(data, snapshot.data)
                 snapshot.ok_at = snapshot.attempted_at
                 snapshot.error_kind = snapshot.error_message = None
                 snapshot.failures = 0

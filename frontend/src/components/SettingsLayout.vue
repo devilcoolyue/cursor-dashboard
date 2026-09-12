@@ -10,6 +10,7 @@ defineProps<{ title: string; context?: string; error?: string }>()
     <div class="settings-content">
       <p v-if="error" class="error" role="alert">{{ error }}</p>
       <div class="settings-surface"><slot /></div>
+      <slot name="after" />
     </div>
     <slot name="dialogs" />
   </section>

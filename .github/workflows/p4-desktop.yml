@@ -10,6 +10,9 @@ permissions:
   contents: read
 env:
   PYTHONUTF8: '1'
+defaults:
+  run:
+    shell: bash
 jobs:
   desktop:
     strategy:
@@ -39,6 +42,7 @@ jobs:
           npm --prefix desktop ci --no-audit --no-fund
       - name: Core desktop failure and recovery contracts
         run: |
+          uv run --project desktop/sidecar --frozen python -m unittest discover -s tests -p test_cursor_discovery.py -v
           uv run --frozen python -m unittest discover -s tests -p test_v2_desktop.py -v
           uv run --frozen python -m unittest discover -s tests -p test_v2_connected.py -v
           uv run --frozen python -m unittest discover -s tests -p test_v2_upgrade.py -v
@@ -86,7 +90,6 @@ jobs:
         timeout-minutes: 5
         run: npm --prefix frontend run test:connected
       - name: Full regression
-        if: matrix.os == 'macos-14'
         run: uv run --frozen python -m unittest discover -s tests -v
       - uses: actions/upload-artifact@v4
         if: always()

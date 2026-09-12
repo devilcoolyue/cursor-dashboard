@@ -37,6 +37,26 @@ class Bootstrap(BaseModel):
     initialized: bool
     api_version: int
     capabilities: dict[str, bool]
+    app_version: str = "0.0.1"
+
+
+class ReleaseInfo(BaseModel):
+    current_version: str
+    latest_version: str | None
+    available: bool
+    installable: bool
+    notes: str
+    release_url: str
+    published_at: str | None
+
+
+class UpdateStatus(BaseModel):
+    enabled: bool
+    stage: Literal['idle', 'queued', 'downloading', 'verifying', 'backing_up', 'upgrading',
+                   'restarting', 'rolling_back', 'complete', 'failed']
+    job_id: str | None
+    version: str | None
+    message: str | None
 
 
 class LoginResult(BaseModel):
@@ -151,6 +171,7 @@ class QuotaSlot(UsageFields):
     used_usd: float | None = None
     remaining_usd: float | None = None
     limit_inferred: bool = False
+    limit_source: Literal['history', 'plan'] | None = None
 
 
 class Plan(UsageFields):

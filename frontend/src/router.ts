@@ -20,10 +20,12 @@ export const router = createRouter({
     { path: '/setup', component: SetupView, meta: { public: true } },
     { path: '/accounts', component: AccountsView },
     { path: '/settings', component: SettingsView },
+    { path: '/about', component: () => import('./views/AboutView.vue'), meta: { public: true, help: true } },
     { path: '/workspace', component: WorkspaceView },
     { path: '/instance', component: InstanceView },
     { path: '/connections', component: ConnectionsView, meta: { public: true } },
     { path: '/device', component: DeviceView },
+    { path: '/docs/:article?', component: () => import('./views/DocsView.vue'), meta: { public: true, help: true } },
     { path: '/:pathMatch(.*)*', redirect: '/accounts' },
   ],
 })

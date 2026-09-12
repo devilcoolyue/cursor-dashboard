@@ -3,7 +3,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import type { Account } from '../api'
 import { money, timeText } from '../format'
 import { cardDisplay } from '../card-display'
-import { cycleRemaining, percent, quotaTone } from '../quota'
+import { cycleRemaining, percent, quotaLimitHint, quotaTone } from '../quota'
 import QuotaBar from './QuotaBar.vue'
 import UiTooltip from './UiTooltip.vue'
 import UiPopover from './UiPopover.vue'
@@ -41,9 +41,9 @@ const overLimit = computed(() => {
 const spendHint = computed(() => {
   const plan = props.account.data?.plan, overall = props.account.data?.quota?.overall, spend = props.account.data?.spend_usd
   const included = plan?.included_usd == null ? '订阅包含额度暂无数据' : `订阅本身含额度 ${money(plan.included_usd)}`
-  if (overall?.limit_usd == null) return `${included}。本周期综合上限暂时无法推算。`
+  if (overall?.limit_usd == null) return `${included}。${quotaLimitHint(overall)}`
   const over = overLimit.value ? `已超出上限 ${money(spend!.total! - overall.limit_usd)}。` : ''
-  return `${over}${included}，超出的走 Cursor 赠送额度。分母 ${money(overall.limit_usd)} 是本周期两类模型额度的合计上限。`
+  return `${over}${included}。分母 ${money(overall.limit_usd)} 是本周期两类模型额度的合计上限。${quotaLimitHint(overall)}`
 })
 const statTime = (value: number) => new Date(value * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
 const resetDate = (value?: string | null) => value ? new Date(value).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).replaceAll('/', '-') : '—'
@@ -56,14 +56,14 @@ const resetDate = (value?: string | null) => value ? new Date(value).toLocaleDat
       <svg viewBox="0 0 44 44" aria-hidden="true"><circle class="ring-track" cx="22" cy="22" r="19" /><circle class="ring-fill" cx="22" cy="22" r="19" :stroke-dasharray="2 * Math.PI * 19" :stroke-dashoffset="2 * Math.PI * 19 * (1 - cycle.passed)" /></svg><span><b>{{ cycle.number }}</b>{{ cycle.unit }}</span>
     </span>
     <div v-show="!refreshing" class="card-quick-actions"><slot name="quick-actions" /></div>
-    <header class="account-card-heading"><div class="account-name-line"><span v-if="!refreshing" class="card-auth-status" role="img" :aria-label="status" :title="status"><i class="status-dot" :class="{ invalid: account.auth_invalid || account.expired, stale: account.stale || account.pending || !!account.error_kind }" /></span><h2 :title="account.label">{{ account.label }}</h2><span v-if="!refreshing" class="plan">{{ account.data?.plan?.name || '套餐未知' }}</span></div><div class="account-identity-line"><span class="department-mark" :title="account.tags.join(' · ') || spaceName">{{ account.tags.join(' · ') || spaceName }}</span><span class="account-email" :title="account.email || ''">{{ account.email || '邮箱未知' }}</span></div><span v-if="refreshing" class="card-refresh-status" role="status" :aria-label="`${account.label}：正在向 Cursor 重新取数…`" title="正在向 Cursor 重新取数…"><UiIcon name="refresh" :size="13" class="spinning" />刷新中…</span></header>
+    <header class="account-card-heading"><div class="account-name-line"><span v-if="!refreshing" class="card-auth-status" role="img" :aria-label="status" :title="status"><i class="status-dot" :class="{ invalid: account.auth_invalid || account.expired, stale: account.stale || account.pending || !!account.error_kind }" /></span><h2 :title="account.label">{{ account.label }}</h2><span v-if="!refreshing && cardDisplay.plan" class="plan">{{ account.data?.plan?.name || '套餐未知' }}</span></div><div v-if="cardDisplay.department || cardDisplay.email" class="account-identity-line"><span v-if="cardDisplay.department" class="department-mark" :title="account.tags.join(' · ') || spaceName">{{ account.tags.join(' · ') || spaceName }}</span><span v-if="cardDisplay.email" class="account-email" :title="account.email || ''">{{ account.email || '邮箱未知' }}</span></div><span v-if="refreshing" class="card-refresh-status" role="status" :aria-label="`${account.label}：正在向 Cursor 重新取数…`" title="正在向 Cursor 重新取数…"><UiIcon name="refresh" :size="13" class="spinning" />刷新中…</span></header>
     <div class="card-data">
     <div class="card-data-content" :class="{ 'card-data-hidden': refreshing }" :inert="refreshing || undefined" :aria-hidden="refreshing || undefined">
-    <div class="card-quotas"><QuotaBar name="Cursor Models" :slot="account.data?.quota?.cursor_models" :interactive="account.capabilities.detail" @detail="emit('detail', 'cursor_models')" /><QuotaBar name="Other Models" :slot="account.data?.quota?.other_models" :interactive="account.capabilities.detail" @detail="emit('detail', 'other_models')" /><QuotaBar name="综合" :slot="account.data?.quota?.overall" :interactive="account.capabilities.detail" @detail="emit('detail', 'overall')" /></div>
+    <div class="card-quotas"><QuotaBar :show-limit="cardDisplay.limit" name="Cursor Models" :slot="account.data?.quota?.cursor_models" :interactive="account.capabilities.detail" @detail="emit('detail', 'cursor_models')" /><QuotaBar :show-limit="cardDisplay.limit" name="Other Models" :slot="account.data?.quota?.other_models" :interactive="account.capabilities.detail" @detail="emit('detail', 'other_models')" /><QuotaBar :show-limit="cardDisplay.limit" name="综合" :slot="account.data?.quota?.overall" :interactive="account.capabilities.detail" @detail="emit('detail', 'overall')" /></div>
     <dl v-if="cardDisplay.stats || cardDisplay.reset || cardDisplay.spend || cardDisplay.onDemand || (cardDisplay.grok && account.data?.grok_weekly)" class="card-meta">
       <div v-if="cardDisplay.stats"><dt>最后统计</dt><dd :title="timeText(account.ok_at)">{{ account.ok_at ? `${statTime(account.ok_at)} · ${elapsed}` : '尚无数据' }}</dd></div>
       <div v-if="cardDisplay.reset"><dt>额度刷新</dt><dd>{{ timeText(account.data?.cycle?.reset_at) }}<template v-if="cycle"> · {{ cycle.unit ? `剩${cycle.number}${cycle.unit === '时' ? '小时' : '天'}` : '已到刷新时间' }}</template></dd></div>
-      <div v-if="cardDisplay.spend"><dt><UiTooltip :text="spendHint" v-slot="{ id, toggle }"><button type="button" class="meta-hint" :aria-describedby="id" @click="toggle">本周期消费</button></UiTooltip></dt><dd><span :class="{ 'danger-text': overLimit }">{{ account.data?.spend_usd?.total == null ? '—' : money(account.data.spend_usd.total) }}</span><span v-if="account.data?.quota?.overall?.limit_usd != null" :title="`${account.data.quota.overall.limit_inferred ? '估算' : '推算'}上限`"> / {{ money(account.data.quota.overall.limit_usd) }}</span></dd></div>
+      <div v-if="cardDisplay.spend"><dt><UiTooltip :text="spendHint" v-slot="{ id, toggle }"><button type="button" class="meta-hint" :aria-describedby="id" @click="toggle">本周期消费</button></UiTooltip></dt><dd><span :class="{ 'danger-text': overLimit }">{{ account.data?.spend_usd?.total == null ? '—' : money(account.data.spend_usd.total) }}</span><span v-if="account.data?.spend_usd?.total != null" class="spend-limit" :title="quotaLimitHint(account.data?.quota?.overall)"> / {{ account.data?.quota?.overall?.limit_usd == null ? '—' : money(account.data.quota.overall.limit_usd) }}</span></dd></div>
       <div v-if="cardDisplay.onDemand"><dt>按量付费</dt><dd>{{ account.data?.on_demand == null ? '—' : account.data.on_demand.enabled ? '开启' : '关闭' }}</dd></div>
       <div v-if="cardDisplay.grok && account.data?.grok_weekly"><dt><UiPopover label="Grok Bot 周额度说明" placement="top" :width="250" hover class="grok-hint">
         <template #trigger="{ id, open, toggle }"><button type="button" class="meta-hint" aria-haspopup="dialog" :aria-expanded="open" :aria-controls="id" @click="toggle">Grok Bot 周额度</button></template>

@@ -78,13 +78,13 @@ export async function verifySidebar(page) {
   await page.keyboard.press('Escape'); await picker.waitFor({ state: 'hidden' })
   await sidebar.getByRole('button', { name: '全部标签 2', exact: true }).click()
 
-  for (const [width, height] of [[1280, 800], [1280, 799], [1280, 768], [1280, 760], [1280, 640], [1280, 610], [1280, 609], [1280, 570], [1280, 480], [1280, 460], [1280, 459], [1280, 420], [1280, 360], [360, 640], [390, 420]]) {
+  for (const [width, height] of [[1280, 840], [1280, 839], [1280, 800], [1280, 799], [1280, 768], [1280, 760], [1280, 680], [1280, 679], [1280, 640], [1280, 610], [1280, 609], [1280, 570], [1280, 520], [1280, 519], [1280, 480], [1280, 460], [1280, 459], [1280, 420], [1280, 360], [360, 640], [390, 420]]) {
     await page.setViewportSize({ width, height })
     await page.waitForFunction(() => {
       const sidebar = document.querySelector('.sidebar'), height = innerHeight - (innerWidth <= 760 ? 56 : 0)
-      return sidebar.classList.contains('density-compact') === (height < 800)
-        && sidebar.classList.contains('density-minimal') === (height < 640)
-        && sidebar.classList.contains('density-tiny') === (height < 480)
+      return sidebar.classList.contains('density-compact') === (height < 840)
+        && sidebar.classList.contains('density-minimal') === (height < 680)
+        && sidebar.classList.contains('density-tiny') === (height < 520)
     })
     if (width <= 760) await sidebar.getByRole('button', { name: '展开导航', exact: true }).click()
     const dimensions = await sidebar.evaluate(el => {
@@ -93,6 +93,9 @@ export async function verifySidebar(page) {
     })
     assert.ok(dimensions.scroll <= dimensions.client + 1 && dimensions.bottom <= height, `Sidebar overflow at ${width}×${height}: ${JSON.stringify(dimensions)}`)
     assert.ok(dimensions.pageWidth <= dimensions.width)
+    await sidebar.getByRole('button', { name: '帮助与文档', exact: true }).click()
+    await page.getByRole('dialog', { name: '帮助与文档', exact: true }).waitFor()
+    await page.keyboard.press('Escape')
     await sidebar.getByRole('button', { name: /^选择标签/ }).click()
     await picker.waitFor()
     const bounds = await picker.boundingBox()

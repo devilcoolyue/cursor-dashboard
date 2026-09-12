@@ -12,7 +12,11 @@ export interface DesktopStatus {
   error?: string | null; background: boolean; api_version?: number
   last_refresh?: number | null; refresh_error?: string | null; switch?: SwitchState
 }
-export interface Detection { platform: string; available: boolean; running: boolean; reason: string | null }
+export interface Detection {
+  platform: string; available: boolean; running: boolean; reason: string | null
+  executable_path?: string | null; user_data_path?: string | null; database_path?: string | null
+  source?: string | null; configured_executable_path?: string; configured_user_data_path?: string; saved?: boolean
+}
 export class DesktopError extends Error {}
 export function desktopMessage(status: number) {
   return ({ 409: '操作未完成。请检查目标状态；导入需要空的个人空间，导出请使用新的文件名。',
@@ -29,7 +33,7 @@ async function checked<T>(command: string, args: Record<string, unknown>): Promi
   if (result.status >= 400) throw new DesktopError(desktopMessage(result.status))
   return result.body
 }
-export const native = <T>(operation: 'status' | 'unlock' | 'detect' | 'switch' | 'switch_command' | 'switch_status' | 'backups' | 'restore' | 'background' | 'resume', body?: unknown) =>
+export const native = <T>(operation: 'status' | 'unlock' | 'detect' | 'cursor_paths' | 'switch' | 'switch_command' | 'switch_status' | 'backups' | 'restore' | 'background' | 'resume', body?: unknown) =>
   checked<T>('desktop_request', { operation, body })
 export const archive = (operation: 'export' | 'import' | 'recover', password: string, workspace?: string) =>
   checked<{ count?: number; cancelled?: boolean; phase?: string }>('desktop_archive', { operation, password, workspace })

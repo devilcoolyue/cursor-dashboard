@@ -9,9 +9,11 @@ import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { randomBytes } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
-import { chromium } from 'playwright'
+import { chromium, webkit } from 'playwright'
 import { stopFixture } from './fixture-process.mjs'
 import { selectOption } from './ui-controls.mjs'
+import { verifyDesktopHelp } from './help-flows.mjs'
+import { currentRelease } from './update-fixture.mjs'
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const directory = await mkdtemp(join(tmpdir(), 'cursor-p4-browser-'))
 const dataDir = join(directory, 'data')
@@ -53,23 +55,42 @@ async function visible(locator) { await locator.waitFor({ state: 'visible', time
 try {
   for (let i=0;i<200 && !ready;i++) { if (backend.exitCode !== null) throw Error('Fixture backend exited'); await delay(100) }
   assert(ready)
-  browser = await chromium.launch({ headless: true })
+  browser = await (process.argv.includes('--webkit') ? webkit : chromium).launch({ headless: true })
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } })
   let locked = false
   let starting = true
   let unavailable = false
   let refreshGate
+  // Synthetic Windows discovery responses exercise the UI without reading a real editor.
+  let discoveryFixture = null
+  const pathRequests = []
   await context.exposeBinding('nativeInvoke', async (_, command, args) => {
+    if (command === 'check_update') return currentRelease
     if (command === 'frontend_ready' || command === 'desktop_open_backups') return null
     if (command === 'connection_request') return request('/native/connections')
     if (command === 'desktop_archive') {
       return request(args.operation === 'recover' ? '/native/recover' : `/native/archive/${args.operation}`, 'POST', { path: archivePath, password: args.password, workspace_id: args.workspace })
     }
     if (command === 'desktop_request') {
+      if (args.operation === 'detect' && discoveryFixture) return { status: 200, body: discoveryFixture }
+      if (args.operation === 'cursor_paths' && discoveryFixture) {
+        pathRequests.push(args.body)
+        const { executable_path, user_data_path } = args.body
+        const available = executable_path.includes('Cursor.exe') && !executable_path.includes('missing')
+        discoveryFixture = { platform: 'windows', available, running: false,
+          reason: available ? null : '未找到完整的 Cursor 安装，请重新检测或手动填写 Cursor 程序路径。',
+          executable_path: available ? executable_path : null,
+          user_data_path: available ? user_data_path : null,
+          database_path: available ? user_data_path + '\\User\\globalStorage\\state.vscdb' : null,
+          configured_executable_path: available ? executable_path : '',
+          configured_user_data_path: available ? user_data_path : '',
+          saved: available || (!executable_path && !user_data_path) }
+        return { status: 200, body: discoveryFixture }
+      }
       if (args.operation === 'status' && unavailable) throw Error('Fixture connection unavailable')
       if (args.operation === 'status' && starting) { starting = false; return { status: 200, body: { phase: 'starting', background: false } } }
       if (args.operation === 'status' && locked) return { status: 200, body: { phase: 'locked', background: false } }
-      const routes = { status: ['status'], unlock: ['unlock', 'POST'], detect: ['cursor'], switch: ['switch', 'POST'], switch_command: ['switch-command', 'POST'], switch_status: ['switch'], backups: ['backups'], restore: ['restore', 'POST'], background: ['background', 'PUT'], resume: ['resume', 'POST'] }
+      const routes = { status: ['status'], unlock: ['unlock', 'POST'], detect: ['cursor'], cursor_paths: ['cursor', 'PUT'], switch: ['switch', 'POST'], switch_command: ['switch-command', 'POST'], switch_status: ['switch'], backups: ['backups'], restore: ['restore', 'POST'], background: ['background', 'PUT'], resume: ['resume', 'POST'] }
       const [path, method = 'GET'] = routes[args.operation]
       return request('/native/' + path, method, args.body)
     }
@@ -89,6 +110,8 @@ try {
   page.on('pageerror', error => errors.push(error.message))
   await page.goto(origin)
   await waitRows(page, 2)
+  await verifyDesktopHelp(page)
+  if (!process.argv.includes('--help-only')) {
   assert.equal(await page.getByText('团队协作', { exact: true }).count(), 0)
   assert.equal(await page.getByText('退出登录', { exact: true }).count(), 0)
   const sidebar = page.getByRole('complementary', { name: '侧栏导航' })
@@ -148,7 +171,56 @@ try {
   await visible(page.getByRole('heading', { name: '切换本机 Cursor', exact: true }))
   assert.equal(await page.getByRole('button', { name: '开始切换', exact: true }).isEnabled(), false)
   assert.equal(await page.getByLabel('切换命令').count(), 0)
+  const methodPicker = page.getByRole('group', { name: '切换方式', exact: true })
+  assert.equal(await methodPicker.getByRole('button', { name: '直接切换', exact: true }).getAttribute('aria-pressed'), 'true')
+  await page.getByRole('dialog').evaluate(el => Promise.all(el.getAnimations().map(animation => animation.finished)))
+  const directBounds = await page.getByRole('dialog').boundingBox()
+  await page.screenshot({ path: join(root, 'output/playwright/p4-switch-direct.png'), animations: 'disabled' })
+  discoveryFixture = { platform: 'windows', available: false, running: false, reason: '未找到完整的 Cursor 安装，请重新检测或手动填写 Cursor 程序路径。' }
+  await page.getByRole('button', { name: '重新检测', exact: true }).click()
+  const executableInput = page.getByLabel('Cursor 程序路径', { exact: true })
+  const dataInput = page.getByLabel('用户数据目录（可选）', { exact: true })
+  await visible(executableInput)
+  await page.setViewportSize({ width: 900, height: 600 })
+  await page.screenshot({ path: join(root, 'output/playwright/p4-cursor-paths-missing.png'), animations: 'disabled' })
+  await executableInput.fill(String.raw`D:\missing\Cursor.exe`)
+  assert.equal(await page.getByRole('checkbox').isEnabled(), false)
+  await page.getByRole('button', { name: '验证并保存路径', exact: true }).click()
+  await visible(page.getByRole('alert').filter({ hasText: '未找到完整的 Cursor 安装' }))
+  assert.equal(await page.getByRole('button', { name: '开始切换', exact: true }).isEnabled(), false)
+  const manualExecutable = String.raw`D:\软件 Space\Cursor\Cursor.exe`
+  const manualData = String.raw`D:\工作数据\Cursor`
+  await executableInput.fill(manualExecutable)
+  await dataInput.fill(manualData)
+  await page.getByRole('button', { name: '验证并保存路径', exact: true }).click()
+  await visible(page.getByText('路径设置已保存在本机。', { exact: true }))
+  assert.deepEqual(pathRequests.at(-1), { executable_path: manualExecutable, user_data_path: manualData })
+  await page.getByRole('checkbox').check()
+  assert.equal(await page.getByRole('button', { name: '开始切换', exact: true }).isEnabled(), true)
+  await page.screenshot({ path: join(root, 'output/playwright/p4-cursor-paths-saved.png'), animations: 'disabled' })
+  await page.getByRole('button', { name: '重新检测', exact: true }).click()
+  await page.waitForFunction(() => !document.querySelector('section[aria-label="Cursor 本机路径"]').getAttribute('aria-busy').includes('true'))
+  assert.equal(await page.getByRole('checkbox').isChecked(), false)
+  await page.keyboard.press('Escape')
+  await switchButton.click()
+  await visible(page.getByText('已找到本机 Cursor', { exact: true }))
+  await page.getByRole('button', { name: '设置路径', exact: true }).click()
+  assert.equal(await executableInput.inputValue(), manualExecutable)
+  assert.equal(await dataInput.inputValue(), manualData)
+  await page.getByRole('button', { name: '恢复自动检测', exact: true }).click()
+  await visible(page.getByRole('alert').filter({ hasText: '未找到完整的 Cursor 安装' }))
+  assert.equal(await executableInput.inputValue(), '')
+  assert.deepEqual(pathRequests.at(-1), { executable_path: '', user_data_path: '' })
+  discoveryFixture = null
+  await page.getByRole('button', { name: '重新检测', exact: true }).click()
+  await visible(page.getByText('已找到本机 Cursor', { exact: true }))
+  await page.getByRole('button', { name: '收起路径', exact: true }).click()
+  await page.setViewportSize({ width: 1280, height: 900 })
   await page.getByRole('button', { name: '终端执行', exact: true }).click()
+  assert.equal(await methodPicker.getByRole('button', { name: '终端执行', exact: true }).getAttribute('aria-pressed'), 'true')
+  assert.equal((await page.getByRole('dialog').boundingBox()).width, directBounds.width)
+  assert.equal(await page.getByRole('button', { name: '生成终端命令', exact: true }).isEnabled(), false)
+  await page.screenshot({ path: join(root, 'output/playwright/p4-switch-terminal.png'), animations: 'disabled' })
   await page.getByRole('checkbox').check()
   await page.getByRole('button', { name: '生成终端命令', exact: true }).click()
   await visible(page.getByLabel('切换命令'))
@@ -156,8 +228,9 @@ try {
   assert.ok(localCommand.includes('switch-scripts'))
   assert.ok(!/https?:|curl|base64|preview-user_desktop/.test(localCommand))
   assert.equal((await request('/native/switch')).body.stage, 'idle')
-  await page.getByRole('button', { name: '返回直接切换', exact: true }).click()
+  await page.getByRole('button', { name: '直接切换', exact: true }).click()
   assert.equal(await page.getByLabel('切换命令').count(), 0)
+  assert.equal(await page.getByRole('button', { name: '开始切换', exact: true }).isEnabled(), false)
   await page.getByRole('checkbox').check()
   await page.getByRole('button', { name: '开始切换', exact: true }).click()
   await visible(page.getByText('Cursor 已重新打开，请在 Cursor 中核对当前账号。', { exact: true }))
@@ -203,6 +276,8 @@ try {
   await waitRows(page, 2)
   assert.deepEqual(errors, [])
   console.log('Desktop browser flows passed: private initialization, detail, confirmed switch, focus, background preferences, encrypted export/import, backup restore, locked recovery, no credential persistence.')
+  }
+  assert.deepEqual(errors, [])
 } finally {
   await browser?.close()
   await stopFixture(backend)

@@ -23,6 +23,78 @@
         }
       }
     },
+    "/api/v1/updates": {
+      "get": {
+        "summary": "Check Updates",
+        "operationId": "check_updates_api_v1_updates_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/instance/update": {
+      "get": {
+        "summary": "Update Status",
+        "operationId": "update_status_api_v1_instance_update_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateStatus"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Install Update",
+        "operationId": "install_update_api_v1_instance_update_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "summary": "Login",
@@ -2368,6 +2440,11 @@
             },
             "type": "object",
             "title": "Capabilities"
+          },
+          "app_version": {
+            "type": "string",
+            "title": "App Version",
+            "default": "0.0.1"
           }
         },
         "type": "object",
@@ -2849,6 +2926,21 @@
           "api_version"
         ],
         "title": "Health"
+      },
+      "InstallUpdate": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+            "title": "Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "InstallUpdate"
       },
       "InvitationIssued": {
         "properties": {
@@ -3332,11 +3424,83 @@
             "type": "boolean",
             "title": "Limit Inferred",
             "default": false
+          },
+          "limit_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "history",
+                  "plan"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit Source"
           }
         },
         "additionalProperties": true,
         "type": "object",
         "title": "QuotaSlot"
+      },
+      "ReleaseInfo": {
+        "properties": {
+          "current_version": {
+            "type": "string",
+            "title": "Current Version"
+          },
+          "latest_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Version"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "installable": {
+            "type": "boolean",
+            "title": "Installable"
+          },
+          "notes": {
+            "type": "string",
+            "title": "Notes"
+          },
+          "release_url": {
+            "type": "string",
+            "title": "Release Url"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "current_version",
+          "latest_version",
+          "available",
+          "installable",
+          "notes",
+          "release_url",
+          "published_at"
+        ],
+        "title": "ReleaseInfo"
       },
       "RoleChange": {
         "properties": {
@@ -3514,6 +3678,72 @@
           "platform"
         ],
         "title": "SwitchPlatform"
+      },
+      "UpdateStatus": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "queued",
+              "downloading",
+              "verifying",
+              "backing_up",
+              "upgrading",
+              "restarting",
+              "rolling_back",
+              "complete",
+              "failed"
+            ],
+            "title": "Stage"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "stage",
+          "job_id",
+          "version",
+          "message"
+        ],
+        "title": "UpdateStatus"
       },
       "Usage": {
         "properties": {

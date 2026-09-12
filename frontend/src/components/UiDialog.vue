@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, useId } from 'vue'
 import UiIcon from './UiIcon.vue'
+import { restoreFocus } from '../input-modality'
 const props = defineProps<{ title: string; wide?: boolean; dismissBackdrop?: boolean }>()
 const emit = defineEmits<{ close: [] }>()
 const dialog = ref<HTMLDialogElement>()
@@ -24,9 +25,12 @@ onMounted(() => {
   dialog.value?.showModal()
 })
 onBeforeUnmount(() => {
-  dialog.value?.close()
-  document.body.style.overflow = overflow
-  if (previous?.isConnected) previous.focus()
+  // close() can restore focus itself before the explicit fallback below.
+  restoreFocus(() => {
+    dialog.value?.close()
+    document.body.style.overflow = overflow
+    if (previous?.isConnected) previous.focus({ preventScroll: true })
+  })
 })
 </script>
 <template>

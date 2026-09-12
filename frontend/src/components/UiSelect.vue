@@ -158,7 +158,7 @@ onBeforeUnmount(close)
 .ui-select-menu[hidden] { display: none; }
 button.ui-select-trigger { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-width: 0; min-height: 40px; padding: 8px 11px; background: var(--input-bg); color: var(--fg); border: 1px solid var(--line); border-radius: var(--radius-ctl); box-shadow: var(--ui-control-shadow); text-align: left; line-height: 1.5; transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease; }
 button.ui-select-trigger:hover:not(:disabled) { background: var(--input-bg); border-color: var(--dim); }
-button.ui-select-trigger:focus-visible, button.ui-select-trigger[aria-expanded=true] { outline: none; border-color: var(--accent); box-shadow: var(--ui-focus-shadow); }
+html.keyboard-input button.ui-select-trigger:focus-visible, button.ui-select-trigger[aria-expanded=true] { outline: none; border-color: var(--accent); box-shadow: var(--ui-focus-shadow); }
 button.ui-select-trigger[aria-invalid=true] { border-color: var(--bad); }
 button.ui-select-trigger:disabled { cursor: not-allowed; }
 .ui-select-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

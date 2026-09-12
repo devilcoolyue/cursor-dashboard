@@ -19,6 +19,7 @@ async function changePassword() { await run(async () => { try { await api.reques
 </script>
 <template>
   <SettingsLayout title="个人设置" :context="isDesktop && !connectionId ? '本地用户' : me?.login" :error="error">
+    <template #actions><RouterLink to="/about" class="about-release-link"><UiIcon name="info" :size="14" />关于与更新</RouterLink></template>
     <SettingsSection v-if="!isDesktop || connectionId" title="更改密码" description="定期更新密码，保护你的账号。">
       <form class="form-stack settings-form password-form" @submit.prevent="changePassword">
         <div class="settings-form-grid"><label>当前密码<input v-model="oldPassword" :disabled="busy" type="password" autocomplete="current-password" required maxlength="256" placeholder="输入当前密码" /></label><label>新密码<input v-model="newPassword" :disabled="busy" type="password" autocomplete="new-password" required minlength="12" maxlength="256" placeholder="至少 12 个字符" aria-describedby="password-hint" /></label></div>

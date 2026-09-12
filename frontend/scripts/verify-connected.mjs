@@ -10,6 +10,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { chromium } from 'playwright'
 import { stopFixture } from './fixture-process.mjs'
 import { selectOption } from './ui-controls.mjs'
+import { currentRelease, fixtureContext } from './update-fixture.mjs'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const token = randomBytes(32).toString('hex')
@@ -41,10 +42,11 @@ try {
   assert(ready, backendError)
   browser = await chromium.launch({ headless: true })
   const desktop = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
-  const browserContext = await browser.newContext()
+  const browserContext = await fixtureContext(browser)
   let holdDetail = false, releaseDetail, enteredDetail
   let detailEntered
   await desktop.exposeBinding('nativeInvoke', async (_, command, args) => {
+    if (command === 'check_update') return currentRelease
     if (command === 'frontend_ready' || command === 'desktop_open_backups') return null
     let response
     if (command === 'connection_request') {
@@ -54,7 +56,7 @@ try {
         remove: [base + `/${args.connection_id}`, 'DELETE'] }[args.operation]
       response = await request(route[0], route[1], args.body)
     } else if (command === 'desktop_request') {
-      const route = { status: ['status'], detect: ['cursor'], switch_status: ['switch'], switch: ['switch', 'POST'],
+      const route = { status: ['status'], detect: ['cursor'], cursor_paths: ['cursor', 'PUT'], switch_status: ['switch'], switch: ['switch', 'POST'],
         backups: ['backups'], restore: ['restore', 'POST'] }[args.operation]
       response = await request('/native/' + route[0], route[1], args.body)
     } else {
@@ -81,12 +83,22 @@ try {
   page.on('pageerror', error => errors.push(error.message))
   await page.goto(ready.server_origin)
   await rows(page, 2)
+  await page.getByRole('dialog', { name: '新手指引', exact: true }).getByRole('button', { name: '暂时跳过', exact: true }).click()
   const localEmails = await page.locator('[data-account] .account-email').allTextContents()
   await page.getByRole('link', { name: '本地 · 切换实例' }).click()
+  await mkdir(join(root, 'output/playwright'), { recursive: true })
+  assert.equal(await page.locator('.main-content .topbar').count(), 1)
+  await page.screenshot({ path: join(root, 'output/playwright/connections-empty.png'), animations: 'disabled' })
+  await page.getByRole('button', { name: '添加实例', exact: true }).click()
+  const addDialog = page.getByRole('dialog', { name: '添加实例', exact: true })
+  await visible(addDialog)
+  await page.screenshot({ path: join(root, 'output/playwright/connections-add.png'), animations: 'disabled' })
   await page.getByLabel('实例名称', { exact: true }).fill('Studio 远程')
   await page.getByLabel('实例地址', { exact: true }).fill(ready.server_origin)
-  await page.getByRole('button', { name: '添加实例', exact: true }).click()
+  await addDialog.getByRole('button', { name: '添加实例', exact: true }).click()
   await visible(page.getByText('Studio 远程', { exact: true }))
+  await addDialog.waitFor({ state: 'detached' })
+  await page.screenshot({ path: join(root, 'output/playwright/connections-saved.png'), animations: 'disabled' })
   await page.getByRole('button', { name: '浏览器登录', exact: true }).click()
   try { await visible(page.getByText('等待浏览器授权', { exact: true })) }
   catch (error) {
@@ -153,6 +165,7 @@ try {
   await visible(page.getByRole('heading', { name: '实例连接', exact: true }))
   assert.equal(await page.locator('[data-account]').count(), 0)
   await request('/fixture/state', 'POST', { offline: true })
+  await page.getByRole('button', { name: '更多实例操作', exact: true }).click()
   await page.getByRole('button', { name: '断开登录', exact: true }).click()
   await visible(page.getByText('本机设备登录已清除。远端暂时无法确认撤销，请登录实例网页，在个人设置中撤销这台设备。', { exact: true }))
   await page.setViewportSize({ width: 390, height: 844 })

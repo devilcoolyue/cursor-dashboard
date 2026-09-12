@@ -3,6 +3,8 @@
 mod app;
 #[cfg(feature = "p0-probe")]
 mod probe;
+#[cfg(not(feature = "p0-probe"))]
+mod updates;
 fn main() {
     #[cfg(not(feature = "p0-probe"))]
     app::run();

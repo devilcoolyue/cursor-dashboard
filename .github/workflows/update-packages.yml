@@ -1,0 +1,143 @@
+name: Signed update packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to build (must match package versions)
+        required: true
+        type: string
+
+# Builds reviewable artifacts only. The maintainer uploads the verified files to the matching release.
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: darwin-aarch64
+          - os: macos-15-intel
+            target: darwin-x86_64
+          - os: windows-latest
+            target: windows-x86_64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.11.3'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      - run: |
+          uv sync --locked
+          npm --prefix desktop ci
+          npm --prefix frontend ci
+          uv run --frozen python dev/release.py check
+          npm --prefix desktop run icons
+          npm --prefix desktop run build -- --bundles ${{ runner.os == 'Windows' && 'nsis' || 'app' }}
+      - name: Sign complete updater packages
+        shell: python
+        env:
+          UPDATE_TAG: ${{ inputs.tag }}
+          UPDATE_TARGET: ${{ matrix.target }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          import os, pathlib, subprocess
+          bundle = pathlib.Path('desktop/src-tauri/target/release/bundle')
+          if os.name == 'nt':
+              artifact = next((bundle / 'nsis').glob('*.exe'))
+          else:
+              artifact = bundle / 'macos/Cursor Panel.app'
+              subprocess.run(['codesign', '--force', '--sign', '-', '--identifier', 'dev.cursor-panel.desktop', str(artifact)], check=True)
+          subprocess.run(['uv', 'run', '--frozen', 'python', 'dev/update-manifest.py', 'desktop',
+              '--tag', os.environ['UPDATE_TAG'], '--target', os.environ['UPDATE_TARGET'],
+              '--artifact', str(artifact), '--output', 'output/updates'], check=True)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: update-${{ matrix.target }}
+          path: output/updates/
+          if-no-files-found: error
+
+  server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.11.3'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: |
+          uv sync --locked
+          npm --prefix desktop ci
+          uv run --frozen python -m unittest discover -s tests -p 'test_updates.py' -v
+      - name: Build and sign server update
+        shell: python
+        env:
+          UPDATE_TAG: ${{ inputs.tag }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          import json, os, pathlib, subprocess
+          import tomllib
+          __version__ = tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version']
+          revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          pathlib.Path('output').mkdir(exist_ok=True)
+          subprocess.run(['docker', 'build', '--build-arg', 'APP_VERSION=' + __version__, '--build-arg', 'SOURCE_REVISION=' + revision, '-t', 'cursor-panel:update', '.'], check=True)
+          subprocess.run(['uv', 'run', '--frozen', 'python', 'dev/verify-v2-container.py', 'cursor-panel:update'], check=True)
+          subprocess.run(['docker', 'save', '--output', 'output/image.tar', 'cursor-panel:update'], check=True)
+          pathlib.Path('output/image.json').write_bytes(subprocess.check_output(['docker', 'image', 'inspect', 'cursor-panel:update']))
+          subprocess.run(['uv', 'run', '--frozen', 'python', 'dev/update-manifest.py', 'server', '--tag', os.environ['UPDATE_TAG'],
+              '--artifact', 'output/image.tar', '--image-metadata', 'output/image.json', '--output', 'output/updates'], check=True)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: update-server
+          path: output/updates/
+          if-no-files-found: error
+
+  assemble:
+    needs: [desktop, server]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.11.3'
+      - run: uv sync --locked
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: update-*
+          merge-multiple: true
+          path: output/updates
+      - name: Verify signatures and assemble updater feed
+        env:
+          UPDATE_TAG: ${{ inputs.tag }}
+        run: uv run --frozen python dev/update-manifest.py merge --tag "$UPDATE_TAG" --output output/updates
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-update-release
+          path: output/updates/
+          if-no-files-found: error

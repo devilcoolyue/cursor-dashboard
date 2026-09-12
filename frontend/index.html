@@ -5,9 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Cursor Panel</title>
     <link rel="icon" type="image/svg+xml" href="/src/icon.svg" />
+    <script src="/assets/startup-theme.js"></script>
+    <link rel="stylesheet" href="/src/startup.css" />
   </head>
   <body>
-    <div id="app"><p role="status">正在打开 Cursor Panel…</p></div>
+    <div id="app"><main class="startup-screen" aria-busy="true"><div class="startup-content">
+      <img class="startup-mark" src="/src/icon.svg" width="80" height="80" alt="" />
+      <p class="startup-brand">Cursor Panel</p><span class="startup-progress" aria-hidden="true"></span>
+      <h1 class="startup-title" role="status">正在打开面板</h1><p class="startup-description">正在连接服务，请稍候…</p>
+      <noscript>请启用 JavaScript 后重新打开面板。</noscript>
+    </div></main></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

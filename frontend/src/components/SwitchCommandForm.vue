@@ -38,12 +38,12 @@ async function copy() {
   <form v-if="!result" class="form-stack" @submit.prevent="generate">
     <label>操作系统<UiSelect v-model="platform" aria-label="操作系统" :disabled="busy || local" :options="[{ value: 'macos', label: 'macOS · 终端' }, { value: 'windows', label: 'Windows · PowerShell' }]" /></label>
     <label class="check-label"><input v-model="confirmed" type="checkbox" required />我已保存工作，理解脚本会更改本机 Cursor 登录。</label>
-    <button class="primary" :disabled="busy || !confirmed">{{ busy ? '正在生成…' : '生成终端命令' }}</button>
+    <div class="actions switch-command-actions"><slot name="secondary-action" /><button class="primary" :disabled="busy || !confirmed">{{ busy ? '正在生成…' : '生成终端命令' }}</button></div>
   </form>
   <template v-else>
     <p class="muted">有效至 {{ timeText(result.expires_at) }} · {{ result.platform === 'macos' ? '粘贴到 macOS 系统终端' : '粘贴到独立 PowerShell，不要使用 cmd' }}</p>
     <label>切换命令<textarea :value="result.command" readonly rows="4" spellcheck="false" @focus="($event.target as HTMLTextAreaElement).select()" /></label>
-    <div class="actions"><button class="primary" @click="copy">{{ copied ? '已复制' : '复制命令' }}</button></div>
+    <div class="actions switch-command-actions"><slot name="secondary-action" /><button class="primary" @click="copy">{{ copied ? '已复制' : '复制命令' }}</button></div>
   </template>
   <p v-if="error" role="alert" class="error">{{ error }}</p>
 </template>

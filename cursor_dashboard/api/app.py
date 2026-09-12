@@ -32,6 +32,10 @@ class Input(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class InstallUpdate(Input):
+    version: str = Field(pattern=r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+
+
 class Login(Input):
     login: str = Field(min_length=1, max_length=320)
     password: SecretStr = Field(min_length=1, max_length=256)
@@ -141,6 +145,11 @@ def create_app(core, *, public_origin, web_dir=None, manual_switch_preview=False
     cookie_name = "__Host-cursor_session" if secure else "cursor_session"
     app = FastAPI(title="Cursor Dashboard V2", version="1", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.core = core
+    from cursor_dashboard import __version__
+    from cursor_dashboard.updates import releases
+    from cursor_dashboard.updates.control import UpdateControl
+    from cursor_dashboard.infrastructure.persistence.policy import authorize
+    update_control = UpdateControl.from_env() if _local is None else UpdateControl()
 
     def error_response(status, message):
         return JSONResponse({"detail": message}, status_code=status)
@@ -256,14 +265,43 @@ def create_app(core, *, public_origin, web_dir=None, manual_switch_preview=False
     @app.get("/api/v1/bootstrap", response_model=dto.Bootstrap)
     def bootstrap():
         if _local is not None:
-            return {"mode": "local", "initialized": True, "api_version": 1,
+            return {"mode": "local", "initialized": True, "api_version": 1, "app_version": __version__,
                     "capabilities": {"workspaces": False, "invitations": False,
                         "manual_switch": False, "native_switch": True, "archives": True,
                         "device_sessions": False, "remote_switch": False}}
-        return {"mode": "server", "initialized": True, "api_version": 1,
+        return {"mode": "server", "initialized": True, "api_version": 1, "app_version": __version__,
                 "capabilities": {"workspaces": True, "invitations": True,
                                  "manual_switch": True, "device_sessions": True,
                                  "remote_switch": bool(_device_switch_test)}}
+
+    @app.get("/api/v1/updates", response_model=dto.ReleaseInfo)
+    def check_updates(actor=Depends(current_actor)):
+        try:
+            return releases.check_release(server=_local is None)
+        except releases.UpdateError:
+            return error_response(503, "Release information is temporarily unavailable")
+
+    @app.get("/api/v1/instance/update", response_model=dto.UpdateStatus)
+    def update_status(actor=Depends(browser_actor)):
+        with core.db.transaction() as session:
+            authorize(session, actor, "instance")
+        return update_control.status()
+
+    @app.post("/api/v1/instance/update", response_model=dto.UpdateStatus, status_code=202)
+    def install_update(body: InstallUpdate, actor=Depends(browser_actor)):
+        with core.db.transaction() as session:
+            authorize(session, actor, "instance")
+        try:
+            release = releases.check_release(server=True)
+            if not release["available"] or not release["installable"] or release["latest_version"] != body.version:
+                return error_response(409, "The requested update is no longer available")
+            with core.db.transaction(write=True) as session:
+                authorize(session, actor, "instance")
+                result = update_control.enqueue(body.version)
+                audit(session, actor, "instance.update.requested")
+        except releases.UpdateError:
+            return error_response(409, "The update service is not ready; check again before retrying")
+        return result
 
     @app.post("/api/v1/auth/login", response_model=dto.LoginResult)
     def login(body: Login, request: Request):

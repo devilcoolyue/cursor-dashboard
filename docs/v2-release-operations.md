@@ -1,10 +1,10 @@
 # V2 候选交付、更新与回退
 
-当前包版本为 `0.0.1`，API 主版本为 `1`，数据库为 `0003_devices`。版本号不代表完成了全部 V2 阶段：P0–P4 已有阶段验证，P5 远程查看/管理可用，真实远程切换仍关闭。P6 的验证结果见 [报告](plans/p6-verification.md)，平台范围见 [支持表](supported-platforms.md)。
+当前包版本为 `0.0.2`，API 主版本为 `1`，数据库为 `0003_devices`。版本号不代表完成了全部 V2 阶段：P0–P4 已有阶段验证，P5 远程查看/管理可用，真实远程切换仍关闭。P6 的验证结果见 [报告](plans/p6-verification.md)，平台范围见 [支持表](supported-platforms.md)。
 
 ## 候选产物与来源
 
-`v0.0.1` 的发布内容与附件说明见[版本归档](archive/v0.0.1.md)。合并 `main` 后，P6 工作流构建交付文件，P5 工作流验证三平台页面流程；维护者下载并验证本次提交的全部产物后，将其连同源码 ZIP/tar.gz、验证报告和总 SHA-256 发布至对应 GitHub Release。此步骤不改变桌面产物的未签名状态。
+`v0.0.2` 的变更与升级说明见[本次版本归档](archive/v0.0.2.md)，旧版附件保留在 [v0.0.1 归档](archive/v0.0.1.md)。合并 `main` 后，P6 工作流构建交付文件，P5 工作流验证三平台页面流程；维护者下载并验证本次提交的全部产物后，将其连同源码 ZIP/tar.gz、验证报告和总 SHA-256 发布至对应 GitHub Release。此步骤不改变桌面产物的未签名状态。
 
 [P6 工作流](../.github/workflows/p6-release.yml) 从干净提交构建包含 Web 的 wheel、Linux amd64 镜像归档、macOS arm64/x64 DMG 和 Windows x64 NSIS。它只上传 CI artifact，不推送镜像、不创建 Release、不访问签名密钥。桌面候选不具有发行者签名/公证，不等同于正式安装发行。
 
@@ -32,7 +32,7 @@ uv run --frozen python dev/build-web.py
 uv build --wheel --out-dir output/p6/wheel
 uv run --frozen python dev/release.py check
 uv run --frozen python dev/release.py manifest --target web-python \
-  --artifact output/p6/wheel/cursor_dashboard-0.0.1-py3-none-any.whl \
+  --artifact output/p6/wheel/cursor_dashboard-0.0.2-py3-none-any.whl \
   --output output/p6/web-python
 python3 dev/release.py verify output/p6/web-python
 ```
@@ -60,7 +60,7 @@ python3 dev/release.py verify output/p6/web-python
 3. 校验新安装包来源、架构与 SHA-256 后安装。首次启动在数据目录锁内检查原系统密钥，遇到旧 schema 先生成包含已提交 WAL 的 `pre-upgrade-*.db`，再升级。不能以删除系统凭证库条目或原数据库解决升级错误。
 4. 检查本地账号、快照与远程连接。若升级失败，退出新程序、保留失败目录，重新安装原版本，将完整备份恢复到原应用数据路径并使用原系统密钥。应用路径和应用标识保持一致；若密钥丢失，使用之前的加密归档恢复。
 
-自动 `pre-upgrade` 库是额外恢复副本，不包含完整目录配置或独立密钥。跨电脑使用加密归档导入到空个人空间；远程设备连接重新登录，必要时在服务端撤销旧设备。当前没有自动更新器，也没有桌面一键 schema 降级功能。
+自动 `pre-upgrade` 库是额外恢复副本，不包含完整目录配置或独立密钥。跨电脑使用加密归档导入到空个人空间；远程设备连接重新登录，必要时在服务端撤销旧设备。现在可通过「关于与更新」使用签名自动更新器，配置与发布步骤见[自动升级](automatic-updates.md)；仍不提供桌面一键 schema 降级。
 
 ## 连接远端与协议不兼容
 
@@ -78,4 +78,4 @@ Windows：使用维护者选择的受信任代码签名证书或云签名服务�
 
 签名/公证会改变文件字节。只有最终签名文件通过上述验证后，才能在单独的签名发行流程记录实际证据并重新生成 SHA-256/清单；当前 `dev/release.py` 仅生成 unsigned preview，不能用它宣称已签名。保留第三方依赖原有许可证与签名；项目许可证不替代依赖许可。
 
-未来自动更新必须验证签名、目标平台、版本回退策略和下载完整性，并先备份再执行 schema 升级。HTTPS 或校验和本身不能替代更新签名。
+自动更新验证签名、目标平台、版本和下载完整性，并先备份再执行 schema 升级。HTTPS 或校验和本身不能替代更新签名。

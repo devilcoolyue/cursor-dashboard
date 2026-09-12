@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, ref, useId, watch } from 'vue'
+import { restoringFocus, restoreFocus } from '../input-modality'
 
 const props = withDefaults(defineProps<{ label: string; placement?: 'top' | 'bottom' | 'right'; align?: 'start' | 'end'; width?: number; focusOnOpen?: boolean; hover?: boolean; panelRole?: 'dialog' | 'tooltip' }>(), { placement: 'bottom', width: 264, align: 'start', panelRole: 'dialog' })
 const opened = defineModel<boolean>({ default: false })
@@ -21,7 +22,9 @@ function hoverLeave(event: PointerEvent) {
   if (!pinned && !panel.value?.contains(document.activeElement)) hoverTimer = setTimeout(() => close(), 180)
 }
 function focusin() {
-  if (props.hover && props.panelRole === 'tooltip') { cancelHover(); opened.value = true }
+  if (props.hover && props.panelRole === 'tooltip' && !restoringFocus && document.documentElement.classList.contains('keyboard-input')) {
+    cancelHover(); opened.value = true
+  }
 }
 function focusout(event: FocusEvent) {
   if (props.hover && !anchor.value?.contains(event.relatedTarget as Node | null)) close()
@@ -70,10 +73,10 @@ function cleanup() {
   window.visualViewport?.removeEventListener('resize', position)
   window.visualViewport?.removeEventListener('scroll', position)
 }
-function close(restoreFocus = false) {
+function close(returnFocus = false) {
   cancelHover(); pinned = false; keyboardFocus = undefined
   opened.value = false
-  if (restoreFocus) trigger()?.focus({ preventScroll: true })
+  if (returnFocus) restoreFocus(() => trigger()?.focus({ preventScroll: true }))
 }
 function keydown(event: KeyboardEvent) {
   if (event.key === 'Escape' && opened.value) { event.preventDefault(); event.stopPropagation(); close(true); return }
@@ -90,7 +93,7 @@ function keydown(event: KeyboardEvent) {
 }
 watch(opened, async value => {
   cleanup()
-  if (!value) { cancelHover(); pinned = false; keyboardFocus = undefined; if (panel.value?.matches(':popover-open')) panel.value.hidePopover(); return }
+  if (!value) { cancelHover(); pinned = false; keyboardFocus = undefined; if (panel.value?.matches(':popover-open')) restoreFocus(() => panel.value?.hidePopover()); return }
   await nextTick()
   if (!opened.value || !panel.value) return
   panel.value.showPopover()
@@ -106,7 +109,7 @@ watch(opened, async value => {
   window.visualViewport?.addEventListener('resize', position)
   window.visualViewport?.addEventListener('scroll', position)
 })
-onBeforeUnmount(() => { cancelHover(); cleanup(); if (panel.value?.matches(':popover-open')) panel.value.hidePopover() })
+onBeforeUnmount(() => { cancelHover(); cleanup(); if (panel.value?.matches(':popover-open')) restoreFocus(() => panel.value?.hidePopover()) })
 </script>
 <template>
   <span ref="anchor" class="ui-popover-anchor" @pointerenter="hoverEnter" @pointerleave="hoverLeave" @focusin="focusin" @focusout="focusout" @keydown="keydown">

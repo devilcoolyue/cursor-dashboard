@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -281,6 +282,83 @@ class DesktopTest(unittest.IsolatedAsyncioTestCase):
         self.runtime = self.open()
         self.assertTrue(self.runtime.background)
 
+    async def test_cursor_paths_validate_persist_reset_and_redetect_without_restarting(self):
+        with patch('psutil.process_iter', return_value=[]), patch('cursor_dashboard.local.cursor.sys', SimpleNamespace(platform='win32')), \
+             patch.dict(os.environ, {'APPDATA': str(self.directory.resolve() / 'roaming'), 'CURSOR_EXE': '',
+                 'LOCALAPPDATA': str(self.directory / 'local'), 'ProgramFiles': str(self.directory / 'programs'),
+                 'ProgramFiles(x86)': str(self.directory / 'programs'), 'ProgramW6432': str(self.directory / 'programs')}), \
+             patch('cursor_dashboard.local.cursor_windows.path_candidates', return_value=[]), \
+             patch('cursor_dashboard.local.cursor_windows.registry_candidates', return_value=[]), \
+             patch('cursor_dashboard.local.cursor_windows.shortcut_candidates', return_value=[]):
+            self.runtime.executor.installation = CursorInstallation()
+            self.assertFalse((await self.request('GET', '/native/cursor'))[1]['available'])
+            executable = self.directory / '软件 Cursor/Cursor.exe'
+            executable.parent.mkdir(); executable.touch()
+            package = executable.parent / 'resources/app/package.json'
+            package.parent.mkdir(parents=True); package.write_text('{}')
+            data = self.directory / '工作数据'
+            database = data / 'User/globalStorage/state.vscdb'
+            database.parent.mkdir(parents=True)
+            with closing(sqlite3.connect(database)) as connection:
+                connection.execute('CREATE TABLE ItemTable(key TEXT PRIMARY KEY, value BLOB)')
+            executable, data, database = executable.resolve(), data.resolve(), database.resolve()
+            fields = {'executable_path': str(executable.parent), 'user_data_path': str(data)}
+            status, result, _ = await self.request('PUT', '/native/cursor', fields)
+            self.assertEqual(status, 200)
+            self.assertTrue(result['available']); self.assertTrue(result['saved'])
+            self.assertEqual(result['executable_path'], str(executable))
+            saved = self.runtime.cursor_paths.read_bytes()
+            self.assertFalse((await self.request('PUT', '/native/cursor', {**fields, 'executable_path': '/missing/Cursor.exe'}))[1]['saved'])
+            self.assertEqual(self.runtime.cursor_paths.read_bytes(), saved)
+            self.assertEqual(self.runtime.executor.installation.executable, executable)
+            selected = self.runtime.executor.installation
+            with patch.object(selected, 'quit'), patch.object(selected, 'restart'):
+                status, _, _ = await self.request('POST', '/native/switch', {
+                    'workspace_id': self.workspace, 'account_id': self.accounts[0]['id'], 'confirmed': True})
+                self.assertEqual(status, 200)
+                await self.runtime.job
+            self.assertEqual(self.runtime.executor.status()['stage'], 'complete')
+            with closing(sqlite3.connect(database)) as connection:
+                self.assertIsNotNone(connection.execute("SELECT value FROM ItemTable WHERE key='cursorAuth/accessToken'").fetchone())
+            with closing(sqlite3.connect(self.installation.database)) as connection:
+                self.assertIsNone(connection.execute("SELECT value FROM ItemTable WHERE key='cursorAuth/accessToken'").fetchone())
+            self.runtime.set_background(True)
+            await self.runtime.shutdown()
+            self.installation = None
+            self.runtime = self.open()
+            self.client = APIClient(create_local_app(self.runtime, 'a' * 64, 19441))
+            result = (await self.request('GET', '/native/cursor'))[1]
+            self.assertTrue(result['available'])
+            self.assertEqual(result['configured_executable_path'], str(executable))
+            self.assertEqual(result['configured_user_data_path'], str(data))
+            self.assertTrue(self.runtime.background)
+            result = (await self.request('PUT', '/native/cursor', {'executable_path': '', 'user_data_path': ''}))[1]
+            self.assertTrue(result['saved']); self.assertFalse(result['available'])
+            with patch.dict(os.environ, {'CURSOR_EXE': str(executable), 'APPDATA': str(self.directory.resolve() / 'roaming')}):
+                destination = self.directory.resolve() / 'roaming/Cursor/User/globalStorage/state.vscdb'
+                destination.parent.mkdir(parents=True); shutil.copyfile(database, destination)
+                result = (await self.request('GET', '/native/cursor'))[1]
+                self.assertTrue(result['available'])
+                self.assertEqual(result['configured_executable_path'], '')
+                self.assertEqual(result['database_path'], str(destination))
+
+    async def test_cursor_paths_are_private_strict_and_frozen_during_operations(self):
+        fields = {'executable_path': '', 'user_data_path': ''}
+        self.assertEqual((await self.request('PUT', '/native/cursor', fields, headers={'authorization': None}))[0], 401)
+        for invalid in ({}, {**fields, 'command': 'anything'}, {**fields, 'executable_path': 42},
+                        {**fields, 'executable_path': 'x' * 4097}):
+            self.assertEqual((await self.request('PUT', '/native/cursor', invalid))[0], 422)
+        self.runtime.executor.update(stage='authorizing', busy=True)
+        for method, body in (('GET', None), ('PUT', fields)):
+            self.assertEqual((await self.request(method, '/native/cursor', body))[0], 409)
+        self.runtime.executor.update(stage='idle', busy=False)
+        with self.runtime.executor.guard:
+            self.assertEqual((await self.request('PUT', '/native/cursor', fields))[0], 409)
+            with self.assertRaises(Conflict):
+                self.runtime.start_switch(self.workspace, self.accounts[0]['id'])
+        self.assertFalse(self.runtime.cursor_paths.exists())
+        self.assertIs(self.runtime.executor.installation, self.installation)
+
 
 class ExecutorTest(unittest.TestCase):
     def setUp(self):
@@ -374,7 +452,7 @@ class ExecutorTest(unittest.TestCase):
 
 
 class DiscoveryTest(unittest.TestCase):
-    def test_windows_default_install_and_data_paths_without_scanning_user_processes(self):
+    def test_windows_default_install_and_data_paths(self):
         with tempfile.TemporaryDirectory(prefix='p4-discovery-') as temporary:
             root = Path(temporary).resolve()
             executable = root / 'local/Programs/cursor/Cursor.exe'
@@ -385,10 +463,15 @@ class DiscoveryTest(unittest.TestCase):
             package.write_text('{}')
             database = root / 'roaming/Cursor/User/globalStorage/state.vscdb'
             database.parent.mkdir(parents=True)
-            database.touch()
-            with patch('cursor_dashboard.local.cursor.sys.platform', 'win32'), patch.dict('os.environ',
+            with closing(sqlite3.connect(database)) as connection:
+                connection.execute('CREATE TABLE ItemTable(key TEXT PRIMARY KEY, value BLOB)')
+            with patch('psutil.process_iter', return_value=[]), patch('cursor_dashboard.local.cursor.sys', SimpleNamespace(platform='win32')), \
+                patch('cursor_dashboard.local.cursor_windows.path_candidates', return_value=[]), \
+                patch('cursor_dashboard.local.cursor_windows.registry_candidates', return_value=[]), \
+                patch('cursor_dashboard.local.cursor_windows.shortcut_candidates', return_value=[]), patch.dict('os.environ',
                 {'LOCALAPPDATA': str(root / 'local'), 'APPDATA': str(root / 'roaming'),
-                 'ProgramFiles': str(root / 'programs'), 'ProgramFiles(x86)': str(root / 'programs-x86')}):
+                 'ProgramFiles': str(root / 'programs'), 'ProgramFiles(x86)': str(root / 'programs-x86'),
+                 'ProgramW6432': str(root / 'programs'), 'CURSOR_EXE': ''}):
                 installation = CursorInstallation()
                 installation.require()
                 self.assertEqual(installation.executable, executable)

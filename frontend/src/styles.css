@@ -13,6 +13,8 @@ button.primary:hover { background: var(--btn-primary-bg-hover); }
 button.danger { background: var(--bad); color: var(--btn-primary-fg); border-color: var(--bad); }
 button.danger-text { color: var(--bad); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+/* Safari can keep :focus-visible after a dialog restores focus to a clicked button. */
+html:not(.keyboard-input) :is(button, a, summary, [role=button], [role=combobox]):focus { outline: none; }
 input, textarea { background: var(--input-bg); color: var(--fg); border: 1px solid var(--line); border-radius: var(--radius-ctl); padding: 9px 12px; width: 100%; min-width: 0; }
 input[type=checkbox] { width: 17px; height: 17px; accent-color: var(--accent); flex-shrink: 0; }
 input:is([type=checkbox], [type=radio]):not(:disabled), label:has(input:is([type=checkbox], [type=radio]):not(:disabled)) { cursor: pointer; }
@@ -137,12 +139,9 @@ dialog::backdrop { background: var(--backdrop); }
 .switch-progress li span { width:1.7rem; height:1.7rem; display:grid; place-items:center; border:1px solid var(--line); border-radius:50%; }
 .switch-progress .current { color:var(--fg); font-weight:600; }
 .switch-progress .done { color:var(--accent); }
+.switch-command-actions, .form-stack .switch-command-actions { justify-content: flex-end; padding-top: 18px; margin-top: 6px; border-top: 1px solid var(--line); }
+.switch-command-actions > button { min-width: 76px; font-size: 12px; }
 @media (prefers-reduced-motion: reduce) { .switch-progress li { transition:none; } }
-
-.connection-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px 0; border-bottom: 1px solid var(--line); }
-.connection-row small { display: block; margin-top: 6px; overflow-wrap: anywhere; }
-.standalone-connections { max-width: 1000px; margin: 0 auto; padding: 40px 24px; }
-@media (max-width: 720px) { .connection-row { align-items: stretch; flex-direction: column; } }
 
 /* V1 workspace composition. Colors and materials share the legacy token source. */
 body { margin: 0; background: var(--bg); color: var(--fg); min-height: 100svh; -webkit-font-smoothing: antialiased; }
@@ -239,10 +238,6 @@ button.quota-cell:hover { background: var(--row-hover-bg); border-color: var(--l
 .burnout-watermark span:nth-child(3) { left: 67%; top: 13%; font-size: 82px; transform: rotate(-5deg) skewX(-8deg); }
 .pagination button { font-size: 11px; padding: 5px 10px; }
 .empty-state { padding: 65px 24px 80px; text-align: center; color: var(--dim); border: 1px dashed var(--line); border-radius: var(--radius-card); margin: 0; background: var(--card); }
-.display-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.display-options label { padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-ctl); background: var(--card); transition: background .15s ease, border-color .15s ease; }
-.display-options label:hover { background: var(--row-hover-bg); border-color: var(--accent); }
-.display-options label:focus-within { border-color: var(--accent); }
 .detail-quotas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; padding: 12px 0 25px; }
 .detail-quotas .quota-label { flex-wrap: wrap; }
 .detail-quotas .quota-label > span { flex-basis: 100%; }
@@ -326,17 +321,18 @@ html[data-skin=glass] dialog::backdrop { -webkit-backdrop-filter: blur(6px); bac
 .card-icon-action { width: 28px; height: 28px; padding: 0; color: var(--dim); background: transparent; border-color: transparent; }
 .card-icon-action:hover { color: var(--fg); background: var(--row-hover-bg); }
 .cycle-ring { transition: opacity .15s ease; pointer-events: none; }
-.account-card:hover .card-quick-actions, .account-card:focus-within .card-quick-actions, .account-card:has(.card-quick-actions .ui-popover-panel:popover-open) .card-quick-actions { opacity: 1; pointer-events: auto; }
-.account-card:has(.card-quick-actions button):hover .cycle-ring, .account-card:has(.card-quick-actions button):focus-within .cycle-ring, .account-card:has(.card-quick-actions .ui-popover-panel:popover-open) .cycle-ring { opacity: 0; }
+.account-card:hover .card-quick-actions, html.keyboard-input .account-card:has(:focus-visible) .card-quick-actions, .account-card:has(.card-quick-actions .ui-popover-panel:popover-open) .card-quick-actions { opacity: 1; pointer-events: auto; }
+.account-card:has(.card-quick-actions button):hover .cycle-ring, html.keyboard-input .account-card:has(.card-quick-actions button):has(:focus-visible) .cycle-ring, .account-card:has(.card-quick-actions .ui-popover-panel:popover-open) .cycle-ring { opacity: 0; }
 .quota-label > .ui-icon { transition: transform .15s ease, color .15s ease; }
 button.quota-cell:hover .quota-label > .ui-icon { color: var(--fg); transform: translateX(2px); }
 
 dialog[open] { display: flex; flex-direction: column; }
-.dialog-header { flex: none; gap: 20px; align-items: flex-start; padding: 23px 26px 20px; }
+/* Anchor the close control to the corner and reserve room for wrapping titles. */
+.dialog-header { position: relative; flex: none; gap: 20px; align-items: flex-start; padding: 23px 56px 20px 26px; }
 .dialog-heading { min-width: 0; }
 .dialog-header h2 { font-size: 17px; line-height: 1.5; overflow-wrap: anywhere; }
 .dialog-subtitle { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; color: var(--dim); font-size: 12px; margin: 5px 0 0; overflow-wrap: anywhere; }
-.dialog-close { flex: none; width: 28px; height: 28px; padding: 0; color: var(--dim); border-radius: var(--radius-ctl); }
+.dialog-close { position: absolute; top: 12px; right: 12px; width: 32px; height: 32px; padding: 0; color: var(--dim); border-radius: var(--radius-ctl); }
 .dialog-close:hover { color: var(--fg); background: var(--row-hover-bg); }
 .dialog-body { flex: 1 1 auto; min-height: 0; padding: 22px 26px; scrollbar-width: thin; scrollbar-color: var(--line-popover) transparent; }
 .dialog-footer { flex: none; display: flex; align-items: center; justify-content: flex-end; gap: 9px; padding: 15px 26px; border-top: 1px solid var(--line); }
@@ -440,7 +436,7 @@ dialog[open] { display: flex; flex-direction: column; }
 @media (max-width: 760px) {
   .toolbar-controls .search-wrap { width: 100%; grid-column: 1 / -1; }
   .toolbar-controls .search-field { width: 100%; }
-  .dialog-header { padding: 19px 18px 16px; }
+  .dialog-header { padding: 19px 56px 16px 18px; }
   .dialog-header h2 { font-size: 16px; }
   .dialog-body { padding: 18px; }
   .dialog-footer { padding: 13px 18px; }
@@ -483,7 +479,7 @@ dialog[open] { display: flex; flex-direction: column; }
 .account-action-menu-content > button:hover { background: var(--row-hover-bg); }
 .account-action-menu-content > .danger-text { border-top: 1px solid var(--line); margin-top: 3px; border-radius: 0 0 var(--radius-ctl) var(--radius-ctl); }
 .card-icon-action[aria-expanded=true] { color: var(--fg); background: var(--row-hover-bg); border-color: var(--line); }
-.card-meta .meta-hint { display: inline; padding: 0; border: 0; border-radius: 0; background: none; color: var(--dim); font: inherit; cursor: help; text-decoration: underline wavy var(--dimmer); text-underline-offset: 4px; text-decoration-thickness: 1px; }
+.card-meta .meta-hint { display: inline-block; padding: 0 0 3px; border: 0; border-radius: 0; background: none; color: var(--dim); font: inherit; cursor: help; text-decoration-line: underline; text-decoration-style: wavy; text-decoration-color: var(--dim); text-underline-offset: 4px; text-decoration-thickness: 1px; text-decoration-skip-ink: none; }
 .card-meta .meta-hint:hover, .card-meta .meta-hint[aria-expanded=true] { color: var(--fg); text-decoration-color: var(--accent); }
 .grok-hint-content { padding: 8px 11px; font-size: 11.5px; line-height: 1.6; }
 .grok-hint-content a { display: inline-flex; align-items: center; gap: 3px; font-weight: 500; word-break: break-all; }

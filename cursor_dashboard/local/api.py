@@ -57,6 +57,11 @@ class BackgroundInput(Input):
     enabled: bool = Field(strict=True)
 
 
+class CursorPathsInput(Input):
+    executable_path: str = Field(max_length=4096)
+    user_data_path: str = Field(max_length=4096)
+
+
 class ArchiveInput(Input):
     path: str = Field(min_length=1, max_length=4096)
     password: SecretStr = Field(min_length=12, max_length=256)
@@ -119,7 +124,11 @@ def create_local_app(runtime, token, port):
 
     @app.get("/native/cursor")
     def cursor():
-        return runtime.executor.installation.detect()
+        return runtime.detect_cursor()
+
+    @app.put("/native/cursor")
+    def cursor_paths(body: CursorPathsInput):
+        return runtime.detect_cursor(body.model_dump())
 
     @app.get("/native/switch")
     def switch_status():

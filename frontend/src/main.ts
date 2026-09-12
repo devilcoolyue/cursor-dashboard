@@ -1,4 +1,5 @@
 import { createApp } from 'vue'
+import './input-modality'
 
 async function start() {
   if (import.meta.env.MODE === 'desktop-probe') {
@@ -11,6 +12,7 @@ async function start() {
   await import('./styles.css')
   await import('./sidebar.css')
   await import('./settings.css')
+  await import('./help/help.css')
   const [{ default: App }, { initialize }, { router }] = await Promise.all([import('./App.vue'), import('./state'), import('./router')])
   const { isDesktop } = await import('./platform')
   if (!isDesktop) await initialize()

@@ -5,6 +5,7 @@
 """
 
 import unittest
+from copy import deepcopy
 
 from cursor_dashboard import pools
 
@@ -91,6 +92,67 @@ class PoolsTest(unittest.TestCase):
                 "overall": {"used_pct": 1, "limit_usd": 495.0},
             }})
         self.assertEqual(pools.snapshot_state(), {"pro": 1})
+
+
+class VisibleHistoryTest(unittest.TestCase):
+    def setUp(self):
+        self.solved, self.capped = deepcopy(SOLVED), deepcopy(CAPPED)
+        for snapshot in (self.solved, self.capped):
+            snapshot['cycle'] = {'start': '2026-09-01T00:00:00+00:00', 'reset_at': '2026-10-01T00:00:00+00:00'}
+
+    def test_same_cycle_history_survives_repeated_capped_refreshes_without_mutation(self):
+        original = deepcopy(self.capped)
+        retained = pools.retain_own_limits(self.capped, self.solved)
+        retained = pools.retain_own_limits(self.capped, retained)
+        self.assertEqual(self.capped, original)
+        for key, limit in zip(('cursor_models', 'other_models', 'overall'), (450, 45, 495)):
+            self.assertEqual(retained['quota'][key]['limit_usd'], limit)
+            self.assertEqual(retained['quota'][key]['remaining_pct'], 0)
+            self.assertEqual(retained['quota'][key]['limit_source'], 'history')
+            self.assertTrue(retained['quota'][key]['limit_inferred'])
+
+    def test_period_or_plan_changes_drop_history(self):
+        for area, field, value in (
+            ('cycle', 'start', '2026-10-01T00:00:00Z'), ('cycle', 'start', None),
+            ('cycle', 'reset_at', '2026-11-01T00:00:00Z'), ('cycle', 'reset_at', None),
+            ('cycle', 'start', '2026-09-01T00:00:00'), ('cycle', 'start', 'invalid'),
+            ('plan', 'name', 'Business'), ('plan', 'included_usd', 60), ('plan', 'price', 60),
+        ):
+            with self.subTest(area=area, field=field, value=value):
+                changed = deepcopy(self.capped)
+                changed[area][field] = value
+                self.assertIsNone(pools.retain_own_limits(changed, self.solved)['quota']['overall']['limit_usd'])
+
+    def test_new_direct_and_partial_solutions_win_over_history(self):
+        current = deepcopy(self.capped)
+        current['quota']['overall']['limit_usd'] = 500
+        retained = pools.retain_own_limits(current, self.solved)
+        self.assertEqual(retained['quota']['overall']['limit_usd'], 500)
+        self.assertNotIn('limit_inferred', retained['quota']['overall'])
+        partial = deepcopy(self.solved)
+        partial['quota']['cursor_models']['limit_usd'] = None
+        retained = pools.retain_own_limits(self.capped, partial)
+        self.assertIsNone(retained['quota']['cursor_models']['limit_usd'])
+        self.assertEqual(retained['quota']['overall']['limit_usd'], 495)
+
+    def test_peer_estimates_are_never_persisted_as_own_history_or_recycled(self):
+        peer = pools.fill_visible(self.capped, [self.solved])
+        self.assertEqual(peer['quota']['overall']['limit_source'], 'plan')
+        self.assertIsNone(pools.retain_own_limits(self.capped, peer)['quota']['overall']['limit_usd'])
+        self.assertIsNone(pools.fill_visible(self.capped, [peer])['quota']['overall']['limit_usd'])
+        own = pools.retain_own_limits(self.capped, self.solved)
+        self.assertEqual(pools.fill_visible(self.capped, [own])['quota']['overall']['limit_usd'], 495)
+
+    def test_invalid_observations_do_not_become_history(self):
+        for value in (-1, 0, float('nan'), float('inf'), '450', True):
+            with self.subTest(value=value):
+                invalid = deepcopy(self.solved)
+                invalid['quota']['overall']['limit_usd'] = value
+                self.assertIsNone(pools.retain_own_limits(self.capped, invalid)['quota']['overall']['limit_usd'])
+
+    def test_equivalent_iso_timestamps_preserve_history(self):
+        self.capped['cycle']['start'] = '2026-09-01T08:00:00+08:00'
+        self.assertEqual(pools.retain_own_limits(self.capped, self.solved)['quota']['overall']['limit_usd'], 495)
 
 
 if __name__ == "__main__":

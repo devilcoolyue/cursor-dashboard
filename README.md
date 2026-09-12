@@ -1,59 +1,135 @@
+<div align="center">
+
+<img src="frontend/src/icon.svg" alt="Cursor Panel logo" width="112" height="112" />
+
 # Cursor Panel
 
-管理个人与团队的 Cursor 账号、额度与授权。一套 Python 业务核心提供已认证 API、Vue Web 界面、独立桌面和远程 CLI；个人空间默认隔离，团队账号按 view/use 权限共享。
+**All your Cursor accounts. One clear view.**
 
-当前发布版本为 [`v0.0.1`](https://github.com/devilcoolyue/cursor-dashboard/releases/tag/v0.0.1)，发布内容与下载说明见 [版本归档](docs/archive/v0.0.1.md)。V2 按 [实施计划](docs/plans/v2-architecture.md) 分阶段推进。P0–P4 开发与阶段自动验证已完成，Web 与服务端交付的验证记录见 [P3 报告](docs/plans/p3-verification.md)。P4 已接入独立桌面，平台验证见 [P4 报告](docs/plans/p4-verification.md)，操作见 [桌面使用说明](docs/v2-desktop-operations.md)。P5 已实现远程连接、浏览器登录、设备会话与远程账号操作，并通过三平台自动验证，见 [连接使用说明](docs/v2-connected-operations.md) 和 [P5 报告](docs/plans/p5-verification.md)；真实 Cursor 续期竞争待验证，生产远程切换保持关闭。
+Track quotas, switch local accounts, and share access with your team.<br />
+Use the standalone desktop app or bring your own server.
 
-P6 发布与维护收口已完成，包含[候选产物与手动更新流程](docs/v2-release-operations.md)、[支持平台表](docs/supported-platforms.md)和[贡献指南](CONTRIBUTING.md)，三平台候选 CI 已通过，实施与剩余验收见 [P6 报告](docs/plans/p6-verification.md)。候选包使用 `v2-preview` 标识，尚非正式签名发行，项目采用 [MIT 许可证](LICENSE)。
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Vue](https://img.shields.io/badge/Vue-3-4FC08D?logo=vuedotjs&logoColor=white)](https://vuejs.org/)
+[![Tauri](https://img.shields.io/badge/Tauri-2-24C8D8?logo=tauri&logoColor=white)](https://tauri.app/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](deploy/v2/compose.yaml)
+[![Status](https://img.shields.io/badge/Status-V2%20preview-D4A34A)](docs/supported-platforms.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-93DBB5)](LICENSE)
 
-## 启动 V2 Web
+**English** | [简体中文](README_CN.md)
 
-推荐使用 Docker Compose，完整步骤见 [Web 部署与使用](docs/v2-web-operations.md)。在仓库根目录执行：
+[Download](https://github.com/devilcoolyue/cursor-dashboard/releases) · [Quick start](#quick-start) · [Documentation](#documentation) · [Report an issue](https://github.com/devilcoolyue/cursor-dashboard/issues)
+
+</div>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dashboard-dark.png" />
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/dashboard-light.png" />
+  <img src="docs/assets/dashboard-light.png" alt="Cursor Panel team workspace with three accounts, remaining quotas, billing cycles, and tag filters" width="1440" />
+</picture>
+
+<p align="center"><sub>Current V2 preview · Liquid Glass theme · Synthetic demo accounts · The app interface is currently in Chinese.</sub></p>
+
+## Why Cursor Panel?
+
+- **See every account at a glance.** Compare plans, billing cycles, remaining Cursor / Other Models quotas, and Grok weekly usage. Open an account for model-level usage details.
+- **Keep your accounts organized.** Name accounts, add tags, search, and sort. Personal and team workspaces keep different groups of accounts separate.
+- **Switch accounts from your desktop.** On macOS and Windows, the local app closes Cursor normally, backs up its login database, updates the account, and restarts it. Restore a backup from settings when needed.
+- **Share access deliberately.** Invite teammates, assign roles, and grant `view` or `use` access to individual accounts. Review workspace activity in the audit log.
+- **Start locally, connect when needed.** The desktop app runs without a server. Save multiple remote instances and sign in through your system browser with revocable device sessions.
+- **Keep credentials protected.** Account credentials are encrypted at rest. Desktop keys live in the system credential store; encrypted archives support account transfer and key recovery.
+- **Make it yours.** Six skins, independent light / dark modes, configurable account cards, a collapsible sidebar, and a responsive Web layout. Built-in guidance helps you get started.
+
+This README describes the current V2 preview source. The latest downloadable release is [v0.0.2](https://github.com/devilcoolyue/cursor-dashboard/releases/tag/v0.0.2); its exact contents are listed in the [release archive](docs/archive/v0.0.2.md). Screenshots use synthetic preview data.
+
+## Choose your setup
+
+| Entry point | Best for | Where accounts live | Cursor switching |
+| --- | --- | --- | --- |
+| **Standalone desktop** | Managing accounts on your own computer | Local database | Direct local switching on macOS / Windows |
+| **Self-hosted Web** | Sharing accounts with a team | Your server | Generates a short-lived terminal command for macOS / Windows |
+| **Desktop connected to a server** | Accessing personal and team spaces across instances | The selected server | Remote desktop switching is currently disabled |
+| **Remote CLI** | Querying accounts from the terminal | Your server | Query and refresh operations |
+
+Local and remote databases remain independent. Changing a desktop connection does not upload or synchronize local accounts.
+
+## Quick start
+
+### Desktop — for personal use
+
+Download the package for your platform from **[v0.0.2 Releases](https://github.com/devilcoolyue/cursor-dashboard/releases/tag/v0.0.2)**:
+
+| Platform | Download |
+| --- | --- |
+| macOS · Apple Silicon | [DMG for arm64](https://github.com/devilcoolyue/cursor-dashboard/releases/download/v0.0.2/Cursor.Panel_0.0.2_aarch64.dmg) |
+| macOS · Intel | [DMG for x64](https://github.com/devilcoolyue/cursor-dashboard/releases/download/v0.0.2/Cursor.Panel_0.0.2_x64.dmg) |
+| Windows · x64 | [Installer for x64](https://github.com/devilcoolyue/cursor-dashboard/releases/download/v0.0.2/Cursor.Panel_0.0.2_x64-setup.exe) |
+
+1. Install and open Cursor Panel. A local user and personal workspace are created automatically; Python, Node.js, and a server are not required.
+2. Choose **Add account** (`添加账号`) and authorize it using your Cursor web session material. See the [account guide](docs/user-guide.md#accounts) for the supported input.
+3. View quotas, open usage details, or choose **Switch** (`切换`) to use an account in the locally installed Cursor. Save your work before switching.
+
+These are early preview packages without publisher signing or macOS notarization, so your OS may show an installation warning. Check the release's `SHA256SUMS` and follow the [installation and recovery guide](docs/v2-desktop-operations.md). See [supported platforms](docs/supported-platforms.md) for verification boundaries.
+
+#### macOS: “damaged” or “cannot be opened”
+
+The current macOS app has not been signed with an Apple Developer ID or notarized by Apple. Gatekeeper may therefore report **“Cursor Panel is damaged and can't be opened”** or **“Apple could not verify…”** after downloading it. This message does not necessarily mean the download is corrupt. Update-package signatures are separate from Apple code signing and do not remove this warning.
+
+1. Download the matching DMG from this project's [GitHub Releases](https://github.com/devilcoolyue/cursor-dashboard/releases) and compare its SHA-256 with `SHA256SUMS` from the same release. Open the DMG and drag **Cursor Panel.app** into **Applications** before following the steps below.
+2. If macOS blocks an unidentified developer, try opening the app once, then go to **System Settings → Privacy & Security → Open Anyway** and confirm.
+3. If it still reports **“damaged”**, and you have verified and trust this download, open **Terminal** and run:
+
+   ```bash
+   xattr -dr com.apple.quarantine "/Applications/Cursor Panel.app"
+   open "/Applications/Cursor Panel.app"
+   ```
+
+   This removes the download quarantine attribute only from Cursor Panel and its bundled files. It does not disable Gatekeeper for other apps. Keep the quotes because the app name contains a space; replace the path if you installed it elsewhere.
+
+4. If the `xattr` command reports **Permission denied** or **Operation not permitted**, rerun it with administrator privileges, then open the app:
+
+   ```bash
+   sudo xattr -dr com.apple.quarantine "/Applications/Cursor Panel.app"
+   open "/Applications/Cursor Panel.app"
+   ```
+
+   Enter your Mac login password when prompted; Terminal shows no characters while you type. **No such file** means the installation path is wrong or the app has not been copied into Applications. **No such xattr** means that file has no quarantine attribute.
+
+If the checksum does not match, download the package again instead of removing quarantine. If it matches but the app still cannot open, [report an issue](https://github.com/devilcoolyue/cursor-dashboard/issues) with your macOS version, chip architecture, and exact error message.
+
+### Docker Compose — for teams and self-hosting
+
+**Requirements:** Docker Engine, Docker Compose v2, a domain pointing to your server, and reachable ports **80 / 443**. Caddy handles HTTPS.
 
 ```bash
+git clone https://github.com/devilcoolyue/cursor-dashboard.git
+cd cursor-dashboard
 cp deploy/v2/.env.example deploy/v2/.env
-# 将 CURSOR_PANEL_DOMAIN 改成指向本服务器的域名。
+```
+
+Edit `deploy/v2/.env` and set `CURSOR_PANEL_DOMAIN` to your domain, such as `panel.example.com`, without a protocol or path. Then run these first-time setup commands from the repository root:
+
+```bash
+# Build the application and bundled Web interface.
 docker compose --env-file deploy/v2/.env -f deploy/v2/compose.yaml build panel
+
+# Create the encryption key and initial administrator.
 docker compose --env-file deploy/v2/.env -f deploy/v2/compose.yaml run --rm maintenance \
   cursor-core --key-file /run/cursor-secrets/master.json keygen
 docker compose --env-file deploy/v2/.env -f deploy/v2/compose.yaml run --rm maintenance \
   cursor-core server-init --login owner@example.com
+
+# Start the application and HTTPS proxy.
 docker compose --env-file deploy/v2/.env -f deploy/v2/compose.yaml up -d panel proxy
 ```
 
-在终端隐藏输入初始化密码，随后访问自己的 HTTPS 域名登录。Caddy 提供 HTTPS，数据库和独立主密钥使用不同持久卷。服务端首版为单实例、单业务进程；维护时需先停服务，更新前备份数据库和匹配密钥。
+Replace `owner@example.com` with your administrator login. The terminal prompts twice for a password of at least 12 characters, with input hidden. Open `https://your-domain` and sign in with that account.
 
-源码运行需要 Python 3.10+、uv、Node 22.12+：`uv sync --locked`、`npm --prefix frontend ci`、`uv run --frozen python dev/build-web.py`，再按 [API 运行文档](docs/v2-api-operations.md) 初始化并启动 `cursor-api`。
+The database and master key use separate persistent volumes. Run a **single application process** per instance. Stop the application before maintenance, and back up both the database and matching key before updating. Existing installations should follow the [update and recovery procedure](docs/v2-web-operations.md), rather than repeat initialization.
 
-## V2 当前能力
+### Try the interface with demo data
 
-| 功能 | 行为 |
-| --- | --- |
-| 用户与空间 | 用户登录、退出、改密码与会话撤销；个人空间、团队邀请、固定角色及 Owner 转移 |
-| 权限 | Member/Viewer 默认看不到团队账号；view 查看额度与明细，use 还可刷新和手工切换 |
-| 账号维护 | Owner/Admin 添加、修改名称与标签、重新授权、删除；空间内去重，跨空间独立 |
-| 额度与明细 | 最后成功快照、套餐与周期、综合/Cursor/Other Models 额度、Grok 周额度、按 tier 分组的模型用量 |
-| 刷新 | 手工刷新与按需明细，统一节流与凭证续期；失败保留成功快照，显示更新时间与状态；尚无 V2 周期调度 |
-| Web 手工切换 | 生成短命令，终端持一次性链接下载固定 macOS/Windows 脚本后执行；下载时复查当前权限 |
-| 桌面连接实例 | 系统浏览器登录、S256 PKCE、系统凭证库设备令牌、可撤销设备会话；区分本地与多个远程实例 |
-| 设置与审计 | 空间成员/授权管理、空间审计、实例用户启停及实例审计；实例管理员不自动获得他人空间权限 |
-| 显示与交互 | 六种皮肤与独立明暗、移动布局、焦点恢复、减少动态效果；切换空间/用户取消旧请求 |
-| 运行维护 | 加密凭证、进程锁、显式 schema 升级、旧版迁移、离线一致备份及新环境恢复 |
-
-额度百分比沿用 Cursor 返回口径，美元上限仅作推算；数据来自非公开接口，不能视为官方计费或兼容性承诺。列表显示快照时间，不能视为实时数据。拥有 use 权限的人能领取账号凭证，撤权不能收回已复制的凭证。
-
-## 命令行
-
-```bash
-cursor-remote --server https://panel.example.com --login owner@example.com workspaces
-cursor-remote --server https://panel.example.com --login owner@example.com list
-cursor-remote --server https://panel.example.com --login owner@example.com \
-  detail --workspace 空间UUID --account 账号UUID
-```
-
-每次命令隐藏输入密码，会话只在内存保存，结束时撤销。`cursor-core` 是持有数据目录锁的离线运维入口，不能用其 Actor 参数替代远程用户登录。
-
-## 模拟预览与检查
+To explore before adding accounts, run the isolated preview from a source checkout. It requires **Python 3.10+**, **[uv](https://docs.astral.sh/uv/)**, and **Node.js 22.12+**.
 
 ```bash
 uv sync --locked
@@ -62,32 +138,133 @@ npm --prefix frontend run build
 uv run --frozen python dev/preview-v2.py --port 18763
 ```
 
-访问 `http://127.0.0.1:18763`。合成用户 `owner@example.test`、`member@example.test`、`viewer@example.test`，密码均为 `Preview password 42!`。预览创建临时数据库与密钥，不请求 Cursor；预览切换脚本在访问本机 Cursor 前停止。
+Open **<http://127.0.0.1:18763>**. Sign in as `owner@example.test`, `member@example.test`, or `viewer@example.test`, all with the password `Preview password 42!`.
+
+The preview uses a temporary database, temporary keys, and synthetic accounts. It does not call Cursor's services, and preview switching scripts stop before accessing the local Cursor installation.
+
+## Team access, explained
+
+Each user gets a private personal workspace. For collaboration, create a team in the Web app, invite members, add accounts to that team, and assign access:
+
+| Role or grant | What it allows |
+| --- | --- |
+| **Owner / Admin** | Manage team accounts, members, and account grants; only the Owner can transfer ownership |
+| **Member / Viewer** | No team accounts are visible by default; access requires an account grant |
+| **`view` grant** | Read the account's quota snapshot and usage details |
+| **`use` grant** | Includes `view`, plus refresh and the supported switching flow |
+| **Instance administrator** | Manage instance users and instance audit records; does not automatically gain access to other users' spaces |
+
+`use` access allows the holder to obtain account credentials. Revoking a grant blocks future access through the panel, but cannot recall credentials already copied. Details: [roles and permissions](docs/user-guide.md#permissions).
+
+## Command line
+
+After `uv sync --locked`, run these commands from the repository root:
+
+```bash
+uv run --frozen cursor-remote --server https://panel.example.com --login owner@example.com workspaces
+uv run --frozen cursor-remote --server https://panel.example.com --login owner@example.com list
+uv run --frozen cursor-remote --server https://panel.example.com --login owner@example.com \
+  detail --workspace WORKSPACE_UUID --account ACCOUNT_UUID
+```
+
+Use your server address and login; replace the UUID placeholders with IDs returned by the workspace and account lists. Each command prompts for a password, keeps its session in memory, and attempts to revoke it on exit.
+
+`cursor-api` serves the authenticated API and built Web UI. `cursor-core` is the offline maintenance tool for initialization, migration, backup, and recovery; its Actor arguments do not replace remote authentication. See the [API guide](docs/v2-api-operations.md) and [core operations](docs/core-operations.md).
+
+## Current scope
+
+- **Quota data is a snapshot.** Failed refreshes preserve the last successful result and its timestamp. Percentages follow Cursor's response; dollar limits may be inferred. The data comes from non-public interfaces and is not an official billing statement or a compatibility guarantee.
+- **Refresh behavior depends on the entry point.** The local desktop can refresh in the background when tray mode is enabled. The V2 server currently refreshes manually or on demand; it has no periodic quota scheduler.
+- **Remote desktop switching remains disabled.** Remote viewing, management, and device login are available. Real Cursor session renewal and sharing across devices still need validation; synthetic tests do not establish that support.
+- **Updates require published update packages.** Source includes update checks and signed update support. Signed update packages are included in v0.0.2; server upgrades also need the optional Linux amd64 host updater. Users of v0.0.1 must install v0.0.2 manually once to get the updater. See [automatic updates](docs/automatic-updates.md).
+- **Platform coverage is explicit.** Desktop targets macOS arm64 / x64 and Windows x64. Linux native desktop and Windows arm64 are outside the current supported scope. See the [platform matrix](docs/supported-platforms.md) for tested environments and remaining checks.
+
+## Technology
+
+| Layer | Stack |
+| --- | --- |
+| Business core and API | Python 3.10+, FastAPI, Pydantic |
+| Web interface | Vue 3, TypeScript, Vite |
+| Desktop | Tauri 2 / Rust with a bundled Python backend |
+| Persistence | SQLite, SQLAlchemy, Alembic; encrypted account credentials |
+| Deployment | Docker Compose, Caddy HTTPS |
+
+<details>
+<summary>Project structure</summary>
+
+```text
+cursor-dashboard/
+├── cursor_dashboard/       # Shared Python core, API, CLI, and local integrations
+│   ├── api/               # Authenticated HTTP API
+│   ├── application/       # Accounts, workspaces, identity, and access rules
+│   ├── infrastructure/    # Persistence, encryption, and migrations
+│   ├── local/             # Desktop runtime and local Cursor switching
+│   └── runtime/           # Server and maintenance entry points
+├── frontend/              # Shared Vue interface for Web and desktop
+├── desktop/               # Tauri shell and bundled Python backend
+├── deploy/v2/             # Compose, HTTPS proxy, and optional updater
+├── dev/                   # Synthetic previews, builds, and release tooling
+├── tests/                 # Core and integration tests
+└── docs/                  # Guides, architecture decisions, and verification
+```
+
+</details>
+
+## Development
+
+Use **Node.js 22.13+** for the full test suite, including Node SQLite checks; CI uses Node 24. Desktop builds additionally require Rust and the target platform's build tools.
+
+After installing dependencies as shown in the demo setup:
 
 ```bash
 uv run --frozen python -m unittest discover -s tests -v
+npm --prefix frontend run build
 npx --prefix frontend playwright install chromium
 npm --prefix frontend run test:e2e
 npm --prefix frontend run test:connected
+uv run --frozen python dev/release.py check
 ```
 
-验证使用模拟网关和临时数据。前端 API 类型由 OpenAPI 生成并通过 CI 检查漂移；容器、wheel 和三平台检查见 [P3 报告](docs/plans/p3-verification.md)。
+For a source-based Web installation, run `uv run --frozen python dev/build-web.py`, then initialize and start `cursor-api` as described in the [API guide](docs/v2-api-operations.md). Desktop build instructions are in [desktop/README.md](desktop/README.md).
 
-## Legacy 兼容入口
+Verification uses temporary data and simulated gateways. API types are generated from OpenAPI and checked for drift in CI. Implementation history and evidence are kept in the [architecture plan](docs/plans/v2-architecture.md), [Web report](docs/plans/p3-verification.md), [desktop report](docs/plans/p4-verification.md), [connected mode report](docs/plans/p5-verification.md), and [release report](docs/plans/p6-verification.md).
 
-`cursor-panel` / `cursor-quota` 继续提供旧版共享面板与查询，不使用 V2 的登录、空间或数据库。旧 `PANEL_TOKEN`、独立管理员口令与访客开放规则不能访问 V2。旧版源码基线保存在远端 `legacy` 分支，详见 [旧版使用说明](docs/legacy-usage.md)、[旧版部署](docs/operations.md)和[维护文档](docs/maintenance.md)。
+## Documentation
 
-不要让旧版直接打开新版数据库。迁移、重复导入检查与回退说明见 [核心运维](docs/core-operations.md)。真实 Cookie、AT/RT、密钥、运行数据库和生成切换命令不应提交到仓库。
+Both README editions cover the same setup and features. The detailed guides below are currently in **Chinese**; the desktop also provides a six-step introduction and searchable offline help.
 
-## 文档
+| Guide | Contents |
+| --- | --- |
+| [User guide](docs/user-guide.md) | First steps, accounts, quotas, switching, and teams |
+| [Web deployment](docs/v2-web-operations.md) | Docker, HTTPS, backup / restore, and remote CLI |
+| [Desktop operations](docs/v2-desktop-operations.md) | Local setup, Cursor paths, switching, and encrypted archives |
+| [Remote connections](docs/v2-connected-operations.md) | Browser login, saved instances, and device sessions |
+| [API reference](docs/v2-api-operations.md) | Authentication, endpoints, and client conventions |
+| [Core operations](docs/core-operations.md) | Keys, offline maintenance, and legacy migration |
+| [Updates](docs/automatic-updates.md) | Desktop updates and optional server upgrade service |
+| [Release operations](docs/v2-release-operations.md) | Checksums, manual updates, rollback, and signing |
+| [Supported platforms](docs/supported-platforms.md) | Verified systems and current limitations |
+| [Contributing](CONTRIBUTING.md) | Development workflow, checks, and issue reports |
 
-- [Web 部署、备份恢复、远程 CLI](docs/v2-web-operations.md)
-- [独立桌面安装与使用](docs/v2-desktop-operations.md)
-- [桌面连接实例与设备登录](docs/v2-connected-operations.md)
-- [V2 认证与 API 约定](docs/v2-api-operations.md)
-- [核心运行与旧版迁移](docs/core-operations.md)
-- [架构与分阶段计划](docs/plans/v2-architecture.md)
-- [P3 交付决策](docs/adr/0005-p3-web-delivery.md)
-- [版本、校验、手动更新和签名方案](docs/v2-release-operations.md)
-- [支持平台与验证边界](docs/supported-platforms.md)
-- [贡献与问题报告](CONTRIBUTING.md)
+<details>
+<summary>Coming from the legacy version?</summary>
+
+`cursor-panel` and `cursor-quota` retain the legacy shared panel and query interface. They use separate storage and authentication from V2; old `PANEL_TOKEN` values cannot authenticate to V2. The legacy source baseline is preserved on the remote `legacy` branch.
+
+Follow the [legacy usage guide](docs/legacy-usage.md), [legacy deployment guide](docs/operations.md), and [maintenance notes](docs/maintenance.md). Use the [migration procedure](docs/core-operations.md) to move data into V2, and never open a V2 database with legacy code.
+
+</details>
+
+## Contributing
+
+Bug reports, documentation improvements, and focused pull requests are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), and include your version, platform, reproduction steps, and sanitized errors when [reporting an issue](https://github.com/devilcoolyue/cursor-dashboard/issues). Keep real credentials, keys, databases, and generated switching commands out of commits and screenshots.
+
+## License
+
+[MIT](LICENSE) · Copyright © 2026 Cursor Panel contributors.
+
+<div align="center">
+
+If Cursor Panel makes managing your accounts easier, give the project a ⭐.
+
+</div>

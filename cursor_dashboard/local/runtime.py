@@ -33,7 +33,14 @@ class DesktopRuntime:
         self.error = None
         self.phase = "starting"
         self.open_lock = threading.Lock()
-        self.executor = SwitchExecutor(self.directory, installation or CursorInstallation())
+        self.cursor_paths = self.directory / "cursor-paths.json"
+        paths = {}
+        try:
+            saved = json.loads(self.cursor_paths.read_text(encoding="utf-8"))
+            paths = {key: saved[key] for key in ("executable_path", "user_data_path") if isinstance(saved.get(key), str)}
+        except (OSError, ValueError, AttributeError):
+            pass
+        self.executor = SwitchExecutor(self.directory, installation or CursorInstallation(**paths))
         self.commands = LocalCommands(self.directory, preview=script_preview)
         self.connections = connections or Connections(self.directory)
         self.job = None
@@ -93,6 +100,49 @@ class DesktopRuntime:
                 "api_version": 1, "last_refresh": self.last_refresh,
                 "refresh_error": self.refresh_error, "switch": self.executor.status()}
 
+    def detect_cursor(self, paths=None):
+        # Detection runs in an HTTP worker. Freeze the target throughout authorization,
+        # database writes and restart, including the gap before execute() takes its lock.
+        if not self.executor.guard.acquire(blocking=False):
+            raise Conflict("Wait for the current Cursor operation to finish")
+        try:
+            if self.job is not None or self.executor.status()["busy"]:
+                raise Conflict("Wait for the current Cursor operation to finish")
+            if paths is None:
+                installation = self.executor.installation
+                if hasattr(installation, "refresh"):
+                    installation.refresh()
+                return installation.detect()
+            candidate = CursorInstallation(**paths)
+            result = candidate.detect()
+            # Invalid manual input cannot replace a working/saved target. Clearing both
+            # fields always permits returning to automatic discovery after an uninstall.
+            if not result["available"] and any(paths.values()):
+                return {**result, "saved": False}
+            normalized = {"executable_path": str(candidate.executable) if paths["executable_path"] else "",
+                          "user_data_path": str(candidate.user_data) if paths["user_data_path"] else ""}
+            pending = self.cursor_paths.with_suffix(".tmp")
+            pending.unlink(missing_ok=True)
+            write_new(pending, json.dumps(normalized, ensure_ascii=False).encode("utf-8"))
+            pending.replace(self.cursor_paths)
+            candidate.executable_path = normalized["executable_path"]
+            candidate.user_data_path = normalized["user_data_path"]
+            self.executor.installation = candidate
+            return {**result, "configured_executable_path": candidate.executable_path,
+                    "configured_user_data_path": candidate.user_data_path, "saved": True}
+        finally:
+            self.executor.guard.release()
+
+    def begin_cursor_operation(self, stage):
+        if not self.executor.guard.acquire(blocking=False):
+            raise Conflict("A Cursor operation is already running")
+        try:
+            if self.job is not None or self.executor.status()["busy"]:
+                raise Conflict("A Cursor operation is already running")
+            self.executor.update(stage=stage, busy=True, error=None, written=False)
+        finally:
+            self.executor.guard.release()
+
     def set_background(self, enabled):
         pending = self.preferences.with_suffix(".tmp")
         pending.unlink(missing_ok=True)
@@ -142,11 +192,9 @@ class DesktopRuntime:
 
     def start_switch(self, workspace_id, account_id):
         core = self.require()
-        if self.job is not None:
-            raise Conflict("A Cursor operation is already running")
         actor = self.identity.actor()
         core.repository.check_access(actor, workspace_id, account_id, "use")
-        self.executor.update(stage="authorizing", busy=True, error=None, written=False)
+        self.begin_cursor_operation("authorizing")
 
         async def run():
             ticket_id = None
@@ -172,10 +220,8 @@ class DesktopRuntime:
 
     def start_restore(self, backup_id):
         self.require()
-        if self.job is not None:
-            raise Conflict("A Cursor operation is already running")
         self.executor.backup_path(backup_id)
-        self.executor.update(stage="checking", busy=True, error=None, written=False)
+        self.begin_cursor_operation("checking")
 
         async def run():
             try:
@@ -188,9 +234,7 @@ class DesktopRuntime:
         return self.executor.status()
 
     def start_remote_switch(self, connection_id, workspace_id, account_id):
-        if self.job is not None:
-            raise Conflict("A Cursor operation is already running")
-        self.executor.update(stage="authorizing", busy=True, error=None, written=False)
+        self.begin_cursor_operation("authorizing")
 
         async def run():
             report = None

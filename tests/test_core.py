@@ -213,6 +213,27 @@ class PersistenceTest(CoreFixture, unittest.TestCase):
         self.assertTrue(second["expired"])
         self.assertEqual(first["data"], second["data"])
 
+    def test_own_pool_history_persists_across_restart_but_not_reauthorization_or_new_cycle(self):
+        a = self.account(snapshot=data(42))
+        capped = data()
+        for slot in capped['quota'].values():
+            slot.update(used_pct=100, remaining_pct=0)
+        self.assertTrue(self.repo.record_snapshot(a.ref, data=capped, actor=self.actor))
+        self.core.close()
+        self.core = Core(self.config)
+        self.addCleanup(self.core.close)
+        self.repo = self.core.repository
+        self.assertTrue(self.repo.record_snapshot(a.ref, data=capped, actor=self.actor))
+        slot = self.core.accounts.get(self.actor, self.first, a.ref.account_id)['data']['quota']['overall']
+        self.assertEqual((slot['limit_usd'], slot['remaining_pct'], slot['limit_source']), (42, 0, 'history'))
+        self.repo.record_snapshot(a.ref, data=data(cycle='2026-10-01T00:00:00Z'), actor=self.actor)
+        self.assertIsNone(self.core.accounts.get(self.actor, self.first, a.ref.account_id)['data']['quota']['overall']['limit_usd'])
+        self.repo.record_snapshot(a.ref, data=data(42), actor=self.actor)
+        updated = self.repo.put_authorization(self.actor, self.first, email=a.email, subject=a.subject,
+            label=a.label, secrets=Secrets('new-cookie', token(), 'new-rt'), expected=a.ref, data=capped)
+        self.assertFalse(self.repo.record_snapshot(a.ref, data=data(999), actor=self.actor))
+        self.assertIsNone(self.core.accounts.get(self.actor, self.first, updated.ref.account_id)['data']['quota']['overall']['limit_usd'])
+
     def test_visible_observations_never_use_other_spaces_or_ungranted_accounts(self):
         capped = self.account(snapshot=data())
         solved = self.account(email="solved@example.test", marker="solved", snapshot=data(42))
@@ -225,6 +246,10 @@ class PersistenceTest(CoreFixture, unittest.TestCase):
         self.assertIsNone(view["data"]["quota"]["overall"]["limit_usd"])
         owner = self.core.accounts.get(self.actor, self.first, capped.ref.account_id)
         self.assertEqual(owner["data"]["quota"]["overall"]["limit_usd"], 42)
+        # A source becoming capped keeps its own history, without copying it into the recipient.
+        self.repo.record_snapshot(solved.ref, data=data(), actor=self.actor)
+        self.assertEqual(self.core.accounts.get(self.actor, self.first, capped.ref.account_id)['data']['quota']['overall']['limit_usd'], 42)
+        self.assertIsNone(self.core.accounts.get(self.other, self.first, capped.ref.account_id)['data']['quota']['overall']['limit_usd'])
         self.core.accounts.delete(self.actor, self.first, solved.ref.account_id)
         self.assertIsNone(self.core.accounts.get(self.actor, self.first, capped.ref.account_id)["data"]["quota"]["overall"]["limit_usd"])
 

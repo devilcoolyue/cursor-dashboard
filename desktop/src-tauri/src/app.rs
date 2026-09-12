@@ -183,6 +183,7 @@ struct Runtime {
     backend: Mutex<Option<Backend>>,
     error: Mutex<Option<String>>,
     starting: AtomicBool,
+    updating: AtomicBool,
     background: AtomicBool,
     start: Instant,
     directory: PathBuf,
@@ -190,6 +191,9 @@ struct Runtime {
     reported: AtomicBool,
 }
 fn connection(app: &tauri::AppHandle) -> Result<Connection, String> {
+    if app.state::<Runtime>().updating.load(Ordering::SeqCst) {
+        return Err("Application update is in progress".into());
+    }
     app.state::<Runtime>()
         .backend
         .lock()
@@ -307,9 +311,11 @@ async fn account_request(
     connection_id: Option<String>,
 ) -> Result<Value, String> {
     let (method, route) = account_route(operation, workspace, account, query.unwrap_or_default())?;
-    tauri::async_runtime::spawn_blocking(move || connected::request(&app, connection_id, method, &route, body))
-        .await
-        .map_err(|_| "Native request failed")?
+    tauri::async_runtime::spawn_blocking(move || {
+        connected::request(&app, connection_id, method, &route, body)
+    })
+    .await
+    .map_err(|_| "Native request failed")?
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -317,6 +323,7 @@ enum NativeOperation {
     Status,
     Unlock,
     Detect,
+    CursorPaths,
     Switch,
     SwitchCommand,
     SwitchStatus,
@@ -340,6 +347,7 @@ async fn desktop_request(
         }
         let (method, path) = match operation {
             Status => ("GET", "/native/status"), Unlock => ("POST", "/native/unlock"), Detect => ("GET", "/native/cursor"),
+            CursorPaths => ("PUT", "/native/cursor"),
             Switch => ("POST", "/native/switch"), SwitchStatus => ("GET", "/native/switch"), Backups => ("GET", "/native/backups"),
             SwitchCommand => ("POST", "/native/switch-command"),
             Restore => ("POST", "/native/restore"), Background => ("PUT", "/native/background"), Resume => ("POST", "/native/resume"),
@@ -446,6 +454,78 @@ fn frontend_ready(app: tauri::AppHandle, rendered_accounts: usize) -> Result<(),
     }
     Ok(())
 }
+pub(crate) fn stop_for_update(app: &tauri::AppHandle) -> Result<(), String> {
+    let runtime = app.state::<Runtime>();
+    if runtime.starting.load(Ordering::SeqCst) {
+        return Err("本地后台正在启动，请稍后再升级。".into());
+    }
+    let current = connection(app).map_err(|_| "本地后台未就绪，请重新打开应用后再升级。")?;
+    let status = current
+        .request("GET", "/native/status", None)
+        .map_err(|_| "无法确认本地后台状态，请稍后再升级。")?;
+    if status["body"]["switch"]["busy"] == true {
+        return Err("账号切换正在进行，请完成后再升级。".into());
+    }
+    if status["body"]["phase"] != "ready" && status["body"]["phase"] != "locked" {
+        return Err("本地数据目录暂不可用，请完成恢复后再升级。".into());
+    }
+    runtime.updating.store(true, Ordering::SeqCst);
+    let backend = runtime
+        .backend
+        .lock()
+        .map_err(|_| "无法结束本地后台。")?
+        .take();
+    drop(backend); // Close the control pipe and wait for active work and database shutdown.
+    Ok(())
+}
+
+pub(crate) fn resume_after_update_failure(app: &tauri::AppHandle) {
+    let runtime = app.state::<Runtime>();
+    match Backend::start(app, &runtime.directory, false) {
+        Ok(backend) => *runtime.backend.lock().unwrap() = Some(backend),
+        Err(error) => *runtime.error.lock().unwrap() = Some(error),
+    }
+    runtime.updating.store(false, Ordering::SeqCst);
+}
+
+pub(crate) fn backup_for_update(app: &tauri::AppHandle) -> Result<(), String> {
+    fn copy_directory(source: &std::path::Path, target: &std::path::Path) -> std::io::Result<()> {
+        fs::create_dir_all(target)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(target, fs::Permissions::from_mode(0o700))?;
+        }
+        for entry in fs::read_dir(source)? {
+            let entry = entry?;
+            let kind = entry.file_type()?;
+            if kind.is_symlink() {
+                return Err(std::io::Error::other("Backup cannot contain symlinks"));
+            }
+            let destination = target.join(entry.file_name());
+            if kind.is_dir() {
+                copy_directory(&entry.path(), &destination)?;
+            } else if kind.is_file() {
+                fs::copy(entry.path(), destination)?;
+            }
+        }
+        Ok(())
+    }
+    let directory = app.state::<Runtime>().directory.clone();
+    let backups = app
+        .path()
+        .app_cache_dir()
+        .map_err(|_| "无法找到升级备份目录。")?
+        .join("update-backups");
+    let id = nonce();
+    let temporary = backups.join(format!(".partial-{id}"));
+    if copy_directory(&directory, &temporary).and_then(|_| fs::rename(&temporary, backups.join(id))).is_err() {
+        let _ = fs::remove_dir_all(temporary);
+        return Err("升级前备份未完成，当前应用未被替换，请检查磁盘空间后重试。".into());
+    }
+    Ok(())
+}
+
 pub fn run() {
     let started = Instant::now();
     let args: Vec<_> = std::env::args_os().collect();
@@ -464,7 +544,10 @@ pub fn run() {
             }
         }));
     }
-    let application = builder.setup(move |app| {
+    let application = builder
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(crate::updates::Updates::default())
+        .setup(move |app| {
             let directory = if let Some(report) = &report {
                 report
                     .parent()
@@ -478,6 +561,7 @@ pub fn run() {
                 backend: Mutex::new(None),
                 error: Mutex::new(None),
                 starting: AtomicBool::new(true),
+                updating: AtomicBool::new(false),
                 background: AtomicBool::new(false),
                 start: started,
                 directory: directory.clone(),
@@ -545,6 +629,9 @@ pub fn run() {
             desktop_open_backups,
             connected::connection_request,
             connected::remote_manage,
+            crate::updates::check_update,
+            crate::updates::install_update,
+            crate::updates::open_releases,
             frontend_ready
         ])
         .on_window_event(|window, event| {

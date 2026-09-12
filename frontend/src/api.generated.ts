@@ -21,6 +21,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/updates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Check Updates */
+        get: operations["check_updates_api_v1_updates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instance/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Update Status */
+        get: operations["update_status_api_v1_instance_update_get"];
+        put?: never;
+        /** Install Update */
+        post: operations["install_update_api_v1_instance_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -825,6 +860,11 @@ export interface components {
             capabilities: {
                 [key: string]: boolean;
             };
+            /**
+             * App Version
+             * @default 0.0.1
+             */
+            app_version: string;
         };
         /** Csrf */
         Csrf: {
@@ -1023,6 +1063,11 @@ export interface components {
             status: "ok";
             /** Api Version */
             api_version: number;
+        };
+        /** InstallUpdate */
+        InstallUpdate: {
+            /** Version */
+            version: string;
         };
         /** InvitationIssued */
         InvitationIssued: {
@@ -1226,8 +1271,27 @@ export interface components {
              * @default false
              */
             limit_inferred: boolean;
+            /** Limit Source */
+            limit_source?: ("history" | "plan") | null;
         } & {
             [key: string]: unknown;
+        };
+        /** ReleaseInfo */
+        ReleaseInfo: {
+            /** Current Version */
+            current_version: string;
+            /** Latest Version */
+            latest_version: string | null;
+            /** Available */
+            available: boolean;
+            /** Installable */
+            installable: boolean;
+            /** Notes */
+            notes: string;
+            /** Release Url */
+            release_url: string;
+            /** Published At */
+            published_at: string | null;
         };
         /** RoleChange */
         RoleChange: {
@@ -1292,6 +1356,22 @@ export interface components {
              * @enum {string}
              */
             platform: "macos" | "windows";
+        };
+        /** UpdateStatus */
+        UpdateStatus: {
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "idle" | "queued" | "downloading" | "verifying" | "backing_up" | "upgrading" | "restarting" | "rolling_back" | "complete" | "failed";
+            /** Job Id */
+            job_id: string | null;
+            /** Version */
+            version: string | null;
+            /** Message */
+            message: string | null;
         };
         /** Usage */
         Usage: {
@@ -1420,6 +1500,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Bootstrap"];
+                };
+            };
+        };
+    };
+    check_updates_api_v1_updates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseInfo"];
+                };
+            };
+        };
+    };
+    update_status_api_v1_instance_update_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateStatus"];
+                };
+            };
+        };
+    };
+    install_update_api_v1_instance_update_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstallUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

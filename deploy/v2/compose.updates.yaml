@@ -1,0 +1,7 @@
+# Optional: pair this with the host cursor-panel-updater.service.
+services:
+  panel:
+    environment:
+      CURSOR_UPDATE_CONTROL_DIR: /run/cursor-updates
+    volumes:
+      - /var/lib/cursor-panel-updates:/run/cursor-updates

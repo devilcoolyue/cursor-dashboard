@@ -1,0 +1,16 @@
+[Unit]
+Description=Cursor Panel signed update service
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/cursor-dashboard
+ExecStart=/opt/cursor-dashboard/.venv/bin/python -m cursor_dashboard.updates.agent --compose /opt/cursor-dashboard/deploy/v2/compose.yaml --compose /opt/cursor-dashboard/deploy/v2/compose.updates.yaml --env-file /opt/cursor-dashboard/deploy/v2/.env
+Restart=on-failure
+RestartSec=5
+UMask=0007
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

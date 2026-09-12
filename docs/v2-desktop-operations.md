@@ -1,6 +1,6 @@
 # V2 独立桌面
 
-P4 桌面使用本机数据库与系统凭证库，不需要先部署 Cursor Panel 服务端。安装产物、平台实测及已知边界见 [P4 验证报告](plans/p4-verification.md)。当前版本为 `0.0.1`，P5 远程连接已接入，使用与限制见 [连接实例说明](v2-connected-operations.md)；真实远程切换与正式签名发行尚未完成。候选包校验、手动更新/回退和签名方案见 [发行运维](v2-release-operations.md)，最新平台边界见 [支持表](supported-platforms.md)。
+P4 桌面使用本机数据库与系统凭证库，不需要先部署 Cursor Panel 服务端。安装产物、平台实测及已知边界见 [P4 验证报告](plans/p4-verification.md)。当前版本为 `0.0.2`，P5 远程连接已接入，使用与限制见 [连接实例说明](v2-connected-operations.md)；真实远程切换与正式签名发行尚未完成。候选包校验、手动更新/回退和签名方案见 [发行运维](v2-release-operations.md)，最新平台边界见 [支持表](supported-platforms.md)。
 
 ## 本地使用
 
@@ -14,7 +14,11 @@ P4 桌面使用本机数据库与系统凭证库，不需要先部署 Cursor Pan
 
 ## 在本机切换 Cursor
 
-首先安装并打开一次 Cursor。P4 检测默认用户数据目录及常见安装位置：macOS 的 `/Applications/Cursor.app` 或 `~/Applications/Cursor.app`，Windows 的 `%LOCALAPPDATA%\Programs\cursor`、Program Files 下的 Cursor。便携版、自定义数据目录、符号链接目录及 Linux 原生切换不在本轮范围。
+首先安装并打开一次 Cursor。Windows 自动查找运行中的 Cursor 进程、常见安装位置、PATH、注册表（当前用户与系统、32/64 位视图），以及桌面和开始菜单快捷方式（含 OneDrive 重定向桌面）。macOS 默认检查 `/Applications/Cursor.app` 和 `~/Applications/Cursor.app`。每次打开切换弹窗或点击“重新检测”都会重新查找，不必重启 Cursor Panel；检测失败会分别说明程序、用户数据库或进程冲突问题。
+
+找不到时在弹窗的“设置路径”中填写 Cursor 程序路径：Windows 接受 `Cursor.exe` 完整路径或安装文件夹，可从快捷方式“属性 → 目标”复制；macOS 接受 `.app` 路径。支持带引号、中文、空格及环境变量的绝对路径。用户数据目录选填，填写包含 `User` 文件夹的目录，不能填写数据库文件本身；默认 Windows 为 `%APPDATA%\Cursor`，macOS 为 `~/Library/Application Support/Cursor`。自动检测也识别运行进程的 `--user-data-dir` 和 Windows 安装目录下的 `data/user-data` 便携目录，重启时保留所选数据目录。存在多处安装或多个数据目录同时运行时，会提示关闭其他实例。
+
+点击“验证并保存路径”后，客户端校验程序结构及现有数据库，只在本机 `cursor-paths.json` 保存通过验证的配置；不会退出 Cursor 或修改登录。留空字段自动检测，“恢复自动检测”清除手动配置。路径修改后需重新勾选已保存工作的确认项；切换或恢复过程中禁止改动路径。符号链接数据目录及 Linux 原生切换暂不支持；Windows 新增发现来源与手动路径兼容仍需同事实机验收。
 
 在账号列表点击“切换”，保存工作后勾选确认。应用验证授权、正常退出 Cursor、创建包含已提交 WAL 数据的一致备份、事务更新登录并重启。macOS 可能显示请求控制 Cursor 的自动化提示；Windows 通过正常关闭窗口请求让 Cursor 处理保存提示。取消保存、拒绝退出、超时或另一安装仍在运行时停止，绝不强杀 Cursor。
 
@@ -37,6 +41,8 @@ P4 桌面使用本机数据库与系统凭证库，不需要先部署 Cursor Pan
 密钥在后台解锁后保留于进程内存，重新锁定系统凭证库不会抹除运行中后台的内存；需要结束面板后台后再重新打开。持有系统用户权限或已解锁进程的操作者位于信任边界内。
 
 ## 从源码构建与验证
+
+左上角品牌名称旁显示版本徽标，默认每 4 小时检查一次；有新版时显示黄色底色和呼吸提示点。点击徽标可手动检查、查看发布或进入「关于与更新」。带有签名更新包的新版本支持「一键升级并重启」。服务器自动升级的一次性部署以及客户端更新细节见[自动升级](automatic-updates.md)。
 
 开发机需要 Rust、Node、uv；安装包的使用者不需要这些工具。
 

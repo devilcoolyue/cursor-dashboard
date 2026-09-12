@@ -1,6 +1,6 @@
 # 支持平台与验证边界
 
-当前版本 `0.0.1` / V2 preview。以下“通过”均指报告中的隔离合成测试，不等同于真实 Cursor 会话或所有干净设备验证。P6 当前运行结果见 [验证报告](plans/p6-verification.md)：提交 `1045956` 的 [CI 34475031575](https://github.com/devilcoolyue/cursor-dashboard/actions/runs/34475031575) 已通过 Linux amd64 Web/容器和 macOS arm64/x64、Windows x64 候选构建、恢复与安装检查；MIT 许可收口提交 `a7a1124` 的 [CI 34476418600](https://github.com/devilcoolyue/cursor-dashboard/actions/runs/34476418600) 另验证全部候选和安装资源中的许可声明；下表保留 P5 更完整页面/原生适配的历史依据。
+当前版本 `0.0.2` / V2 preview。以下“通过”均指报告中的隔离合成测试，不等同于真实 Cursor 会话或所有干净设备验证。P6 当前运行结果见 [验证报告](plans/p6-verification.md)：提交 `1045956` 的 [CI 34475031575](https://github.com/devilcoolyue/cursor-dashboard/actions/runs/34475031575) 已通过 Linux amd64 Web/容器和 macOS arm64/x64、Windows x64 候选构建、恢复与安装检查；MIT 许可收口提交 `a7a1124` 的 [CI 34476418600](https://github.com/devilcoolyue/cursor-dashboard/actions/runs/34476418600) 另验证全部候选和安装资源中的许可声明；下表保留 P5 更完整页面/原生适配的历史依据。
 
 | 入口 / 平台 | 有记录的验证 | 当前边界 |
 | --- | --- | --- |
@@ -13,7 +13,8 @@
 | 桌面 / Windows x64 | 同次桌面 CI，windows-latest runner：NSIS 实际安装后启动、系统凭证库、原生 fixture、异常清理 | WebView2 由 Tauri 安装器处理；全新系统下载链路、最低 Windows 版本、正式签名未验 |
 | 远程连接 / 上述三种桌面 | 同次桌面/页面 CI：PKCE、loopback HTTP、撤销、权限和兼容提示 | Chromium 适配 IPC 的页面测试不能替代全部默认浏览器/原生 WebView 组合 |
 | 真实远程 Cursor 切换 | 无 S01–S06 完整证据 | 生产关闭，不在支持范围 |
-| Linux 原生桌面、Windows arm64、自定义/便携 Cursor 数据目录 | 无 | 不提供支持声明 |
+| 自定义/便携 Cursor 数据目录与 Windows 扩展路径发现 | 本机合成安装、数据库和进程测试；Chromium 路径设置流程 | 已实现兼容入口；实际 Windows 安装、快捷方式发现及真实 Cursor 切换待验 |
+| Linux 原生桌面、Windows arm64 | 无 | 不提供支持声明 |
 
 用户安装桌面产物无需 Python、Node 或 uv。源码构建需要 Rust、Node、uv；前端工具最低 Node 22.12，完整 Node SQLite 回归需要 22.13+，CI 使用 Node 24。移除开发工具 PATH 的安装探测证明随包运行时独立性，不代表全新系统已全部验收。
 
