@@ -100,7 +100,7 @@ def refreshed_session(data: dict, expected_subject: str) -> DesktopSession:
                            expected_subject)
 
 
-def build_commands(session: DesktopSession, email: str, *, preview: bool = False) -> dict:
+def build_commands(session: DesktopSession, email: str, *, preview: bool = False, backup_retention: bool = False) -> dict:
     if not preview:
         desktop_session({"accessToken": session.token, "refreshToken": session.refresh_token}, session.subject)
     payload = json.dumps({
@@ -112,6 +112,8 @@ def build_commands(session: DesktopSession, email: str, *, preview: bool = False
         "preview": preview,
     }, ensure_ascii=True, separators=(",", ":"))
     engine = SCRIPTS.joinpath("switch-account.cjs").read_text(encoding="utf-8")
+    engine = engine.replace("// __BACKUP_RETENTION__", SCRIPTS.joinpath("prune-backups.cjs").read_text(
+        encoding="utf-8") if backup_retention else "")
     engine = engine.replace("__SESSION_JSON__", payload)
     result = {}
     for platform, filename in (("macos", "switch-macos.sh"), ("windows", "switch-windows.ps1")):

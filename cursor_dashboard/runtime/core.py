@@ -14,6 +14,7 @@ from ..infrastructure.persistence.repository import Repository
 from ..infrastructure.providers.cursor.gateway import CursorGateway
 from ..infrastructure.secrets import Cipher, FileKeyProvider
 from .lock import RuntimeLock
+from .retention import Retention, prune_backup_files
 
 
 class Core:
@@ -50,7 +51,11 @@ class Core:
                             # before any schema mutation of an installed desktop.
                             import uuid
                             from .backup import copy_database
-                            copy_database(config.database.resolve(), config.data_dir / f"pre-upgrade-{uuid.uuid4()}.db")
+                            destination = config.data_dir / f"pre-upgrade-{uuid.uuid4()}.db"
+                            copy_database(config.database.resolve(), destination)
+                            prune_backup_files(config.data_dir,
+                                r"pre-upgrade-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\.db",
+                                keep=3, max_bytes=1024**3, protected=(destination,))
                     self.db.upgrade()
                 self.db.require_current()
             gateway = gateway or CursorGateway(interval=config.request_interval, concurrency=config.request_concurrency)
@@ -60,6 +65,7 @@ class Core:
             self.devices = DeviceService(self.repository, self.identity)
             self.workspaces = WorkspaceService(self.repository, self.identity)
             self.switches = SwitchService(self.repository, self.credentials)
+            self.retention = Retention(self.db, config)
         except BaseException:
             if self.db:
                 self.db.close()

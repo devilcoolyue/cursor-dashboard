@@ -8,7 +8,7 @@
 
 ## 客户端
 
-点击「检查更新」，发现带有本平台更新包的新版本后，点击「一键升级并重启」。应用展示下载进度，验证更新签名，等待本地后台完成退出，将应用数据目录复制到系统应用缓存目录的 `update-backups/`，再安装、重启。账号切换进行中时拒绝安装；备份、下载或签名验证失败时保留当前应用。系统凭证库的原密钥继续使用，不写入更新包或备份副本。
+点击「检查更新」，发现带有本平台更新包的新版本后，点击「一键升级并重启」。应用展示下载进度，验证更新签名，等待本地后台完成退出，将应用数据目录复制到系统应用缓存目录的 `update-backups/`，再安装、重启。完整升级备份最多保留 3 份、合计预算 1 GiB，始终保留本次恢复点，即使它单独超出预算；超出 24 小时的中断临时副本在下次升级时清理。只处理本程序命名的目录，不跟随符号链接。账号切换进行中时拒绝安装；备份、清理、下载或签名验证失败时保留当前应用。系统凭证库的原密钥继续使用，不写入更新包或备份副本。
 
 更新使用 Tauri updater，支持 macOS arm64/x64 和 Windows x64。只有带有 `latest.json` 和签名更新包的正式版本才能自动安装。没有自动更新包的历史版本显示发行记录入口，不将打开下载页冒充安装完成。独立更新签名用于确认包来源，不等于 Apple Developer ID、公证或 Windows 发行者签名；相关发行要求仍见 [发行运维](v2-release-operations.md)。
 
@@ -38,7 +38,9 @@ docker compose --env-file deploy/v2/.env \
 3. 在候选卷上执行 `cursor-core upgrade` 和 `verify`，成功后切换镜像和候选卷、执行启动健康检查，最后重新开放代理流量。
 4. 迁移或健康检查失败时切回原镜像与原数据卷；恢复记录支持更新服务中断后继续回退。不会让旧程序读取已升级的数据库。
 
-升级期间 Web 会短暂断开，页面会轮询连接并显示结果。升级完成后点击“刷新到新版本”。原数据卷和备份的部署配置由维护者确认稳定后按正常运维流程清理。网络下载、签名校验及候选准备失败不会停止当前服务；自动回退也失败时界面和 `status.json` 提示人工恢复，原数据仍被保留。
+升级期间 Web 会短暂断开，页面会轮询连接并显示结果。升级完成后点击“刷新到新版本”。更新器在私有状态目录 `retained/` 登记恢复资源，默认保留最近 2 个成功升级的恢复点及其 `.env.before-*` 配置。超过上限时，仅清理带有本更新器所有权标签、且没有任何容器（包括已停止容器）引用的数据卷；镜像删除不使用强制选项，其他容器或标签使用的镜像受到 Docker 保护。首次部署的无标签原始卷/镜像、旧版本更新器留下的未登记资源和人工备份继续由维护者管理。
+
+失败下载/升级产生的已登记候选资源会在确认回滚完成后回收；存在 `recovery.json` 时暂停清理。清理失败保留登记信息，每小时重试，不影响已完成的升级。网络下载、签名校验及候选准备失败不会停止当前服务；自动回退也失败时界面和 `status.json` 提示人工恢复，原数据仍被保留。升级后应同时更新宿主机上的 updater 代码/依赖并重启其 systemd 服务，旧 updater 不会自动获得新的清理策略。
 
 ## 发布可自动安装的版本
 
@@ -49,15 +51,15 @@ docker compose --env-file deploy/v2/.env \
 本地构建可用 `TAURI_SIGNING_PRIVATE_KEY_PATH` 指向私钥后运行 `dev/update-manifest.py`：
 
 ```bash
-uv run --frozen python dev/update-manifest.py desktop --tag v0.0.2 \
+uv run --frozen python dev/update-manifest.py desktop --tag v0.0.3 \
   --target darwin-aarch64 --artifact 'desktop/src-tauri/target/release/bundle/macos/Cursor Panel.app' \
   --output output/updates
-uv run --frozen python dev/update-manifest.py server --tag v0.0.2 \
+uv run --frozen python dev/update-manifest.py server --tag v0.0.3 \
   --artifact output/image.tar --image-metadata output/image.json --output output/updates
-uv run --frozen python dev/update-manifest.py merge --tag v0.0.2 --output output/updates
+uv run --frozen python dev/update-manifest.py merge --tag v0.0.3 --output output/updates
 ```
 
-示例版本必须与所有包的版本一致。macOS `.app` 必须已通过本地签名完整性校验；Windows 输入 NSIS 安装器。`merge` 要求三个桌面平台及服务器清单齐全并验证签名。`v0.0.2` 随发布提供这些更新产物。`v0.0.1` 未内置本次更新器，用户需先手动安装一次 `v0.0.2`；后续版本可通过应用内更新。
+示例版本必须与所有包的版本一致。macOS `.app` 必须已通过本地签名完整性校验；Windows 输入 NSIS 安装器。`merge` 要求三个桌面平台及服务器清单齐全并验证签名。`v0.0.3` 随发布提供这些更新产物。`v0.0.1` 未内置更新器，用户需先手动安装一次 `v0.0.2`；后续版本可通过应用内更新。
 
 ## 验证
 

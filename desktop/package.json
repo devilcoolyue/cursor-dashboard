@@ -1,7 +1,7 @@
 {
   "name": "cursor-panel-desktop",
   "private": true,
-  "version": "0.0.2",
+  "version": "0.0.3",
   "scripts": {
     "icons": "node scripts/sync-icons.mjs",
     "sidecar": "node scripts/build-sidecar.mjs",

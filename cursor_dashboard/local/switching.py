@@ -11,6 +11,7 @@ import uuid
 from ..desktop import desktop_session, DesktopSessionError
 from ..domain.core import Conflict
 from ..runtime.lock import RuntimeLock
+from ..runtime.retention import prune_backup_files
 from .files import private_directory, write_new
 
 AUTH_VALUES = ("accessToken", "refreshToken", "cachedEmail", "cachedSignUpType", "stripeMembershipAuthId")
@@ -87,7 +88,7 @@ class SwitchExecutor:
                 for path in sorted(self.directory.glob("*.sqlite"), key=lambda p: p.stat().st_mtime, reverse=True)
                 if not path.is_symlink()][:100]
 
-    def backup(self, source):
+    def backup(self, source, *, protected=()):
         backup_id = str(uuid.uuid4())
         path = self.backup_path(backup_id)
         write_new(path, b"")
@@ -99,6 +100,8 @@ class SwitchExecutor:
             path.unlink(missing_ok=True)
             raise
         self.update(backup_id=backup_id)
+        prune_backup_files(self.directory, r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\.sqlite",
+                           keep=20, max_bytes=512 * 1024**2, protected=(*protected, path))
         return backup_id
 
     def execute(self, delivery=None, *, restore_id=None):
@@ -121,7 +124,7 @@ class SwitchExecutor:
                 with closing(open_database(installation.database)) as database:
                     verify_database(database)
                     self.update(stage="backing_up")
-                    self.backup(database)
+                    self.backup(database, protected=(restore_path,) if restore_path else ())
                     installation.ensure_stopped()
                     self.update(stage="writing")
                     if restore_path:

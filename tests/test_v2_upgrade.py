@@ -82,7 +82,7 @@ class UpgradeTest(unittest.TestCase):
             with self.assertRaisesRegex(CoreError, "schema is not current"):
                 Core(config)
             with Core(config, upgrade=True) as core:
-                self.assertEqual(core.repository.verify()["schema"], "0003_devices")
+                self.assertEqual(core.repository.verify()["schema"], "0004_retention")
                 result = core.identity.initialize_server("owner@example.test", PASSWORD)
                 self.assertEqual(result["user_id"], "old-user")
                 me = core.identity.me(Actor("old-user"))

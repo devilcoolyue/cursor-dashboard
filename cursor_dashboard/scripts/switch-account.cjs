@@ -30,6 +30,7 @@ async function switchAccount() {
     // VACUUM INTO includes committed WAL data, unlike copying only state.vscdb.
     await run('VACUUM INTO ?', [backup]);
     console.log('备份位置：' + backup);
+    // __BACKUP_RETENTION__
     await run('BEGIN IMMEDIATE');
     try {
       for (const [key, value] of [

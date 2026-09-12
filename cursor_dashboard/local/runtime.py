@@ -162,6 +162,8 @@ class DesktopRuntime:
             await asyncio.sleep(10)
             now = time.time()
             self.commands.prune()
+            if self.core is not None:
+                await self.core.retention.tick()
             if now - previous > 30 or now < previous:
                 self.resume()
             previous = now

@@ -15,12 +15,14 @@ import VersionBadge from './VersionBadge.vue'
 import brandIcon from '../icon.svg'
 import { openGuide } from '../help/onboarding'
 import { appVersion } from '../version'
+import { restoreFocus } from '../input-modality'
 
 defineProps<{ busy: boolean }>()
 const emit = defineEmits<{ logout: []; createTeam: []; joinTeam: []; display: [] }>()
 const collapsed = defineModel<boolean>('collapsed', { default: false })
+const mobileOpen = defineModel<boolean>('mobileOpen', { default: false })
 const route = useRoute(), router = useRouter()
-const mobileOpen = ref(false), accountExpanded = ref(true)
+const accountExpanded = ref(true)
 const preferencesOpen = ref(false), themesOpen = ref(false), teamOpen = ref(false), userOpen = ref(false), settingsOpen = ref(false)
 const helpOpen = ref(false)
 const versionOpen = ref(false)
@@ -75,8 +77,23 @@ function openCollaboration(mode: 'create' | 'join') {
   if (mode === 'create') emit('createTeam')
   else emit('joinTeam')
 }
+function openCardDisplay() {
+  navigate()
+  if (mobile.value) sidebar.value?.querySelector<HTMLElement>('.mobile-toggle')?.focus({ preventScroll: true })
+  emit('display')
+}
 function changeSpace(id: string) { selectSpace(id); navigate(); accountExpanded.value = true; void router.push('/accounts') }
 function toggleCollapse() { collapsed.value = !collapsed.value; closePanels() }
+function navigationKeydown(event: KeyboardEvent) {
+  if (!mobile.value || !mobileOpen.value || event.defaultPrevented) return
+  if (event.key === 'Escape') { event.preventDefault(); mobileOpen.value = false; return }
+  if (event.key !== 'Tab') return
+  const controls = [...(sidebar.value?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), [tabindex="0"]') || [])]
+    .filter(element => element.tabIndex >= 0 && !element.closest('[inert]') && element.getClientRects().length && getComputedStyle(element).visibility === 'visible')
+  const first = controls[0], last = controls[controls.length - 1]
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus({ preventScroll: true }) }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus({ preventScroll: true }) }
+}
 function selectTheme(value: string) { skin.value = value; themesOpen.value = false; themesPinned = false; clearTimeout(hoverTimer) }
 function hoverThemes(event: PointerEvent) { if (event.pointerType === 'mouse') { clearTimeout(hoverTimer); themesOpen.value = true } }
 function leaveThemes(event: PointerEvent) { if (event.pointerType === 'mouse' && !themesPinned) hoverTimer = setTimeout(() => { themesOpen.value = false }, 180) }
@@ -106,14 +123,26 @@ watch(() => route.path, () => { navigate(); if (route.path === '/accounts') acco
 watch([workspaceId, () => me.value?.id, connectionId], navigate)
 watch(preferencesOpen, value => { if (!value) { themesOpen.value = false; themesPinned = false } })
 watch(themesOpen, value => { if (!value) { themesPinned = false; themeFocus = undefined; clearTimeout(hoverTimer) } })
-watch(mobileOpen, async value => { if (!value) { closePanels(); return }; await nextTick(); sidebar.value?.querySelector<HTMLElement>('.space-selector button')?.focus() })
+watch(mobile, () => { mobileOpen.value = false; closePanels() })
+watch(mobileOpen, async value => {
+  if (!value) {
+    closePanels()
+    await nextTick()
+    if (mobile.value && !mobileOpen.value && !document.querySelector('dialog[open]')) restoreFocus(() => sidebar.value?.querySelector<HTMLElement>('.mobile-toggle')?.focus({ preventScroll: true }))
+    return
+  }
+  closePanels()
+  await nextTick()
+  if (mobileOpen.value) sidebar.value?.querySelector<HTMLElement>('.space-selector button')?.focus({ preventScroll: true })
+})
 onMounted(() => { void nextTick(observeHeader); dimensions(); window.addEventListener('resize', dimensions); window.visualViewport?.addEventListener('resize', dimensions); clockTimer = setInterval(() => { now.value = Date.now() }, 30000) })
-onBeforeUnmount(() => { headerObserver?.disconnect(); window.removeEventListener('resize', dimensions); window.visualViewport?.removeEventListener('resize', dimensions); clearInterval(clockTimer); clearTimeout(hoverTimer) })
+onBeforeUnmount(() => { mobileOpen.value = false; headerObserver?.disconnect(); window.removeEventListener('resize', dimensions); window.visualViewport?.removeEventListener('resize', dimensions); clearInterval(clockTimer); clearTimeout(hoverTimer) })
 </script>
 <template>
-  <aside v-if="me" ref="sidebar" class="sidebar" :class="{ expanded: mobileOpen, collapsed: collapsed && !mobile, 'density-compact': compact, 'density-minimal': minimal, 'density-tiny': tiny }" :style="{ '--sidebar-available-height': `${availableHeight}px` }" aria-label="侧栏导航" @keydown.esc="mobileOpen = false">
+  <aside v-if="me" ref="sidebar" class="sidebar" :class="{ expanded: mobileOpen, collapsed: collapsed && !mobile, 'density-compact': compact, 'density-minimal': minimal, 'density-tiny': tiny }" :style="{ '--sidebar-available-height': `${availableHeight}px` }" aria-label="侧栏导航" @keydown="navigationKeydown">
     <div class="sidebar-brand"><RouterLink class="brand-link" to="/accounts" aria-label="Cursor 额度首页" @click="navigate"><img :src="brandIcon" alt="" width="32" height="32" /><span class="sidebar-brand-name">Cursor 额度</span></RouterLink><VersionBadge v-model="versionOpen" /><span class="live-dot" role="img" aria-label="已连接" /><button class="mobile-toggle" :aria-expanded="mobileOpen" :aria-label="mobileOpen ? '收起导航' : '展开导航'" aria-controls="sidebar-content" @click="mobileOpen = !mobileOpen"><UiIcon :name="mobileOpen ? 'close' : 'menu'" /></button></div>
-    <div id="sidebar-content" class="sidebar-content">
+    <button type="button" class="sidebar-backdrop" aria-label="关闭导航遮罩" tabindex="-1" :aria-hidden="!mobileOpen" :inert="!mobileOpen" @click="mobileOpen = false" />
+    <div id="sidebar-content" class="sidebar-content" :inert="mobile && !mobileOpen">
       <RouterLink v-if="isDesktop" to="/connections" class="connection-selector" :title="`${activeConnection?.name || '本地'} · 切换实例`" @click="navigate"><UiIcon name="building" /><span>{{ activeConnection?.name || '本地' }} · 切换实例</span></RouterLink>
       <div class="space-selector">
         <UiSelect variant="workspace" aria-label="当前空间" :model-value="workspaceId"
@@ -144,7 +173,7 @@ onBeforeUnmount(() => { headerObserver?.disconnect(); window.removeEventListener
             <div class="preference-label"><span>界面风格</span><span class="selected-skin-name" aria-live="polite">{{ skinName }}</span></div>
             <div class="segmented skin-switch" role="group" aria-label="界面风格"><button v-for="option in skinOptions.slice(0, 2)" :key="option.value" :aria-pressed="skin === option.value" @click="selectTheme(option.value)"><i class="skin-swatch" :class="option.value" />{{ option.label }}</button><span class="extra-themes" @pointerenter="cancelThemeClose" @pointerleave="leaveThemes"><UiPopover v-model="themesOpen" label="更多界面风格" placement="top" :width="240" @shown="focusTheme"><template #trigger="{ open, id }"><button type="button" class="more-themes-button" :class="{ selected: extraSkin }" aria-label="更多界面风格" :aria-expanded="open" :aria-controls="id" @pointerenter="hoverThemes" @click="clickThemes" @keydown="openThemesKeyboard"><UiIcon :name="open ? 'chevronDown' : 'chevron'" :size="14" /><i v-if="extraSkin" class="more-themes-dot" /></button></template><template #default="{ close: closeThemes }"><div class="theme-options" @keydown="keyThemes" @pointerenter="cancelThemeClose"><button v-for="option in skinOptions.slice(2)" :key="option.value" class="theme-option" :aria-pressed="skin === option.value" @click="selectTheme(option.value); closeThemes()"><i class="skin-swatch" :class="option.value" /><span>{{ option.label }}</span><UiIcon name="check" :size="15" /></button></div></template></UiPopover></span></div>
             <div class="preference-label">明暗模式</div><div class="segmented" role="group" aria-label="明暗模式"><button :aria-pressed="theme === 'light'" @click="theme = 'light'"><UiIcon name="sun" :size="13" />浅色</button><button :aria-pressed="theme === 'dark'" @click="theme = 'dark'"><UiIcon name="moon" :size="13" />深色</button><button :aria-pressed="theme === 'system'" @click="theme = 'system'"><UiIcon name="monitor" :size="13" />自动</button></div>
-            <div class="card-display-entry"><button type="button" class="card-display-button" @click="close(); emit('display')"><UiIcon name="panels" :size="15" />卡片显示项<UiIcon name="chevron" :size="13" /></button></div>
+            <div class="card-display-entry"><button type="button" class="card-display-button" @click="close(); openCardDisplay()"><UiIcon name="panels" :size="15" />卡片显示项<UiIcon name="chevron" :size="13" /></button></div>
           </div></template>
         </UiPopover>
         <div class="sidebar-footer-end">
