@@ -44,7 +44,7 @@ class DesktopRuntime:
         self.commands = LocalCommands(self.directory, preview=script_preview)
         self.connections = connections or Connections(self.directory)
         self.job = None
-        self.background = False
+        self.background = False  # Keep running in the tray after the window closes.
         self.last_refresh = None
         self.refresh_error = None
         self.next_refresh = time.time() + random.uniform(30, 90)
@@ -149,7 +149,6 @@ class DesktopRuntime:
         write_new(pending, json.dumps({"background": enabled}).encode("utf-8"))
         pending.replace(self.preferences)
         self.background = enabled
-        self.resume()
         return self.status()
 
     def resume(self):
@@ -167,7 +166,8 @@ class DesktopRuntime:
             if now - previous > 30 or now < previous:
                 self.resume()
             previous = now
-            if not self.background or self.core is None or now < self.next_refresh or self.job:
+            # Refresh throughout the runtime's lifetime; the tray preference only controls exit.
+            if self.core is None or now < self.next_refresh or self.job:
                 continue
             self.next_refresh = now + 30
             actor = self.identity.actor()
@@ -180,10 +180,11 @@ class DesktopRuntime:
             self.rotation += 1
             try:
                 row = await self.core.accounts.refresh(actor, space, accounts[0]["id"])
-                self.last_refresh = time.time()
                 self.refresh_error = "Refresh failed; the last successful snapshot is retained" if row["error_kind"] else None
             except Exception:
                 self.refresh_error = "Refresh failed; the last successful snapshot is retained"
+            finally:
+                self.last_refresh = time.time()
 
     async def switch_command(self, workspace_id, account_id, platform):
         core = self.require()

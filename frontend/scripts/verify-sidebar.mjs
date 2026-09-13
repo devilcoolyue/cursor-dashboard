@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
-import { selectOption } from './ui-controls.mjs'
+import { selectOption, reloadList } from './ui-controls.mjs'
 
 /** Public UI checks on the disposable Web fixture used by verify-web.mjs. */
 export async function verifySidebar(page) {
@@ -48,7 +48,7 @@ export async function verifySidebar(page) {
     await route.fulfill({ response, json: result })
   }
   await page.route(pattern, intercept)
-  await page.getByRole('button', { name: '重载列表', exact: true }).click()
+  await reloadList(page)
   await sidebar.locator('.tag-picker-more').filter({ hasText: '24' }).waitFor()
   assert.equal(await sidebar.locator('.tag-shortcut').count(), 4)
   const footerBefore = await sidebar.locator('.sidebar-footer').boundingBox()
@@ -134,7 +134,7 @@ export async function verifySidebar(page) {
   await preferences.getByRole('button', { name: '深色', exact: true }).click()
   await preferences.getByRole('button', { name: '关闭显示偏好', exact: true }).click()
   await page.unroute(pattern, intercept)
-  await page.getByRole('button', { name: '重载列表', exact: true }).click()
+  await reloadList(page)
   await page.waitForFunction(() => document.querySelectorAll('.tag-shortcut').length === 3)
   console.log('PASS Sidebar: 24 tags, fixed row budget, isolated scrolling, search, scope-preserving selection, 360–960px heights, mobile, collapse and six independent themes')
 }

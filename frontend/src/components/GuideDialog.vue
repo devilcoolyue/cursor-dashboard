@@ -45,7 +45,7 @@ async function go(to: string) { await router.push(to); pauseGuide() }
         </template>
         <template v-else-if="guideProgress.step === 1">
           <p class="guide-lead">先调整习惯用的显示方式，再决定是否让客户端后台运行。</p>
-          <ol class="guide-instructions"><li><strong>调整外观。</strong>侧栏「显示偏好」选择皮肤、浅色／深色／自动；「卡片显示项」控制额度卡片展示内容。</li><li><strong>设置后台。</strong>客户端「个人设置 → 桌面运行」可启用「关闭窗口后驻留托盘并定期刷新」，默认关闭窗口即退出。</li><li><strong>准备备份。</strong>添加账号后，在本地「个人设置 → 加密归档」导出归档，设置至少 12 位口令并分开保存。</li></ol>
+          <ol class="guide-instructions"><li><strong>调整外观。</strong>侧栏「显示偏好」选择皮肤、浅色／深色／自动；「卡片显示项」控制额度卡片展示内容。</li><li><strong>设置后台。</strong>客户端运行时默认自动刷新本地额度；「个人设置 → 桌面运行」中的「关闭窗口后驻留托盘」只控制关窗后是否继续运行。</li><li><strong>准备备份。</strong>添加账号后，在本地「个人设置 → 加密归档」导出归档，设置至少 12 位口令并分开保存。</li></ol>
           <p class="guide-note">后台刷新处理本地账号。Linux 服务当前没有周期额度刷新；显示偏好不会改变请求或账号权限。</p>
         </template>
         <template v-else-if="guideProgress.step === 2">

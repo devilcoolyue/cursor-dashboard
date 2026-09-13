@@ -747,6 +747,7 @@ export interface components {
             label?: string | null;
             /** Tags */
             tags?: string[] | null;
+            quota_reference?: components["schemas"]["QuotaReference"] | null;
         };
         /** AccountPage */
         AccountPage: {
@@ -1254,6 +1255,17 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** QuotaReference */
+        QuotaReference: {
+            /** Cycle Start */
+            cycle_start: string;
+            /** Cursor Models */
+            cursor_models?: number | null;
+            /** Other Models */
+            other_models?: number | null;
+            /** Overall */
+            overall?: number | null;
+        };
         /** QuotaSlot */
         QuotaSlot: {
             /** Used Pct */
@@ -1272,7 +1284,7 @@ export interface components {
              */
             limit_inferred: boolean;
             /** Limit Source */
-            limit_source?: ("history" | "plan") | null;
+            limit_source?: ("history" | "plan" | "reference") | null;
         } & {
             [key: string]: unknown;
         };

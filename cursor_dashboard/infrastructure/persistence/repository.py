@@ -10,7 +10,7 @@ from sqlalchemy.dialects.sqlite import insert
 
 from ...domain.core import (AccountRef, AuthorizedAccount, Conflict, NotFound,
                             SecretError)
-from ...pools import retain_own_limits
+from ...pools import retain_own_limits, set_reference_limits
 from .policy import audit, authorize, capabilities, membership
 from .models import (Account, AccountTag, Credential, Grant, Lease, LegacyImport,
                      Membership, Metadata, Snapshot, Tag, User, Workspace, new_id)
@@ -111,6 +111,9 @@ class Repository:
                     raise Conflict("Authorization belongs to another provider identity")
                 if account.email and account.email != email:
                     raise Conflict("Authorization belongs to another account email")
+                previous = session.get(Snapshot, (workspace_id, account.id))
+                if previous and previous.generation == expected.generation:
+                    data = retain_own_limits(data, previous.data)
                 session.execute(delete(Snapshot).where(Snapshot.workspace_id == workspace_id, Snapshot.account_id == account.id))
                 session.execute(delete(Lease).where(Lease.workspace_id == workspace_id, Lease.account_id == account.id))
             else:
@@ -158,7 +161,7 @@ class Repository:
                 session.flush()
             session.add(AccountTag(workspace_id=account.workspace_id, account_id=account.id, tag_id=tag.id))
 
-    def edit(self, actor, workspace_id, account_id, *, label=None, tags=None):
+    def edit(self, actor, workspace_id, account_id, *, label=None, tags=None, quota_reference=None):
         with self.db.transaction(write=True) as session:
             account = self.require(session, actor, workspace_id, account_id, "manage")
             if label is not None:
@@ -167,9 +170,15 @@ class Repository:
                 account.label = label.strip()
             if tags is not None:
                 self._set_tags(session, account, tags)
+            if quota_reference is not None:
+                snapshot = session.get(Snapshot, (workspace_id, account.id))
+                credential = session.get(Credential, (workspace_id, account.id))
+                if snapshot is None or snapshot.generation != credential.generation:
+                    raise Conflict("Refresh the account before setting quota references")
+                snapshot.data = set_reference_limits(snapshot.data, quota_reference)
             account.updated_at = int(time.time())
             audit(session, actor, "account.edit", workspace_id, account_id,
-                  changes={"fields": [name for name, value in (("label", label), ("tags", tags)) if value is not None]})
+                  changes={"fields": [name for name, value in (("label", label), ("tags", tags), ("quota_reference", quota_reference)) if value is not None]})
 
     def delete(self, actor, workspace_id, account_id):
         with self.db.transaction(write=True) as session:

@@ -8,6 +8,7 @@ import unittest
 from copy import deepcopy
 
 from cursor_dashboard import pools
+from cursor_dashboard.domain.core import Conflict
 
 PRO = {"name": "Pro", "membership_type": "pro"}
 SOLVED = {
@@ -143,6 +144,16 @@ class VisibleHistoryTest(unittest.TestCase):
         own = pools.retain_own_limits(self.capped, self.solved)
         self.assertEqual(pools.fill_visible(self.capped, [own])['quota']['overall']['limit_usd'], 495)
 
+    def test_visible_partial_history_keeps_known_total_without_inventing_model_limits(self):
+        partial = deepcopy(self.solved)
+        for slot in ('cursor_models', 'other_models'):
+            partial['quota'][slot]['limit_usd'] = None
+        filled = pools.fill_visible(self.capped, [partial])['quota']
+        self.assertEqual(filled['overall']['limit_usd'], 495)
+        self.assertIsNone(filled['cursor_models']['limit_usd'])
+        self.assertIsNone(filled['other_models']['limit_usd'])
+        self.assertIsNone(pools.fill_visible(self.capped, [])['quota']['overall']['limit_usd'])
+
     def test_invalid_observations_do_not_become_history(self):
         for value in (-1, 0, float('nan'), float('inf'), '450', True):
             with self.subTest(value=value):
@@ -153,6 +164,32 @@ class VisibleHistoryTest(unittest.TestCase):
     def test_equivalent_iso_timestamps_preserve_history(self):
         self.capped['cycle']['start'] = '2026-09-01T08:00:00+08:00'
         self.assertEqual(pools.retain_own_limits(self.capped, self.solved)['quota']['overall']['limit_usd'], 495)
+
+    def test_explicit_reference_survives_refresh_but_never_becomes_a_peer_observation(self):
+        reference = {'cycle_start': self.capped['cycle']['start'], 'cursor_models': 450, 'other_models': 45, 'overall': 495}
+        saved = pools.set_reference_limits(self.capped, reference)
+        refreshed = pools.retain_own_limits(self.capped, saved)
+        for key in ('cursor_models', 'other_models', 'overall'):
+            self.assertEqual(refreshed['quota'][key]['limit_usd'], reference[key])
+            self.assertEqual(refreshed['quota'][key]['limit_source'], 'reference')
+            self.assertEqual(refreshed['quota'][key]['remaining_pct'], 0)
+        self.assertIsNone(pools.fill_visible(self.capped, [refreshed])['quota']['overall']['limit_usd'])
+        self.assertIsNone(pools.set_reference_limits(refreshed, {'cycle_start': reference['cycle_start']})['quota']['overall']['limit_usd'])
+        for part, key, value in [('cycle', 'start', '2026-10-01T00:00:00Z'), ('plan', 'name', 'Business')]:
+            changed = deepcopy(self.capped)
+            changed[part][key] = value
+            self.assertIsNone(pools.retain_own_limits(changed, saved)['quota']['overall']['limit_usd'])
+        # The next usable observation replaces the reference automatically.
+        self.assertEqual(pools.retain_own_limits(self.solved, saved), self.solved)
+
+    def test_reference_rejects_invalid_values_wrong_cycle_and_inconsistent_totals(self):
+        reference = {'cycle_start': self.capped['cycle']['start']}
+        for invalid in [0, -1, True, '450', float('nan'), float('inf'), 1e10]:
+            with self.subTest(invalid=invalid), self.assertRaises(Conflict):
+                pools.set_reference_limits(self.capped, {**reference, 'overall': invalid})
+        for invalid in [{'cycle_start': '2026-10-01T00:00:00Z'}, {**reference, 'overall': 400, 'cursor_models': 450, 'other_models': 45}]:
+            with self.assertRaises(Conflict):
+                pools.set_reference_limits(self.capped, invalid)
 
 
 if __name__ == "__main__":

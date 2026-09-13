@@ -12,6 +12,8 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { chromium, webkit } from 'playwright'
 import { stopFixture } from './fixture-process.mjs'
 import { selectOption } from './ui-controls.mjs'
+import { verifyQuotaReferences } from './verify-quota-references.mjs'
+import { verifyListRefresh } from './verify-list-refresh.mjs'
 import { verifyDesktopHelp } from './help-flows.mjs'
 import { currentRelease } from './update-fixture.mjs'
 const root = fileURLToPath(new URL('../../', import.meta.url))
@@ -61,6 +63,8 @@ try {
   let starting = true
   let unavailable = false
   let refreshGate
+  let publishedSnapshot
+  let manualRefreshRequests = 0, listReads = 0
   // Synthetic Windows discovery responses exercise the UI without reading a real editor.
   let discoveryFixture = null
   const pathRequests = []
@@ -92,15 +96,25 @@ try {
       if (args.operation === 'status' && locked) return { status: 200, body: { phase: 'locked', background: false } }
       const routes = { status: ['status'], unlock: ['unlock', 'POST'], detect: ['cursor'], cursor_paths: ['cursor', 'PUT'], switch: ['switch', 'POST'], switch_command: ['switch-command', 'POST'], switch_status: ['switch'], backups: ['backups'], restore: ['restore', 'POST'], background: ['background', 'PUT'], resume: ['resume', 'POST'] }
       const [path, method = 'GET'] = routes[args.operation]
-      return request('/native/' + path, method, args.body)
+      const response = await request('/native/' + path, method, args.body)
+      if (args.operation === 'status' && publishedSnapshot) response.body.last_refresh = publishedSnapshot.ok_at
+      return response
     }
     assert.equal(command, 'account_request')
+    if (args.operation === 'list') listReads++
     const base = `/api/v1/workspaces/${args.workspace}`
     const account = `${base}/accounts/${args.account}`
     const routes = { bootstrap: ['/api/v1/bootstrap'], me: ['/api/v1/me'], list: [`${base}/accounts`], get: [account], add: [`${base}/accounts`, 'POST'], reauthorize: [`${account}/authorization`, 'POST'], edit: [account, 'PATCH'], delete: [account, 'DELETE'], refresh: [`${account}/refresh`, 'POST'], detail: [`${account}/detail`], audit: [`${base}/audit`] }
     const [path, method = 'GET'] = routes[args.operation]
-    if (args.operation === 'refresh' && refreshGate) await refreshGate
-    return request(path + (Object.keys(args.query || {}).length ? '?' + new URLSearchParams(args.query) : ''), method, args.body)
+    if (args.operation === 'refresh') {
+      manualRefreshRequests++
+      if (refreshGate) await refreshGate
+    }
+    const response = await request(path + (Object.keys(args.query || {}).length ? '?' + new URLSearchParams(args.query) : ''), method, args.body)
+    if (args.operation === 'list' && publishedSnapshot && response.status === 200) {
+      response.body.items = response.body.items.map(account => account.id === publishedSnapshot.id ? publishedSnapshot : account)
+    }
+    return response
   })
   await context.addInitScript(() => {
     globalThis.isTauri = true
@@ -148,6 +162,24 @@ try {
   assert.equal(await page.locator('[data-account]').count(), 2, 'A status failure must retain loaded accounts')
   unavailable = false
   await visible(runtimeStatus)
+  // A completed scheduler attempt publishes a new snapshot while the user stays on this page.
+  // Updating native status must update both the displayed quota and success time without POST /refresh.
+  assert.equal((await request('/native/status')).body.background, false)
+  const localSpace = (await request('/api/v1/me')).body.workspaces[0].id
+  const savedSnapshot = (await request(`/api/v1/workspaces/${localSpace}/accounts`)).body.items[0]
+  const autoCard = page.locator('[data-account]').filter({ has: page.getByRole('heading', { name: savedSnapshot.label, exact: true }) })
+  const oldStatTime = await autoCard.locator('.card-meta dd').first().getAttribute('title')
+  const refreshCount = manualRefreshRequests
+  publishedSnapshot = structuredClone(savedSnapshot)
+  publishedSnapshot.ok_at += 3600
+  publishedSnapshot.data.quota.overall = { ...publishedSnapshot.data.quota.overall, remaining_pct: 41, used_pct: 59 }
+  await visible(autoCard.getByText('剩 41%', { exact: true }))
+  assert.notEqual(await autoCard.locator('.card-meta dd').first().getAttribute('title'), oldStatTime)
+  assert.equal(manualRefreshRequests, refreshCount, 'Snapshot synchronization must not issue provider refreshes')
+  await verifyListRefresh(page, () => listReads)
+  assert.equal(manualRefreshRequests, refreshCount)
+  publishedSnapshot = undefined
+  await verifyQuotaReferences(page)
   await page.setViewportSize({ width: 1280, height: 900 })
   await mkdir(join(root, 'output/playwright'), { recursive: true })
   await page.screenshot({ path: join(root, 'output/playwright/p4-accounts.png'), fullPage: true, animations: 'disabled' })
@@ -240,7 +272,8 @@ try {
   await page.getByRole('link', { name: '个人设置' }).click()
   await visible(page.getByRole('heading', { name: '加密归档', exact: true }))
   assert.equal(await page.getByRole('heading', { name: '更改密码', exact: true }).count(), 0)
-  await page.getByLabel('关闭窗口后驻留托盘并定期刷新', { exact: true }).check()
+  await visible(page.getByText('客户端运行时默认自动刷新本地额度，每轮完成后等待约 15 分钟，卡片会自动更新。', { exact: true }))
+  await page.getByLabel('关闭窗口后驻留托盘', { exact: true }).check()
   await page.getByLabel('归档口令', { exact: true }).fill('fixture archive 42')
   await page.getByLabel('再次输入口令', { exact: true }).fill('fixture archive 42')
   await page.getByRole('button', { name: '选择位置并导出', exact: true }).click()

@@ -74,6 +74,33 @@ class V2HTTPTest(IdentityFixture, unittest.IsolatedAsyncioTestCase):
         self.account_row = self.account(snapshot=data(42))
         self.path = f"/api/v1/workspaces/{self.first}/accounts"
 
+    async def test_quota_reference_edit_is_scoped_validated_and_preserves_freshness(self):
+        account = self.account(email='reference@example.test', marker='reference', snapshot=data())
+        path = f'{self.path}/{account.ref.account_id}'
+        await self.client.login()
+        reference = {'cycle_start': data()['cycle']['start'], 'cursor_models': 450, 'other_models': 45, 'overall': 495}
+        for invalid in [0, -1, True, '450', 1e10]:
+            self.assertEqual((await self.client.request('PATCH', path, {'quota_reference': {**reference, 'overall': invalid}}))[0], 422)
+        self.assertEqual((await self.client.request('PATCH', path, {'quota_reference': {**reference, 'overall': 400}}))[0], 409)
+        self.assertEqual((await self.client.request('PATCH', path, {'quota_reference': {**reference, 'cycle_start': '2026-10-01T00:00:00Z'}}))[0], 409)
+        before = (await self.client.request('GET', path))[1]
+        status, result, _ = await self.client.request('PATCH', path, {'quota_reference': reference})
+        self.assertEqual(status, 200)
+        self.assertEqual(result['ok_at'], before['ok_at'])
+        self.assertEqual(result['data']['quota']['overall']['limit_source'], 'reference')
+        viewer = self.join('reference-viewer@example.test', 'viewer')
+        other = APIClient(self.app)
+        self.assertEqual((await other.login('reference-viewer@example.test'))[0], 200)
+        self.assertEqual((await other.request('PATCH', path, {'quota_reference': reference}))[0], 404)
+        self.spaces.set_grant(self.actor, self.first, account.ref.account_id, viewer.user_id, 'view')
+        self.assertEqual((await other.request('PATCH', path, {'quota_reference': reference}))[0], 403)
+        status, result, _ = await self.client.request('PATCH', path, {'quota_reference': {'cycle_start': reference['cycle_start']}})
+        self.assertEqual(status, 200)
+        self.assertEqual(result['data']['quota']['overall']['limit_usd'], 42)
+        self.assertEqual(result['data']['quota']['overall']['limit_source'], 'plan')
+        own = next(row for row in self.repo.list_views(self.actor, self.first) if row['id'] == account.ref.account_id)
+        self.assertIsNone(own['data']['quota']['overall']['limit_usd'])
+
     async def test_bootstrap_login_cookie_csrf_logout_and_legacy_isolation(self):
         status, info, _ = await self.client.request("GET", "/api/v1/bootstrap", headers={"origin": None})
         self.assertEqual(status, 200)

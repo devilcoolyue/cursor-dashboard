@@ -78,9 +78,17 @@ class UserState(Input):
     active: bool = Field(strict=True)
 
 
+class QuotaReference(Input):
+    cycle_start: str = Field(max_length=64)
+    cursor_models: float | None = Field(default=None, gt=0, le=1e9, strict=True, allow_inf_nan=False)
+    other_models: float | None = Field(default=None, gt=0, le=1e9, strict=True, allow_inf_nan=False)
+    overall: float | None = Field(default=None, gt=0, le=1e9, strict=True, allow_inf_nan=False)
+
+
 class AccountEdit(Input):
     label: str | None = Field(default=None, min_length=1, max_length=256)
     tags: list[str] | None = Field(default=None, max_length=100)
+    quota_reference: QuotaReference | None = None
 
 
 class Authorization(Input):

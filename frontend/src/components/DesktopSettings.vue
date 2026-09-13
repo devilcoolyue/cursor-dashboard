@@ -35,8 +35,9 @@ async function closeProgress() { restoreId.value = ''; showProgress.value = fals
 </script>
 <template>
   <SettingsSection title="桌面运行" description="设置关闭窗口后的运行方式。">
-    <label class="check-label settings-check"><input type="checkbox" :checked="desktopStatus?.background" :disabled="busy" @change="background" />关闭窗口后驻留托盘并定期刷新</label>
-    <p class="field-hint">默认关闭窗口即退出。后台刷新会保留最近成功的额度快照。</p><p v-if="desktopStatus?.last_refresh" class="field-hint">最近后台尝试 {{ timeText(desktopStatus.last_refresh) }}</p><p v-if="desktopStatus?.refresh_error" class="notice">最近刷新失败，已保留上次成功数据。</p>
+    <label class="check-label settings-check"><input type="checkbox" :checked="desktopStatus?.background" :disabled="busy" @change="background" />关闭窗口后驻留托盘</label>
+    <p class="field-hint">客户端运行时默认自动刷新本地额度，每轮完成后等待约 15 分钟，卡片会自动更新。</p>
+    <p class="field-hint">开启后关闭窗口仍继续刷新；未开启时关闭窗口即退出并停止刷新。失败时保留最近成功的数据。</p><p v-if="desktopStatus?.last_refresh" class="field-hint">最近后台尝试 {{ timeText(desktopStatus.last_refresh) }}</p><p v-if="desktopStatus?.refresh_error" class="notice">最近刷新失败，已保留上次成功数据。</p>
   </SettingsSection>
   <SettingsSection v-if="!connectionId" title="加密归档" description="导出账号、标签和额度快照，或从归档恢复。">
     <form class="form-stack settings-form" @submit.prevent="transfer">

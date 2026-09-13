@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { api, ApiError, message, isAbort, accountPath, spacePath, type Account, type Schema } from '../api'
-import { activeSpace, bootstrap } from '../state'
+import { activeSpace, bootstrap, desktopStatus } from '../state'
 import { sidebarAccounts, clearSidebarAccounts } from '../sidebar-state'
 import AccountCard from '../components/AccountCard.vue'
 import AccountActions from '../components/AccountActions.vue'
+import ListRefreshControl from '../components/ListRefreshControl.vue'
+import { listRefreshSeconds } from '../list-refresh'
 import UiIcon from '../components/UiIcon.vue'
 import UiSelect from '../components/UiSelect.vue'
 import UiDialog from '../components/UiDialog.vue'
@@ -13,12 +15,13 @@ import DetailDialog from '../components/DetailDialog.vue'
 import SwitchDialog from '../components/SwitchDialog.vue'
 import GrantDialog from '../components/GrantDialog.vue'
 import NativeSwitchDialog from '../components/NativeSwitchDialog.vue'
-import { isDesktop, reportReady } from '../platform'
+import { connectionId, isDesktop, reportReady } from '../platform'
 const page = ref<Schema['AccountPage']>(), query = ref(''), busy = ref(false), error = ref('')
 const tag = computed({ get: () => sidebarAccounts.tag, set: value => { sidebarAccounts.tag = value } })
 const rowBusy = ref(''), selected = ref<Account>(), modal = ref(''), removeBusy = ref(false), modalError = ref('')
 const refreshErrors = ref<Record<string, string>>({})
 let listController: AbortController | undefined
+let listLoading = false, pollTimer: ReturnType<typeof setTimeout> | undefined
 const lifetime = new AbortController()
 const detailGroup = ref('overall')
 const searchInput = ref<HTMLInputElement>(), order = ref('default'), now = ref(Date.now())
@@ -35,15 +38,27 @@ function searchShortcut(event: KeyboardEvent) {
   if (event.target instanceof Element && event.target.closest('input, textarea, [role=combobox], [contenteditable]')) return
   event.preventDefault(); searchInput.value?.focus()
 }
-onMounted(() => { window.addEventListener('keydown', searchShortcut); clockTimer = setInterval(() => { now.value = Date.now() }, 60000) })
-onBeforeUnmount(() => { window.removeEventListener('keydown', searchShortcut); clearInterval(clockTimer) })
+function schedulePoll() {
+  clearTimeout(pollTimer)
+  if (!lifetime.signal.aborted && !document.hidden && activeSpace.value) pollTimer = setTimeout(() => void load({ silent: true }), listRefreshSeconds.value * 1000)
+}
+function visibilityChanged() {
+  clearTimeout(pollTimer)
+  if (!document.hidden) void load({ silent: true })
+}
+watch(listRefreshSeconds, schedulePoll)
+onMounted(() => { window.addEventListener('keydown', searchShortcut); document.addEventListener('visibilitychange', visibilityChanged); clockTimer = setInterval(() => { now.value = Date.now() }, 60000) })
+onBeforeUnmount(() => { window.removeEventListener('keydown', searchShortcut); document.removeEventListener('visibilitychange', visibilityChanged); clearInterval(clockTimer); clearTimeout(pollTimer) })
 let sequence = 0
 onBeforeUnmount(() => { listController?.abort(); lifetime.abort(); page.value = undefined; selected.value = undefined })
-async function load() {
-  if (!activeSpace.value) return
+async function load({ silent = false } = {}) {
+  if (!activeSpace.value || lifetime.signal.aborted) return
+  if (silent && (listLoading || document.hidden)) return
+  clearTimeout(pollTimer)
   listController?.abort(); listController = new AbortController()
   const current = ++sequence, signal = listController.signal
-  busy.value = true; error.value = ''
+  listLoading = true
+  if (!silent) { busy.value = true; error.value = '' }
   const params = new URLSearchParams({ q: query.value, offset: '0', limit: '200' })
   if (tag.value) params.set('tag', tag.value)
   try {
@@ -65,18 +80,23 @@ async function load() {
       nextOffset += batch.items.length
       total = batch.total
     }
-    page.value = { ...result, items: [...accounts.values()], total: accounts.size }; now.value = Date.now()
+    page.value = { ...result, items: [...accounts.values()], total: accounts.size }; now.value = Date.now(); error.value = ''
     sidebarAccounts.tags = catalog.tags; sidebarAccounts.total = catalog.total; sidebarAccounts.loadedAt = Date.now()
     if (isDesktop) { await nextTick(); void reportReady(document.querySelectorAll('[data-account]').length).catch(() => {}) }
   }
-  catch (reason) { if (sequence === current && !isAbort(reason)) { error.value = message(reason); if (reason instanceof ApiError && [401, 403, 404, 426].includes(reason.status)) { page.value = undefined; clearSidebarAccounts() } } }
-  finally { if (sequence === current) busy.value = false }
+  catch (reason) { if (sequence === current && !isAbort(reason)) { if (!silent) error.value = message(reason); if (reason instanceof ApiError && [401, 403, 404, 426].includes(reason.status)) { page.value = undefined; clearSidebarAccounts() } } }
+  finally { if (sequence === current) { busy.value = false; listLoading = false; schedulePoll() } }
 }
 watch([query, tag, () => activeSpace.value?.id], ([, , spaceId], previous) => {
   page.value = undefined
   if (spaceId !== previous?.[2]) { selected.value = undefined; modal.value = ''; query.value = '' }
   void load()
 }, { immediate: true })
+// The desktop status poll announces completed attempts. Read their saved snapshots
+// without issuing another provider refresh, and only while viewing local accounts.
+watch(() => desktopStatus.value?.last_refresh, refreshedAt => {
+  if (isDesktop && !connectionId.value && refreshedAt) void load({ silent: true })
+})
 function open(kind: string, account?: Account) {
   selected.value = account; modal.value = kind; modalError.value = ''
 }
@@ -111,7 +131,7 @@ async function remove() {
       <div class="workspace-title"><h1>账号与额度</h1><span class="workspace-title-name">{{ activeSpace.kind === 'personal' ? '个人空间' : activeSpace.name }}</span><span class="account-count">{{ page?.total ?? '—' }} 个账号</span></div>
       <div class="toolbar-controls"><div class="search-wrap" :class="{ 'has-query': query }"><div class="search-field"><label class="sr-only" for="account-search">搜索账号</label><UiIcon name="search" /><input id="account-search" ref="searchInput" v-model="query" type="search" placeholder="按姓名或邮箱搜索…" maxlength="256" autocomplete="off" spellcheck="false" @keydown.esc="escapeSearch" /><button v-if="query" type="button" class="search-clear" aria-label="清空搜索" @click="clearSearch"><UiIcon name="close" :size="13" /></button><kbd v-else aria-hidden="true">/</kbd></div></div>
         <label class="sort-field"><span class="sr-only">账号排序</span><UiSelect v-model="order" aria-label="账号排序" icon="sort" :options="sortOptions" title="账号排序" /></label>
-        <button type="button" class="toolbar-reload" aria-label="重载列表" title="重载列表" :disabled="busy" @click="load"><UiIcon name="refresh" :class="{ spinning: busy }" :size="15" /></button>
+        <ListRefreshControl :busy="busy" @refresh="load()" />
         <button v-if="activeSpace.capabilities.manage_accounts" class="primary" @click="open('add')">＋ 添加账号</button>
       </div>
     </header>

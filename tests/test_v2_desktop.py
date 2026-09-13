@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import closing
 from dataclasses import replace
 import json
@@ -274,13 +275,77 @@ class DesktopTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(list(self.runtime.commands.directory.iterdir()), [])
 
     async def test_background_preferences_and_wake_stagger_persist(self):
+        scheduled = self.runtime.next_refresh
         self.runtime.set_background(True)
+        self.assertEqual(self.runtime.next_refresh, scheduled)
         self.runtime.next_refresh = 0
         self.runtime.resume()
         self.assertGreater(self.runtime.next_refresh, time.time() + 25)
         await self.runtime.shutdown()
         self.runtime = self.open()
         self.assertTrue(self.runtime.background)
+
+    async def run_scheduler(self, seconds, tick=None):
+        elapsed = 0
+        started = time.time()
+        self.runtime.next_refresh = started + 60
+
+        async def advance(delay):
+            nonlocal elapsed
+            elapsed += delay
+            if elapsed > seconds:
+                raise asyncio.CancelledError
+            if tick:
+                tick(elapsed)
+
+        # Only replace the runtime's clock/sleep; providers and database code stay real.
+        with patch('cursor_dashboard.local.runtime.time', SimpleNamespace(time=lambda: started + elapsed)), \
+             patch('cursor_dashboard.local.runtime.asyncio', SimpleNamespace(sleep=advance)):
+            with self.assertRaises(asyncio.CancelledError):
+                await self.runtime.scheduler()
+
+    async def test_scheduler_refreshes_by_default_and_tray_toggle_keeps_the_cycle(self):
+        self.assertFalse(self.runtime.background)
+        attempts = []
+        elapsed = 0
+        refresh = self.core.accounts.refresh
+
+        async def record(actor, workspace, account_id):
+            attempts.append((elapsed, account_id))
+            return await refresh(actor, workspace, account_id)
+
+        def tick(now):
+            nonlocal elapsed
+            elapsed = now
+            if now in (70, 100):
+                scheduled = self.runtime.next_refresh
+                self.runtime.set_background(now == 70)
+                self.assertEqual(self.runtime.next_refresh, scheduled)
+
+        with patch.object(self.core.accounts, 'refresh', side_effect=record):
+            await self.run_scheduler(1060, tick)
+        first, second = (row['id'] for row in self.accounts)
+        self.assertEqual(attempts, [(60, first), (90, second), (1020, first), (1050, second)])
+        self.assertFalse(self.runtime.background)
+        self.assertIsNone(self.runtime.refresh_error)
+        await self.runtime.shutdown()
+        self.runtime = self.open()
+        self.assertFalse(self.runtime.background)
+        with patch.object(self.runtime.core.accounts, 'refresh', wraps=self.runtime.core.accounts.refresh) as refresh:
+            await self.run_scheduler(60)
+        refresh.assert_awaited_once()
+
+    async def test_scheduler_reports_failed_attempt_and_continues_to_next_account(self):
+        def tick(now):
+            if now == 70:
+                self.assertIsNotNone(self.runtime.last_refresh)
+                self.assertIsNotNone(self.runtime.refresh_error)
+
+        with patch.object(self.core.accounts, 'refresh', side_effect=[RuntimeError('offline'), {'error_kind': None}]) as refresh:
+            await self.run_scheduler(100, tick)
+        self.assertEqual(refresh.await_count, 2)
+        self.assertIsNone(self.runtime.refresh_error)
+        self.assertEqual(self.core.accounts.list(self.actor, self.workspace)[0]['data'], self.accounts[0]['data'])
 
     async def test_cursor_paths_validate_persist_reset_and_redetect_without_restarting(self):
         with patch('psutil.process_iter', return_value=[]), patch('cursor_dashboard.local.cursor.sys', SimpleNamespace(platform='win32')), \

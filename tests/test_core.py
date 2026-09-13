@@ -213,7 +213,7 @@ class PersistenceTest(CoreFixture, unittest.TestCase):
         self.assertTrue(second["expired"])
         self.assertEqual(first["data"], second["data"])
 
-    def test_own_pool_history_persists_across_restart_but_not_reauthorization_or_new_cycle(self):
+    def test_own_pool_history_persists_across_restart_and_same_account_reauthorization_but_not_new_cycle(self):
         a = self.account(snapshot=data(42))
         capped = data()
         for slot in capped['quota'].values():
@@ -232,7 +232,7 @@ class PersistenceTest(CoreFixture, unittest.TestCase):
         updated = self.repo.put_authorization(self.actor, self.first, email=a.email, subject=a.subject,
             label=a.label, secrets=Secrets('new-cookie', token(), 'new-rt'), expected=a.ref, data=capped)
         self.assertFalse(self.repo.record_snapshot(a.ref, data=data(999), actor=self.actor))
-        self.assertIsNone(self.core.accounts.get(self.actor, self.first, updated.ref.account_id)['data']['quota']['overall']['limit_usd'])
+        self.assertEqual(self.core.accounts.get(self.actor, self.first, updated.ref.account_id)['data']['quota']['overall']['limit_usd'], 42)
 
     def test_visible_observations_never_use_other_spaces_or_ungranted_accounts(self):
         capped = self.account(snapshot=data())
@@ -252,6 +252,23 @@ class PersistenceTest(CoreFixture, unittest.TestCase):
         self.assertIsNone(self.core.accounts.get(self.other, self.first, capped.ref.account_id)['data']['quota']['overall']['limit_usd'])
         self.core.accounts.delete(self.actor, self.first, solved.ref.account_id)
         self.assertIsNone(self.core.accounts.get(self.actor, self.first, capped.ref.account_id)["data"]["quota"]["overall"]["limit_usd"])
+
+    def test_reference_edit_preserves_snapshot_time_and_survives_restart_and_refresh(self):
+        account = self.account(snapshot=data())
+        before = self.core.accounts.get(self.actor, self.first, account.ref.account_id)
+        self.core.accounts.edit(self.actor, self.first, account.ref.account_id,
+            quota_reference={'cycle_start': before['data']['cycle']['start'], 'cursor_models': 450, 'other_models': 45, 'overall': 495})
+        edited = self.core.accounts.get(self.actor, self.first, account.ref.account_id)
+        self.assertEqual(edited['ok_at'], before['ok_at'])
+        self.assertEqual(edited['attempted_at'], before['attempted_at'])
+        self.core.close()
+        self.core = Core(self.config)
+        self.addCleanup(self.core.close)
+        self.repo = self.core.repository
+        self.repo.record_snapshot(account.ref, data=data(), actor=self.actor)
+        self.assertEqual(self.core.accounts.get(self.actor, self.first, account.ref.account_id)['data']['quota']['overall']['limit_usd'], 495)
+        other = self.account(marker='other', email='other@example.test', snapshot=data())
+        self.assertIsNone(self.core.accounts.get(self.actor, self.first, other.ref.account_id)['data']['quota']['overall']['limit_usd'])
 
 
 class MigrationTest(CoreFixture, unittest.TestCase):

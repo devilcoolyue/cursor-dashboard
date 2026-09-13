@@ -12,6 +12,8 @@ from datetime import datetime
 from math import isfinite
 from statistics import median
 
+from .domain.core import Conflict
+
 # plan -> ident -> (cursor_models 池, other_models 池, 综合池)，单位美元
 _observed: dict[str, dict[str, tuple[float, float, float]]] = {}
 _lock = threading.Lock()
@@ -57,23 +59,30 @@ def fill(data: dict | None) -> dict | None:
 def fill_visible(data: dict | None, visible: list[dict]) -> dict | None:
     """V2 derives observations only from this authorized query, with no global pool state."""
     key = _plan_key((data or {}).get("plan"))
-    values = []
+    values = [[] for _ in _SLOTS]
     for item in visible:
         if not key or _plan_key(item.get("plan")) != key:
             continue
         limits = tuple(_own_limit((item.get("quota") or {}).get(slot) or {}) for slot in _SLOTS)
-        if all(value is not None for value in limits):
-            values.append(limits)
-    limits = tuple(round(median(column), 2) for column in zip(*values)) if values else (None, None, None)
+        # A capped model bucket can still leave a valid overall observation.
+        # Use each known slot independently instead of discarding that history.
+        for column, value in zip(values, limits):
+            if value is not None:
+                column.append(value)
+    limits = tuple(round(median(column), 2) if column else None for column in values)
     return _fill(data, limits)
+
+
+def _valid_limit(value):
+    return value if isinstance(value, (int, float)) and not isinstance(value, bool) and isfinite(value) and value > 0 else None
 
 
 def _own_limit(slot):
     """A peer-derived estimate must never become a new observation or persistent own history."""
     value = slot.get("limit_usd")
-    if slot.get("limit_inferred") and slot.get("limit_source") != "history":
+    if slot.get("limit_source") in {"plan", "reference"} or (slot.get("limit_inferred") and slot.get("limit_source") != "history"):
         return None
-    return value if isinstance(value, (int, float)) and not isinstance(value, bool) and isfinite(value) and value > 0 else None
+    return _valid_limit(value)
 
 
 def _cycle_date(value):
@@ -85,7 +94,7 @@ def _cycle_date(value):
 
 
 def retain_own_limits(data: dict | None, previous: dict | None) -> dict | None:
-    """Keep this account's solved limits through capped refreshes, within the same plan and cycle.
+    """Keep solved limits and explicit references within the same account, plan and cycle.
 
     Called inside the snapshot write transaction. No peer observations are persisted, so changing
     grants or deleting a source account immediately changes the authorized query's estimates.
@@ -107,7 +116,37 @@ def retain_own_limits(data: dict | None, previous: dict | None) -> dict | None:
         if end is None or end != old_end or end <= start:
             return data
     limits = tuple(_own_limit((previous.get("quota") or {}).get(slot) or {}) for slot in _SLOTS)
-    return _fill(data, limits, source="history")
+    result = _fill(data, limits, source="history")
+    references = tuple(_valid_limit(slot.get("limit_usd")) if slot.get("limit_source") == "reference" else None
+                       for slot in ((previous.get("quota") or {}).get(key) or {} for key in _SLOTS))
+    return _fill(result, references, source="reference")
+
+
+def set_reference_limits(data: dict | None, reference: dict) -> dict:
+    """An explicit account-scoped fallback, bound to the displayed billing period.
+
+    References never contribute to peer observations or replace solved limits.
+    Empty values remove a previous reference without changing successful query times.
+    """
+    start = _cycle_date(((data or {}).get("cycle") or {}).get("start"))
+    if not data or start is None or start != _cycle_date(reference.get("cycle_start")):
+        raise Conflict("Billing period changed; reload the account before saving quota references")
+    if not _plan_key(data.get("plan")):
+        raise Conflict("Account plan is unavailable")
+    if set(reference) - {*_SLOTS, "cycle_start"}:
+        raise Conflict("Unknown quota reference")
+    limits = tuple(reference.get(key) for key in _SLOTS)
+    if any(value is not None and (_valid_limit(value) is None or value > 1e9) for value in limits):
+        raise Conflict("Quota references must be positive finite amounts")
+    if all(value is not None for value in limits) and abs(limits[0] + limits[1] - limits[2]) > .01:
+        raise Conflict("Overall quota reference must equal the sum of both model quotas")
+    quota = {key: dict(slot) for key, slot in (data.get("quota") or {}).items()}
+    for slot in quota.values():
+        if slot.get("limit_source") == "reference":
+            slot.update(limit_usd=None, used_usd=None, remaining_usd=None)
+            slot.pop("limit_inferred", None)
+            slot.pop("limit_source", None)
+    return _fill({**data, "quota": quota}, limits, source="reference")
 
 
 def _fill(data: dict | None, limits, *, source="plan") -> dict | None:

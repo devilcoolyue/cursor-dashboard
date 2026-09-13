@@ -7,7 +7,9 @@ import { chromium } from 'playwright'
 import { fileURLToPath } from 'node:url'
 import { setTimeout as delay } from 'node:timers/promises'
 import { stopFixture } from './fixture-process.mjs'
-import { selectOption } from './ui-controls.mjs'
+import { selectOption, reloadList } from './ui-controls.mjs'
+import { verifyQuotaReferences } from './verify-quota-references.mjs'
+import { verifyListRefresh } from './verify-list-refresh.mjs'
 import { verifySidebar } from './verify-sidebar.mjs'
 import { verifyPublicDocs } from './help-flows.mjs'
 import { fixtureContext } from './update-fixture.mjs'
@@ -25,7 +27,7 @@ backend.stdout.resume()
 let browser
 const errors = []
 async function visible(locator) { await locator.waitFor({ state: 'visible', timeout: 12000 }) }
-async function click(page, name) { await page.getByRole('button', { name, exact: true }).click() }
+async function click(page, name) { if (name === '重载列表') return reloadList(page); await page.getByRole('button', { name, exact: true }).click() }
 async function login(page, who) {
   await page.goto(origin)
   await page.getByRole('textbox', { name: '登录邮箱', exact: true }).fill(`${who}@example.test`)
@@ -64,6 +66,10 @@ try {
   assert.equal(await owner.getByLabel('登录邮箱', { exact: true }).inputValue(), 'owner@example.test')
   await login(owner, 'owner')
   await waitRows(owner, 2)
+  let listReads = 0
+  owner.on('request', request => { if (/\/api\/v1\/workspaces\/[^/]+\/accounts\?/.test(request.url())) listReads++ })
+  await verifyListRefresh(owner, () => listReads)
+  await verifyQuotaReferences(owner)
   await verifySidebar(owner)
   // No visible pagination: fetch beyond the API batch limit and sort/search the complete list.
   assert.equal(await owner.locator('.accounts-content .filter-bar, .accounts-content .pagination, .card-footer').count(), 0)

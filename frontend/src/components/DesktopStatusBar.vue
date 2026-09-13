@@ -43,7 +43,8 @@ onBeforeUnmount(() => { alive = false; clearTimeout(timer) })
         <div class="desktop-status-details">
           <header class="sidebar-popover-header"><strong>{{ status.label }}</strong><button type="button" class="popover-close" aria-label="关闭运行状态" @click="close"><UiIcon name="close" :size="15" /></button></header>
           <p>{{ status.detail }}</p>
-          <p>{{ desktopStatus?.background ? '已开启托盘驻留与定期刷新。' : '关闭窗口即退出。' }}</p>
+          <p>本地额度默认自动刷新，每轮完成后等待约 15 分钟。</p>
+          <p>{{ desktopStatus?.background ? '关闭窗口后驻留托盘，继续刷新。' : '关闭窗口即退出。' }}</p>
           <p class="desktop-status-freshness">账号列表 · {{ updated }}</p>
           <RouterLink to="/settings" @click="close">{{ desktopStatus?.switch?.busy ? '查看进度与恢复' : '桌面运行设置' }}<UiIcon name="chevron" :size="13" /></RouterLink>
         </div>

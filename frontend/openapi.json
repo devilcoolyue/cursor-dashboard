@@ -2089,6 +2089,16 @@
               }
             ],
             "title": "Tags"
+          },
+          "quota_reference": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuotaReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -3363,6 +3373,60 @@
         "type": "object",
         "title": "Plan"
       },
+      "QuotaReference": {
+        "properties": {
+          "cycle_start": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Cycle Start"
+          },
+          "cursor_models": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000000000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cursor Models"
+          },
+          "other_models": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000000000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Other Models"
+          },
+          "overall": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000000000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overall"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "cycle_start"
+        ],
+        "title": "QuotaReference"
+      },
       "QuotaSlot": {
         "properties": {
           "used_pct": {
@@ -3431,7 +3495,8 @@
                 "type": "string",
                 "enum": [
                   "history",
-                  "plan"
+                  "plan",
+                  "reference"
                 ]
               },
               {

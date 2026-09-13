@@ -42,10 +42,14 @@ class PreviewGateway:
         if name == 'desktop_profile':
             return {'membershipType': 'pro'}
         if name == 'desktop_period':
-            return {'billingCycleStart': int((time.time() - 5 * 86400) * 1000),
-                    'billingCycleEnd': int((time.time() + 25 * 86400) * 1000),
-                    'planUsage': {'autoPercentUsed': 28, 'apiPercentUsed': 36, 'totalPercentUsed': 32,
-                    'totalSpend': 1600, 'includedSpend': 1600}}
+            start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            end = (start + timedelta(days=32)).replace(day=1)
+            exhausted = subject == 'user_quota_capped'
+            return {'billingCycleStart': int(start.timestamp() * 1000),
+                    'billingCycleEnd': int(end.timestamp() * 1000),
+                    'planUsage': {'autoPercentUsed': 100 if exhausted else 28, 'apiPercentUsed': 100 if exhausted else 36,
+                    'totalPercentUsed': 100 if exhausted else 32, 'totalSpend': 49615 if exhausted else 1600,
+                    'includedSpend': 2000 if exhausted else 1600}}
         if name == 'desktop_grok':
             now = datetime.now(timezone.utc)
             return {'usagePercent': 18, 'hasNonZeroIncludedLimit': True,

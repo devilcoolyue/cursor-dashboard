@@ -3,6 +3,7 @@ import type { Schema } from './api'
 export const percent = (value: number) => `${Number(value.toFixed(1))}%`
 export const quotaTone = (value?: number | null) => value == null ? 'unknown' : value <= 10 ? 'bad' : value <= 30 ? 'warn' : 'ok'
 export function quotaLimitHint(slot?: Schema['QuotaSlot'] | null) {
+  if (slot?.limit_usd != null && slot.limit_source === 'reference') return '本账号本账期手动填写的参考上限，仅供参考；剩余百分比仍按 Cursor 返回值显示。账期或套餐变化后自动失效。'
   if (slot?.limit_usd != null && slot.limit_inferred) return slot.limit_source === 'history'
     ? '参考本账号同一账期此前推算的上限，仅供参考；本次剩余百分比仍按 Cursor 返回值显示。'
     : '参考当前空间内你可见的同套餐账号上限，以完整观测的中位数估算，仅供参考。'
