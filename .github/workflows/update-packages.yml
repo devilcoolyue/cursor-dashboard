@@ -51,6 +51,24 @@ jobs:
           uv run --frozen python dev/release.py check
           npm --prefix desktop run icons
           npm --prefix desktop run build -- --bundles ${{ runner.os == 'Windows' && 'nsis' || 'app' }}
+      - name: Verify packaged backend and installed startup
+        timeout-minutes: 5
+        shell: python
+        run: |
+          import os, pathlib, subprocess, sys
+          release = pathlib.Path('desktop/src-tauri/target/release')
+          suffix = '.exe' if sys.platform == 'win32' else ''
+          binary = pathlib.Path(f'desktop/sidecar/dist/cursor-local/cursor-local{suffix}').resolve()
+          environment = dict(os.environ, P4_BACKEND_BINARY=str(binary))
+          subprocess.run(['uv', 'run', '--project', 'desktop/sidecar', '--frozen', 'python', '-m', 'unittest', 'discover', '-s', 'desktop/tests', '-p', 'test_local_backend.py', '-v'], env=environment, check=True)
+          if sys.platform == 'win32':
+              installer = next((release / 'bundle/nsis').glob('*.exe'))
+              install_dir = pathlib.Path(os.environ['RUNNER_TEMP']) / 'Updater installed with spaces'
+              subprocess.run(f'"{installer.resolve()}" /S /D={install_dir}', check=True, timeout=120)
+              executable = install_dir / 'cursor-panel-desktop.exe'
+          else:
+              executable = release / 'bundle/macos/Cursor Panel.app/Contents/MacOS/cursor-panel-desktop'
+          subprocess.run(['uv', 'run', '--project', 'desktop/sidecar', '--frozen', 'python', 'desktop/scripts/desktop-smoke.py', str(executable), '--output', 'output/verification/installed-smoke.json'], check=True)
       - name: Sign complete updater packages
         shell: python
         env:
@@ -73,6 +91,11 @@ jobs:
         with:
           name: update-${{ matrix.target }}
           path: output/updates/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-check-${{ matrix.target }}
+          path: output/verification/
           if-no-files-found: error
 
   server:
