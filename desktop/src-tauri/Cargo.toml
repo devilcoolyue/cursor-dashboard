@@ -1,6 +1,6 @@
 [package]
 name = "cursor-panel-desktop"
-version = "0.0.4"
+version = "0.0.5"
 license = "MIT"
 default-run = "cursor-panel-desktop"
 edition = "2021"
