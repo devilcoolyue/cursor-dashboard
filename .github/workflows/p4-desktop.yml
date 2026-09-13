@@ -1,6 +1,12 @@
 name: V2 desktop and connected fixtures
 on:
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Platforms to build and verify
+        type: choice
+        default: all
+        options: [all, windows]
   push:
     branches: [feat/v2-p4, feat/v2-p5]
     paths: ['cursor_dashboard/**', 'desktop/**', 'frontend/**', 'tests/**', 'dev/preview-connected.py', '.github/workflows/p4-desktop.yml', 'uv.lock', 'pyproject.toml']
@@ -18,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, macos-15-intel, windows-latest]
+        os: ${{ fromJSON(inputs.platform == 'windows' && '["windows-latest"]' || '["macos-14", "macos-15-intel", "windows-latest"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 50
     steps:

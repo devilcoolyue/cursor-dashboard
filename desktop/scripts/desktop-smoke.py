@@ -72,6 +72,10 @@ def launch(executable, root, mode):
             memory_scope='shell and observed descendants; shared pages may be counted twice; OS WebView processes may be excluded')
         assert data['backend']['frozen'] and data['backend']['fixture']
         assert data['frontend']['rendered_accounts'] == 2
+        startup_log = json.loads((root / 'logs/startup.json').read_text(encoding='utf-8'))
+        assert startup_log['phase'] == 'backend_started' and startup_log['error'] is None
+        assert startup_log['version'] and startup_log['target'] == data['target']
+        data['startup_log_verified'] = True
         assert not survivors, 'Backend survived parent EOF'
         assert mode == 'crash' or child.returncode == 0
         return data

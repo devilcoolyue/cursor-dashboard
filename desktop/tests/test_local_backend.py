@@ -18,6 +18,46 @@ from cursor_dashboard.local.keys import SystemKeyStore
 
 ROOT = Path(__file__).resolve().parents[1]
 
+class StartupFailureTest(unittest.TestCase):
+    def run_failure(self, directory):
+        binary = os.environ.get('P4_BACKEND_BINARY')
+        command = [binary] if binary else [sys.executable, str(ROOT / 'sidecar/local_backend.py')]
+        child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        token = secrets.token_hex(32)
+        try:
+            child.stdin.write((json.dumps({'token': token, 'data_dir': str(directory), 'fixture': False}) + '\n').encode())
+            child.stdin.flush()
+            # Deliberately keep the parent's pipe OPEN. communicate() would
+            # hide the daemon BufferedReader shutdown crash this guards against.
+            self.assertEqual(child.wait(timeout=20), 1)
+            output = child.stdout.read()
+            self.assertEqual(child.stderr.read(), b'')
+            self.assertNotIn(token.encode(), output)
+            self.assertNotIn(b'private-input', output)
+            return json.loads(output)
+        finally:
+            child.stdin.close()
+            if child.poll() is None:
+                child.kill()
+                child.wait(timeout=5)
+            child.stdout.close()
+            child.stderr.close()
+
+    def test_startup_failure_exits_without_secondary_crash_and_reports_safe_reason(self):
+        with tempfile.TemporaryDirectory(prefix='cursor-startup-failure-') as temp:
+            directory = Path(temp) / 'private-input-not-a-directory'
+            directory.write_text('synthetic fixture')
+            result = self.run_failure(directory)
+            self.assertEqual(result['error']['code'], 'data_io')
+            self.assertIsInstance(result['error']['os_error'], int)
+
+    def test_directory_lock_failure_is_reported_before_readiness(self):
+        from cursor_dashboard.runtime.lock import RuntimeLock
+        with tempfile.TemporaryDirectory(prefix='cursor-startup-lock-') as temp:
+            directory = Path(temp)
+            with RuntimeLock(directory / '.desktop.lock'):
+                self.assertEqual(self.run_failure(directory)['error']['code'], 'data_in_use')
+
 @unittest.skipUnless(sys.platform in {'darwin', 'win32'}, 'Native OS key store requires macOS or Windows')
 class LocalBackendTest(unittest.TestCase):
     def setUp(self):

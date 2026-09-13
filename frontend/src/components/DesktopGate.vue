@@ -9,6 +9,7 @@ const password = ref(''), error = ref(''), busy = ref(false)
 let timer: ReturnType<typeof setTimeout> | undefined, alive = true
 onBeforeUnmount(() => { alive = false; clearTimeout(timer); password.value = '' })
 async function poll() {
+  clearTimeout(timer)
   try {
     const state = await native<DesktopStatus>('status')
     if (!alive) return
@@ -19,8 +20,14 @@ async function poll() {
 }
 onMounted(() => void poll())
 async function retry() {
+  clearTimeout(timer)
   busy.value = true; error.value = ''
-  try { await native('unlock'); await poll() } catch (reason) { error.value = message(reason) }
+  try {
+    const state = await native<DesktopStatus>('unlock')
+    if (!alive) return
+    desktopStatus.value = state
+    await poll()
+  } catch (reason) { if (alive) error.value = message(reason) }
   finally { busy.value = false }
 }
 async function recover() {
@@ -41,6 +48,6 @@ async function recover() {
     :description="desktopStatus?.phase === 'locked' ? '请解锁系统凭证库后重试。若原密钥丢失，可使用此前导出的加密归档恢复。' : desktopStatus?.phase === 'in_use' ? '此数据目录正在被其他进程使用。关闭其他 Cursor Panel 或维护命令后重试。' : '请重新打开 Cursor Panel。若仍失败，请检查安装完整性与数据目录访问权限。'">
     <button :disabled="busy" @click="retry">重试连接</button>
     <form v-if="desktopStatus?.phase === 'locked'" class="form-stack narrow" @submit.prevent="recover"><h2>从归档恢复密钥</h2><label>归档口令<input v-model="password" type="password" required minlength="12" maxlength="256" autocomplete="off" /></label><button :disabled="busy" class="primary">选择加密归档并恢复</button><p class="muted">恢复原密钥不会覆盖账号数据。没有原密钥或可用归档时，已有凭证无法解密。</p></form>
-    <p v-if="error" role="alert" class="error">{{ error }}</p>
+    <p v-if="error || desktopStatus?.error" role="alert" class="error">{{ error || desktopStatus?.error }}</p>
   </EntryLayout>
 </template>

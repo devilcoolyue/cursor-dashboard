@@ -40,6 +40,32 @@ struct Ready {
     core_ms: u64,
     listener_ms: u64,
 }
+fn parse_readiness(line: &str) -> Result<Ready, String> {
+    let value: Value = serde_json::from_str(line)
+        .map_err(|_| "后台进程在就绪前退出或返回了无效信息，请检查安装完整性。[runtime_readiness]")?;
+    if let Some(error) = value.get("error") {
+        let (code, message) = match error["code"].as_str() {
+            Some("bootstrap") => ("bootstrap", "后台启动参数无效，请重新打开应用。"),
+            Some("imports") => ("imports", "后台依赖加载失败，请重新安装完整的 Cursor Panel 安装包。"),
+            Some("data_in_use") => ("data_in_use", "数据目录正在使用中，请退出其他 Cursor Panel 或维护命令后重试。"),
+            Some("data_permissions") => ("data_permissions", "无法设置本地数据目录的访问权限，请检查 Windows 用户权限与目录权限。"),
+            Some("data_io") => ("data_io", "无法读写本地数据目录，请检查目录权限、文件冲突与磁盘空间。"),
+            Some("listener") => ("listener", "本地监听服务启动失败，请检查系统是否拦截了后台网络访问。"),
+            _ => ("runtime", "本地数据初始化失败，请保留数据目录并反馈此错误。"),
+        };
+        let os_error = error["os_error"].as_i64()
+            .map(|value| format!("; os={value}"))
+            .unwrap_or_default();
+        let kind = match error["kind"].as_str() {
+            Some(kind @ ("KeyError" | "TypeError" | "ValueError" | "FileNotFoundError" | "FileExistsError"
+                | "PermissionError" | "OSError" | "ImportError" | "ModuleNotFoundError" | "RuntimeError"
+                | "Conflict" | "Locked" | "SecretError" | "OperationalError" | "DatabaseError" | "TimeoutExpired")) => format!("; {kind}"),
+            _ => String::new(),
+        };
+        return Err(format!("{message} [{code}{os_error}{kind}]"));
+    }
+    serde_json::from_value(value).map_err(|_| "后台就绪信息不兼容，请重新安装完整安装包。[runtime_readiness]".into())
+}
 #[derive(Clone)]
 struct Connection {
     token: String,
@@ -119,7 +145,7 @@ impl Backend {
         }
         let mut child = command
             .spawn()
-            .map_err(|_| "Cannot start the bundled local runtime")?;
+            .map_err(|error| format!("无法启动随包后台，请检查安装目录中的 runtime 文件夹和系统拦截记录。[runtime_spawn; os={}]", error.raw_os_error().unwrap_or(0)))?;
         let control = child.stdin.take();
         let stdout = child.stdout.take().ok_or("Missing runtime channel")?;
         let mut backend = Self {
@@ -141,15 +167,13 @@ impl Backend {
             let ready = BufReader::new(stdout)
                 .take(4096)
                 .read_line(&mut line)
-                .map_err(|_| "Cannot read runtime readiness")
-                .and_then(|_| {
-                    serde_json::from_str::<Ready>(&line).map_err(|_| "Invalid runtime readiness")
-                });
+                .map_err(|_| "无法读取后台启动状态。[runtime_channel]".to_string())
+                .and_then(|_| parse_readiness(&line));
             let _ = sender.send(ready);
         });
         let ready = receiver
             .recv_timeout(Duration::from_secs(60))
-            .map_err(|_| "Local startup timed out")??;
+            .map_err(|_| "后台启动超时，请完成系统授权提示后重试。[runtime_timeout]")??;
         if ready.protocol != 1 || ready.port == 0 || ready.pid == 0 || ready.fixture != fixture {
             return Err("Incompatible local runtime".into());
         }
@@ -189,8 +213,80 @@ struct Runtime {
     background: AtomicBool,
     start: Instant,
     directory: PathBuf,
+    log_path: Option<PathBuf>,
     report_path: Option<PathBuf>,
     reported: AtomicBool,
+}
+impl Runtime {
+    fn log_startup(&self, phase: &str, error: Option<&str>) {
+        // Overwrite one bounded report; never persist the bootstrap token,
+        // exception text, database contents or raw child stderr.
+        if let Some(path) = &self.log_path {
+            if let Some(parent) = path.parent() {
+                if fs::create_dir_all(parent).is_ok() {
+                    let report = json!({
+                        "version": env!("CARGO_PKG_VERSION"), "target": env!("P0_TARGET"),
+                        "source_revision": option_env!("GITHUB_SHA"),
+                        "time_unix": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|time| time.as_secs()).unwrap_or(0),
+                        "phase": phase, "error": error,
+                    });
+                    let _ = fs::write(path, serde_json::to_vec_pretty(&report).unwrap());
+                }
+            }
+        }
+    }
+
+    fn backend_running(&self) -> Result<bool, String> {
+        let mut guard = self.backend.lock().map_err(|_| "Runtime lock failed")?;
+        match guard.as_mut() {
+            Some(backend) => backend.child.try_wait()
+                .map(|status| status.is_none())
+                .map_err(|_| "Cannot inspect local runtime".into()),
+            None => Ok(false),
+        }
+    }
+}
+
+fn start_backend(app: &tauri::AppHandle) -> Result<(), String> {
+    let runtime = app.state::<Runtime>();
+    if runtime.updating.load(Ordering::SeqCst) {
+        return Err("Application update is in progress".into());
+    }
+    if runtime.starting.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+        return Ok(());
+    }
+    let handle = app.clone();
+    thread::spawn(move || {
+        let runtime = handle.state::<Runtime>();
+        // Release the previous process and its pipe before reopening the same data directory.
+        let previous = runtime.backend.lock().unwrap().take();
+        drop(previous);
+        *runtime.error.lock().unwrap() = None;
+        runtime.log_startup("starting", None);
+        match Backend::start(&handle, &runtime.directory, runtime.report_path.is_some()) {
+            Ok(backend) => {
+                if let Some(connection) = &backend.connection {
+                    if let Ok(response) = connection.request("GET", "/native/status", None) {
+                        if let Some(report) = &runtime.report_path {
+                            let _ = fs::write(report.with_extension("startup.json"), serde_json::to_vec(&json!({"backend": connection.ready, "state": response})).unwrap());
+                        }
+                        runtime.background.store(response["body"]["background"].as_bool().unwrap_or(false), Ordering::SeqCst);
+                    }
+                }
+                *runtime.backend.lock().unwrap() = Some(backend);
+                runtime.log_startup("backend_started", None);
+            }
+            Err(error) => {
+                runtime.log_startup("unavailable", Some(&error));
+                if let Some(report) = &runtime.report_path {
+                    let _ = fs::write(report.with_extension("startup.json"), serde_json::to_vec(&json!({"error": error})).unwrap());
+                }
+                *runtime.error.lock().unwrap() = Some(error);
+            }
+        }
+        runtime.starting.store(false, Ordering::SeqCst);
+    });
+    Ok(())
 }
 fn connection(app: &tauri::AppHandle) -> Result<Connection, String> {
     if app.state::<Runtime>().updating.load(Ordering::SeqCst) {
@@ -343,9 +439,19 @@ async fn desktop_request(
     tauri::async_runtime::spawn_blocking(move || {
         use NativeOperation::*;
         let runtime = app.state::<Runtime>();
-        if matches!(operation, Status) && runtime.starting.load(Ordering::SeqCst) { return Ok(json!({"status": 200, "body": {"phase": "starting", "background": false}})); }
-        if matches!(operation, Status) && runtime.backend.lock().map_err(|_| "Runtime lock failed")?.is_none() {
-            return Ok(json!({"status": 200, "body": {"phase": "unavailable", "error": "Local runtime stopped; restart Cursor Panel", "background": false}}));
+        if matches!(operation, Status | Unlock) {
+            if runtime.starting.load(Ordering::SeqCst) {
+                return Ok(json!({"status": 200, "body": {"phase": "starting", "background": false}}));
+            }
+            if !runtime.backend_running()? {
+                if matches!(operation, Unlock) {
+                    start_backend(&app)?;
+                    return Ok(json!({"status": 200, "body": {"phase": "starting", "background": false}}));
+                }
+                let error = runtime.error.lock().map_err(|_| "Runtime lock failed")?.clone()
+                    .unwrap_or_else(|| "本地后台进程已退出，请重试连接。[runtime_stopped]".into());
+                return Ok(json!({"status": 200, "body": {"phase": "unavailable", "error": error, "background": false}}));
+            }
         }
         let (method, path) = match operation {
             Status => ("GET", "/native/status"), Unlock => ("POST", "/native/unlock"), Detect => ("GET", "/native/cursor"),
@@ -560,15 +666,20 @@ pub fn run() {
             } else {
                 app.path().app_data_dir()?
             };
-            let fixture = report.is_some();
+            let log_path = if let Some(report) = &report {
+                report.parent().map(|parent| parent.join("logs/startup.json"))
+            } else {
+                app.path().app_log_dir().ok().map(|directory| directory.join("startup.json"))
+            };
             app.manage(Runtime {
                 backend: Mutex::new(None),
                 error: Mutex::new(None),
-                starting: AtomicBool::new(true),
+                starting: AtomicBool::new(false),
                 updating: AtomicBool::new(false),
                 background: AtomicBool::new(false),
                 start: started,
                 directory: directory.clone(),
+                log_path,
                 report_path: report,
                 reported: AtomicBool::new(false),
             });
@@ -595,35 +706,7 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
-            let handle = app.handle().clone();
-            thread::spawn(move || {
-                let outcome = Backend::start(&handle, &directory, fixture);
-                let runtime = handle.state::<Runtime>();
-                match outcome {
-                    Ok(backend) => {
-                        if let Some(connection) = &backend.connection {
-                            if let Ok(response) = connection.request("GET", "/native/status", None)
-                            {
-                                if let Some(report) = &runtime.report_path {
-                                    let _ = fs::write(report.with_extension("startup.json"), serde_json::to_vec(&json!({"backend": connection.ready, "state": response})).unwrap());
-                                }
-                                runtime.background.store(
-                                    response["body"]["background"].as_bool().unwrap_or(false),
-                                    Ordering::SeqCst,
-                                );
-                            }
-                        }
-                        *runtime.backend.lock().unwrap() = Some(backend);
-                    }
-                    Err(error) => {
-                        if let Some(report) = &runtime.report_path {
-                            let _ = fs::write(report.with_extension("startup.json"), serde_json::to_vec(&json!({"error": error})).unwrap());
-                        }
-                        *runtime.error.lock().unwrap() = Some(error);
-                    }
-                }
-                runtime.starting.store(false, Ordering::SeqCst);
-            });
+            start_backend(app.handle())?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -660,6 +743,17 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn startup_failure_preserves_category_without_forwarding_arbitrary_details() {
+        let failure = parse_readiness(r#"{"error":{"code":"data_permissions","os_error":5,"message":"private credential"}}"#).err().unwrap();
+        assert!(failure.contains("data_permissions; os=5"));
+        assert!(!failure.contains("private credential"));
+        let unknown = parse_readiness(r#"{"error":{"code":"private credential"}}"#).err().unwrap();
+        assert!(unknown.contains("[runtime]"));
+        assert!(!unknown.contains("private credential"));
+        assert!(parse_readiness("").is_err());
+        assert!(parse_readiness(r#"{"port":1234,"pid":42,"protocol":1,"frozen":true,"fixture":false,"imports_ms":1,"core_ms":2,"listener_ms":3}"#).is_ok());
+    }
     #[test]
     fn fixed_routes_reject_url_and_path_injection() {
         assert!(account_route(

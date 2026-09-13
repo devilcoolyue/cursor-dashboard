@@ -10,7 +10,29 @@ import threading
 import time
 
 
-def main():
+def startup_failure(error, stage):
+    # Only fixed categories and numeric OS codes cross the pipe. Exception
+    # messages/tracebacks may contain account material, paths or SQL values.
+    name = type(error).__name__
+    code = {"bootstrap": "bootstrap", "imports": "imports", "runtime": "runtime",
+            "listener": "listener"}.get(stage, "runtime")
+    if isinstance(error, ImportError):
+        code = "imports"
+    elif name == "Locked":
+        code = "data_in_use"
+    elif isinstance(error, PermissionError) or (name == "Conflict" and
+            str(error) == "Cannot restrict private desktop file permissions"):
+        code = "data_permissions"
+    elif isinstance(error, OSError) and stage == "runtime":
+        code = "data_io"
+    kind = name if name in {"KeyError", "TypeError", "ValueError", "FileNotFoundError", "FileExistsError",
+                           "PermissionError", "OSError", "ImportError", "ModuleNotFoundError", "RuntimeError",
+                           "Conflict", "Locked", "SecretError", "OperationalError", "DatabaseError", "TimeoutExpired"} else "Exception"
+    return {"error": {"code": code, "kind": kind, "os_error": getattr(error, "winerror", None) or
+                     getattr(error, "errno", None)}}
+
+
+def main(progress):
     started = time.monotonic()
     bootstrap = json.loads(sys.stdin.buffer.readline(16384))
     token, data_dir = bootstrap.get("token"), bootstrap.get("data_dir")
@@ -18,17 +40,27 @@ def main():
             or not isinstance(data_dir, str) or not Path(data_dir).is_absolute()):
         raise ValueError("Invalid desktop bootstrap")
     parent_gone = threading.Event()
+    parent_fd = sys.stdin.fileno()
 
     def watch_parent():
-        while sys.stdin.buffer.read(1):
+        try:
+            # A daemon blocked in BufferedReader.read holds stdin's lock and
+            # causes _enter_buffered_busy to abort during interpreter shutdown
+            # if startup fails while the parent still holds its pipe open.
+            while os.read(parent_fd, 1):
+                pass
+        except OSError:
             pass
-        parent_gone.set()
+        finally:
+            parent_gone.set()
     threading.Thread(target=watch_parent, daemon=True).start()
+    progress["stage"] = "imports"
     import asyncio
     import uvicorn
     from cursor_dashboard.local.api import create_local_app
     from cursor_dashboard.local.runtime import DesktopRuntime
     imported = time.monotonic()
+    progress["stage"] = "runtime"
     kwargs = {}
     fixture = bootstrap.get("fixture") is True
     if fixture:
@@ -39,6 +71,7 @@ def main():
     if fixture and runtime.core:
         asyncio.run(seed(runtime))
     opened = time.monotonic()
+    progress["stage"] = "listener"
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     listener.bind(("127.0.0.1", 0))
     port = listener.getsockname()[1]
@@ -66,8 +99,9 @@ def main():
 
 
 if __name__ == "__main__":
+    progress = {"stage": "bootstrap"}
     try:
-        main()
-    except Exception:
-        # Exceptions can contain paths, authorization input or SQL parameters. No traceback on the pipe.
+        main(progress)
+    except Exception as error:
+        print(json.dumps(startup_failure(error, progress["stage"])), flush=True)
         sys.exit(1)

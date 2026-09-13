@@ -225,11 +225,15 @@ try {
     console.log(`CHECK ${engine}: native startup and recovery`)
     const nativePage = await nativeContext.newPage()
     let interrupted = false
+    let startupFailure = false
+    let retryCount = 0
+    const failureMessage = '无法设置本地数据目录的访问权限。 [data_permissions; os=5]'
     await nativeContext.exposeBinding('nativeInvoke', (_, command, args) => {
       if (command === 'check_update') return currentRelease
       assert.equal(command, 'desktop_request')
-      if (args.operation === 'unlock') interrupted = false
+      if (args.operation === 'unlock') { interrupted = false; startupFailure = false; retryCount++ }
       if (interrupted) throw Error('Synthetic unavailable backend')
+      if (startupFailure) return { status: 200, body: { phase: 'unavailable', background: false, error: failureMessage } }
       return { status: 200, body: { phase: 'starting', background: false } }
     })
     await nativeContext.addInitScript(() => {
@@ -250,6 +254,13 @@ try {
     assert.equal(await nativePage.locator('.startup-progress').count(), 0)
     await click(nativePage, '重试连接')
     await visible(nativePage.getByRole('status').filter({ hasText: '正在打开本地账号' }))
+    startupFailure = true
+    await visible(nativePage.getByRole('heading', { name: '本地后台暂不可用' }))
+    await visible(nativePage.getByRole('alert').filter({ hasText: failureMessage }))
+    await click(nativePage, '重试连接')
+    await visible(nativePage.getByRole('status').filter({ hasText: '正在打开本地账号' }))
+    assert.equal(await nativePage.getByRole('alert').count(), 0)
+    assert.equal(retryCount, 2)
     await nativeContext.close()
     await browser.close(); browser = undefined
     console.log(`PASS ${engine}: centered Web/native startup and retry, reduced motion, pointer/keyboard focus, all 12 card toggles, missing limits and help surfaces`)
