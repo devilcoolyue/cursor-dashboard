@@ -128,15 +128,16 @@ class Publisher:
                 raise ValueError("Draft belongs to different source; inspect it instead of replacing it")
             return release
         try:
-            self.api.request("POST", self.base + "/releases", data=self.release_payload(True))
+            # The create response has the authoritative ID. The list endpoint can
+            # briefly omit a newly created draft even after a successful response.
+            release = self.api.request("POST", self.base + "/releases", data=self.release_payload(True))
         except ApiError:
             # A timeout/500 can occur AFTER GitHub creates the draft. Never blindly POST again.
             self.sleep(2)
             release = self.find_release()
             if release is None:
                 raise
-        release = self.find_release()
-        if release is None or release["target_commitish"] != self.revision:
+        if release is None or release["tag_name"] != self.tag or release["target_commitish"] != self.revision:
             raise ValueError("Cannot identify the created release draft")
         return release
 

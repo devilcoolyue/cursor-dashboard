@@ -194,6 +194,19 @@ class PublishTest(unittest.TestCase):
             self.publisher.publish()
         self.assertEqual(self.api.mutations, [])
 
+    def test_create_response_identifies_draft_before_release_list_catches_up(self):
+        request = self.api.request
+
+        def delayed_list(method, path, **kwargs):
+            if method == "GET" and "/releases?" in path:
+                return []
+            return request(method, path, **kwargs)
+
+        with patch.object(self.api, "request", side_effect=delayed_list):
+            self.assertTrue(self.publisher.publish().endswith("v0.0.9"))
+        self.assertFalse(self.api.release["draft"])
+        self.assertEqual(sum(path.endswith("/releases") for _, path in self.api.mutations), 1)
+
     def test_public_update_verification_checks_the_legacy_redirect_too(self):
         names = ("latest.json", "server-update.json", "server-update.json.sig")
         for name in names:
