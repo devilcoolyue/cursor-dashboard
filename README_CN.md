@@ -272,3 +272,13 @@ uv run --frozen python dev/release.py check
 ## 友情链接
 
 - [LINUX DO](https://linux.do) - 新的理想型社区
+
+## Star 趋势
+
+<a href="https://star-history.com/#devilcoolyue/cursor-dashboard&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=devilcoolyue/cursor-dashboard&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=devilcoolyue/cursor-dashboard&type=Date" />
+    <img alt="Cursor Panel Star 趋势图" src="https://api.star-history.com/svg?repos=devilcoolyue/cursor-dashboard&type=Date" />
+  </picture>
+</a>

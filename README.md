@@ -272,3 +272,13 @@ If Cursor Panel makes managing your accounts easier, give the project a ⭐.
 ## Friend Links
 
 - [LINUX DO](https://linux.do)
+
+## Star History
+
+<a href="https://star-history.com/#devilcoolyue/cursor-dashboard&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=devilcoolyue/cursor-dashboard&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=devilcoolyue/cursor-dashboard&type=Date" />
+    <img alt="Cursor Panel Star History Chart" src="https://api.star-history.com/svg?repos=devilcoolyue/cursor-dashboard&type=Date" />
+  </picture>
+</a>
