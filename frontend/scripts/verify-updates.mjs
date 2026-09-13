@@ -28,7 +28,7 @@ const nextVersion = current.split('.').map((part, index) => index === 2 ? Number
 const fixtureMe = admin => ({ id: 'fixture-user', login: 'fixture@example.test', instance_admin: admin,
   workspaces: [{ id: 'fixture-space', name: '测试空间', kind: 'personal', role: 'owner', capabilities: {} }] })
 const bootstrap = desktop => ({ mode: desktop ? 'local' : 'server', initialized: true, api_version: 1, app_version: current, capabilities: {} })
-const latest = { current_version: current, latest_version: nextVersion, available: true, installable: true, notes: '<script>bad()</script>\n新增自动更新', release_url: `https://github.com/devilcoolyue/cursor-dashboard/releases/tag/v${nextVersion}`, published_at: null }
+const latest = { current_version: current, latest_version: nextVersion, available: true, installable: true, notes: '<script>bad()</script>\n新增自动更新', release_url: `https://github.com/devilcoolyue/cursor-panel/releases/tag/v${nextVersion}`, published_at: null }
 await mkdir(join(root, 'output/playwright'), { recursive: true })
 try {
   for (const admin of [false, true]) {

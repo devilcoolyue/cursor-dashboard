@@ -18,7 +18,7 @@ Use the standalone desktop app or bring your own server.
 
 **English** | [简体中文](README_CN.md)
 
-[Download](https://github.com/devilcoolyue/cursor-dashboard/releases) · [Quick start](#quick-start) · [Documentation](#documentation) · [Report an issue](https://github.com/devilcoolyue/cursor-dashboard/issues)
+[Download](https://github.com/devilcoolyue/cursor-panel/releases) · [Quick start](#quick-start) · [Documentation](#documentation) · [Report an issue](https://github.com/devilcoolyue/cursor-panel/issues)
 
 </div>
 
@@ -40,7 +40,7 @@ Use the standalone desktop app or bring your own server.
 - **Keep credentials protected.** Account credentials are encrypted at rest. Desktop keys live in the system credential store; encrypted archives support account transfer and key recovery.
 - **Make it yours.** Six skins, independent light / dark modes, configurable account cards, a collapsible sidebar, and a responsive Web layout. Built-in guidance helps you get started.
 
-This README describes the current V2 preview source. The latest downloadable release is [v0.0.4](https://github.com/devilcoolyue/cursor-dashboard/releases/tag/v0.0.4); its exact contents are listed in the [release archive](docs/archive/v0.0.4.md). Screenshots use synthetic preview data.
+This README describes the current V2 preview source. The latest downloadable release is [v0.0.4](https://github.com/devilcoolyue/cursor-panel/releases/tag/v0.0.4); its exact contents are listed in the [release archive](docs/archive/v0.0.4.md). Screenshots use synthetic preview data.
 
 ## Choose your setup
 
@@ -57,13 +57,13 @@ Local and remote databases remain independent. Changing a desktop connection doe
 
 ### Desktop — for personal use
 
-Download the package for your platform from **[v0.0.4 Releases](https://github.com/devilcoolyue/cursor-dashboard/releases/tag/v0.0.4)**:
+Download the package for your platform from **[v0.0.4 Releases](https://github.com/devilcoolyue/cursor-panel/releases/tag/v0.0.4)**:
 
 | Platform | Download |
 | --- | --- |
-| macOS · Apple Silicon | [DMG for arm64](https://github.com/devilcoolyue/cursor-dashboard/releases/download/v0.0.4/Cursor.Panel_0.0.4_aarch64.dmg) |
-| macOS · Intel | [DMG for x64](https://github.com/devilcoolyue/cursor-dashboard/releases/download/v0.0.4/Cursor.Panel_0.0.4_x64.dmg) |
-| Windows · x64 | [Installer for x64](https://github.com/devilcoolyue/cursor-dashboard/releases/download/v0.0.4/Cursor.Panel_0.0.4_x64-setup.exe) |
+| macOS · Apple Silicon | [DMG for arm64](https://github.com/devilcoolyue/cursor-panel/releases/download/v0.0.4/Cursor.Panel_0.0.4_aarch64.dmg) |
+| macOS · Intel | [DMG for x64](https://github.com/devilcoolyue/cursor-panel/releases/download/v0.0.4/Cursor.Panel_0.0.4_x64.dmg) |
+| Windows · x64 | [Installer for x64](https://github.com/devilcoolyue/cursor-panel/releases/download/v0.0.4/Cursor.Panel_0.0.4_x64-setup.exe) |
 
 1. Install and open Cursor Panel. A local user and personal workspace are created automatically; Python, Node.js, and a server are not required.
 2. Choose **Add account** (`添加账号`) and authorize it using your Cursor web session material. See the [account guide](docs/user-guide.md#accounts) for the supported input.
@@ -75,7 +75,7 @@ These are early preview packages without publisher signing or macOS notarization
 
 The current macOS app has not been signed with an Apple Developer ID or notarized by Apple. Gatekeeper may therefore report **“Cursor Panel is damaged and can't be opened”** or **“Apple could not verify…”** after downloading it. This message does not necessarily mean the download is corrupt. Update-package signatures are separate from Apple code signing and do not remove this warning.
 
-1. Download the matching DMG from this project's [GitHub Releases](https://github.com/devilcoolyue/cursor-dashboard/releases) and compare its SHA-256 with `SHA256SUMS` from the same release. Open the DMG and drag **Cursor Panel.app** into **Applications** before following the steps below.
+1. Download the matching DMG from this project's [GitHub Releases](https://github.com/devilcoolyue/cursor-panel/releases) and compare its SHA-256 with `SHA256SUMS` from the same release. Open the DMG and drag **Cursor Panel.app** into **Applications** before following the steps below.
 2. If macOS blocks an unidentified developer, try opening the app once, then go to **System Settings → Privacy & Security → Open Anyway** and confirm.
 3. If it still reports **“damaged”**, and you have verified and trust this download, open **Terminal** and run:
 
@@ -95,15 +95,15 @@ The current macOS app has not been signed with an Apple Developer ID or notarize
 
    Enter your Mac login password when prompted; Terminal shows no characters while you type. **No such file** means the installation path is wrong or the app has not been copied into Applications. **No such xattr** means that file has no quarantine attribute.
 
-If the checksum does not match, download the package again instead of removing quarantine. If it matches but the app still cannot open, [report an issue](https://github.com/devilcoolyue/cursor-dashboard/issues) with your macOS version, chip architecture, and exact error message.
+If the checksum does not match, download the package again instead of removing quarantine. If it matches but the app still cannot open, [report an issue](https://github.com/devilcoolyue/cursor-panel/issues) with your macOS version, chip architecture, and exact error message.
 
 ### Docker Compose — for teams and self-hosting
 
 **Requirements:** Docker Engine, Docker Compose v2, a domain pointing to your server, and reachable ports **80 / 443**. Caddy handles HTTPS.
 
 ```bash
-git clone https://github.com/devilcoolyue/cursor-dashboard.git
-cd cursor-dashboard
+git clone https://github.com/devilcoolyue/cursor-panel.git
+cd cursor-panel
 cp deploy/v2/.env.example deploy/v2/.env
 ```
 
@@ -193,7 +193,7 @@ Use your server address and login; replace the UUID placeholders with IDs return
 <summary>Project structure</summary>
 
 ```text
-cursor-dashboard/
+cursor-panel/
 ├── cursor_dashboard/       # Shared Python core, API, CLI, and local integrations
 │   ├── api/               # Authenticated HTTP API
 │   ├── application/       # Accounts, workspaces, identity, and access rules
@@ -257,7 +257,7 @@ Follow the [legacy usage guide](docs/legacy-usage.md), [legacy deployment guide]
 
 ## Contributing
 
-Bug reports, documentation improvements, and focused pull requests are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), and include your version, platform, reproduction steps, and sanitized errors when [reporting an issue](https://github.com/devilcoolyue/cursor-dashboard/issues). Keep real credentials, keys, databases, and generated switching commands out of commits and screenshots.
+Bug reports, documentation improvements, and focused pull requests are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), and include your version, platform, reproduction steps, and sanitized errors when [reporting an issue](https://github.com/devilcoolyue/cursor-panel/issues). Keep real credentials, keys, databases, and generated switching commands out of commits and screenshots.
 
 ## License
 
@@ -275,10 +275,10 @@ If Cursor Panel makes managing your accounts easier, give the project a ⭐.
 
 ## Star History
 
-<a href="https://star-history.com/#devilcoolyue/cursor-dashboard&Date">
+<a href="https://star-history.com/#devilcoolyue/cursor-panel&Date">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=devilcoolyue/cursor-dashboard&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=devilcoolyue/cursor-dashboard&type=Date" />
-    <img alt="Cursor Panel Star History Chart" src="https://api.star-history.com/svg?repos=devilcoolyue/cursor-dashboard&type=Date" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=devilcoolyue/cursor-panel&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=devilcoolyue/cursor-panel&type=Date" />
+    <img alt="Cursor Panel Star History Chart" src="https://api.star-history.com/svg?repos=devilcoolyue/cursor-panel&type=Date" />
   </picture>
 </a>

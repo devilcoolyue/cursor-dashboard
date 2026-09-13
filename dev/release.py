@@ -183,7 +183,7 @@ def manifest(args):
         "license": license_id,
         "target": args.target, "source_commit": git("rev-parse", "HEAD"),
         "source_dirty": dirty, "local_verification_only": dirty,
-        "source_url": "https://github.com/devilcoolyue/cursor-dashboard",
+        "source_url": "https://github.com/devilcoolyue/cursor-panel",
         "build_run": os.environ.get("GITHUB_RUN_ID"), "build_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
         "api_major": 1, "schema": "0004_retention", "remote_switch": False,
         "signing": "unsigned", "notarized": False,

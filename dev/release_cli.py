@@ -9,7 +9,7 @@ import subprocess
 import sys
 
 from release import ROOT, check_versions, git
-from cursor_dashboard.updates.releases import version_tuple
+from cursor_dashboard.updates.releases import REPOSITORY, version_tuple
 
 STATE = ROOT / "output/release-state.json"
 
@@ -90,7 +90,7 @@ def start(publish):
     if not branch:
         raise ValueError("Dispatch from a pushed branch")
     repo = json.loads(command("gh", "repo", "view", "--json", "nameWithOwner"))["nameWithOwner"]
-    if repo != "devilcoolyue/cursor-dashboard":
+    if repo != REPOSITORY:
         raise ValueError("Release entry point requires the Cursor Panel repository")
     remote = json.loads(command("gh", "api", f"repos/{repo}/git/ref/heads/{branch}"))
     if remote["object"]["sha"] != revision:

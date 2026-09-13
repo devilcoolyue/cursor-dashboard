@@ -12,8 +12,10 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from cursor_dashboard import __version__
 
-REPOSITORY = "devilcoolyue/cursor-dashboard"
+REPOSITORY = "devilcoolyue/cursor-panel"
+LEGACY_REPOSITORY = "devilcoolyue/cursor-dashboard"
 RELEASES_URL = f"https://github.com/{REPOSITORY}/releases"
+LEGACY_RELEASES_URL = f"https://github.com/{LEGACY_REPOSITORY}/releases"
 LATEST_URL = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
 PUBLIC_KEY = Path(__file__).with_name("public-key.txt").read_text().strip()
 
@@ -82,18 +84,25 @@ def verify_signature(data: bytes, signature: str, public_key=PUBLIC_KEY):
         raise UpdateError("更新签名校验失败，已停止升级。") from None
 
 
-def release_asset_url(version, filename):
+def release_asset_url(version, filename, *, legacy=True):
+    """Keep published manifest URLs compatible with v0.0.2–v0.0.4 update validators.
+
+    GitHub redirects the old repository path. Older clients check only the latest
+    release, so this default must survive beyond the first release after renaming.
+    New readers can use the canonical address with legacy=False.
+    """
     version_tuple(version)
     if not re.fullmatch(r"[A-Za-z0-9_+.-]+", filename) or filename.startswith("."):
         raise UpdateError("更新文件名无效。")
-    return f"{RELEASES_URL}/download/v{version}/{filename}"
+    origin = LEGACY_RELEASES_URL if legacy else RELEASES_URL
+    return f"{origin}/download/v{version}/{filename}"
 
 
 def server_manifest(version):
-    raw = download_metadata(release_asset_url(version, "server-update.json"), optional=True)
+    raw = download_metadata(release_asset_url(version, "server-update.json", legacy=False), optional=True)
     if raw is None:
         return None
-    signature = download_metadata(release_asset_url(version, "server-update.json.sig"))
+    signature = download_metadata(release_asset_url(version, "server-update.json.sig", legacy=False))
     verify_signature(raw, signature.decode("ascii"))
     try:
         value = json.loads(raw)
@@ -102,7 +111,8 @@ def server_manifest(version):
                 or not re.fullmatch(r"sha256:[a-f0-9]{64}", value["image_id"])
                 or not re.fullmatch(r"[a-f0-9]{64}", artifact["sha256"])
                 or type(artifact["size"]) is not int or not 0 < artifact["size"] <= 4 * 1024**3
-                or artifact["url"] != release_asset_url(version, artifact["name"])):
+                or artifact["url"] not in {release_asset_url(version, artifact["name"]),
+                                          release_asset_url(version, artifact["name"], legacy=False)}):
             raise ValueError()
         return value
     except (ValueError, KeyError, TypeError):

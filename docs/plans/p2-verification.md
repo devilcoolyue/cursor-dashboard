@@ -2,7 +2,7 @@
 
 日期：2026-09-10。状态：P2 已完成。分支：`feat/v2-p2`。
 
-实现与测试提交 `815b8c46120e0944119689d0c31a9a9890d58d43` 通过 [三平台 CI](https://github.com/devilcoolyue/cursor-dashboard/actions/runs/34434865306)。后续收尾只更新文档。
+实现与测试提交 `815b8c46120e0944119689d0c31a9a9890d58d43` 通过 [三平台 CI](https://github.com/devilcoolyue/cursor-panel/actions/runs/34434865306)。后续收尾只更新文档。
 
 ## 交付
 
@@ -38,7 +38,7 @@ macOS arm64，Python 3.12.13，依赖固定于 `uv.lock`。显式声明 Pydantic
 
 ## 三平台验证
 
-`.github/workflows/p2-identity.yml` 的最终运行 [34434865306](https://github.com/devilcoolyue/cursor-dashboard/actions/runs/34434865306) 全部成功：
+`.github/workflows/p2-identity.yml` 的最终运行 [34434865306](https://github.com/devilcoolyue/cursor-panel/actions/runs/34434865306) 全部成功：
 
 | 环境 | P1 核心 | 身份/权限/票据 | HTTP 与升级 | wheel + HTTP 进程 | 完整回归 |
 | --- | --- | --- | --- | --- | --- |

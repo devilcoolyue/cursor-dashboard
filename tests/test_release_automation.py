@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import json
 from pathlib import Path
+from types import SimpleNamespace
 import shutil
 import sys
 import tempfile
@@ -14,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "dev"))
 from release_cli import prepare  # noqa: E402
 from release_pipeline import LOCKS, TARGETS, sha256, verify_parts  # noqa: E402
-from release_publish import ApiError, Publisher  # noqa: E402
+from release_publish import ApiError, Publisher, verify_public_updates  # noqa: E402
 
 
 class PrepareTest(unittest.TestCase):
@@ -122,7 +123,7 @@ class FakeGitHub:
         if "/releases?" in path:
             return [copy.deepcopy(self.release)] if self.release else []
         if path.endswith("/releases") and method == "POST":
-            self.release = {**data, "id": 42, "assets": [], "html_url": "https://github.com/devilcoolyue/cursor-dashboard/releases/tag/v0.0.9"}
+            self.release = {**data, "id": 42, "assets": [], "html_url": "https://github.com/devilcoolyue/cursor-panel/releases/tag/v0.0.9"}
             if self.interrupt_create:
                 raise ApiError(500)
             return copy.deepcopy(self.release)
@@ -160,6 +161,7 @@ class PublishTest(unittest.TestCase):
         self.assertEqual(len(self.api.release["assets"]), 1)
         self.assertEqual(sum(p.endswith("/releases") for _, p in self.api.mutations), 1)
         self.assertEqual(sum("/assets?" in p for _, p in self.api.mutations), 1)
+        self.assertTrue(all(p.startswith("/repos/devilcoolyue/cursor-panel/") for _, p in self.api.mutations))
         self.assertFalse(self.api.release["draft"])
         before = list(self.api.mutations)
         self.publisher.publish()
@@ -170,6 +172,30 @@ class PublishTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "different source"):
             self.publisher.publish()
         self.assertEqual(self.api.mutations, [])
+
+    def test_public_update_verification_checks_the_legacy_redirect_too(self):
+        names = ("latest.json", "server-update.json", "server-update.json.sig")
+        for name in names:
+            (self.root / name).write_bytes(name.encode())
+
+        def response(url, **kwargs):
+            return SimpleNamespace(content=url.rsplit("/", 1)[-1].encode(), raise_for_status=lambda: None)
+
+        with patch("release_publish.requests.get", side_effect=response) as get:
+            verify_public_updates(self.root, "0.0.9")
+        self.assertEqual({call.args[0] for call in get.call_args_list}, {
+            f"https://github.com/devilcoolyue/{repo}/releases/download/v0.0.9/{name}"
+            for repo in ("cursor-panel", "cursor-dashboard") for name in names})
+
+        def broken_redirect(url, **kwargs):
+            result = response(url)
+            if "/cursor-dashboard/" in url:
+                result.content = b"wrong-release"
+            return result
+
+        with patch("release_publish.requests.get", side_effect=broken_redirect):
+            with self.assertRaisesRegex(ValueError, "Public update metadata differs"):
+                verify_public_updates(self.root, "0.0.9")
 
     def test_corrupt_remote_asset_is_never_overwritten(self):
         self.publisher.ensure_tag()

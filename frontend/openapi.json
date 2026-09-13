@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Cursor Dashboard V2",
+    "title": "Cursor Panel V2",
     "version": "1"
   },
   "paths": {

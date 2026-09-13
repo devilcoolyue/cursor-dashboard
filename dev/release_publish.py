@@ -15,7 +15,7 @@ import requests
 from release import ROOT
 from release_pipeline import OUTPUT, check, verify_assets, write_json
 
-REPOSITORY = "devilcoolyue/cursor-dashboard"
+from cursor_dashboard.updates.releases import REPOSITORY, release_asset_url
 
 
 class ApiError(RuntimeError):
@@ -213,6 +213,24 @@ class Publisher:
         raise ValueError("Draft publication did not complete; rerun to resume by release ID")
 
 
+def verify_public_updates(directory, version):
+    # Old installations must also see the exact bytes through the repository redirect.
+    for legacy in (False, True):
+        for name in ("latest.json", "server-update.json", "server-update.json.sig"):
+            url = release_asset_url(version, name, legacy=legacy)
+            for attempt in range(3):
+                try:
+                    response = requests.get(url, timeout=(15, 30))
+                    response.raise_for_status()
+                    if response.content != (directory / name).read_bytes():
+                        raise ValueError(f"Public update metadata differs: {url}")
+                    break
+                except requests.RequestException:
+                    if attempt == 2:
+                        raise
+                    time.sleep(2 ** attempt)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--version", required=True)
@@ -227,7 +245,7 @@ def main():
         print(json.dumps({"version": args.version, "available": True}))
         return
     inventory = verify_assets(args.assets, args.version)
-    with zipfile.ZipFile(args.assets / f"cursor-dashboard-v{args.version}-verification.zip") as archive:
+    with zipfile.ZipFile(args.assets / f"cursor-panel-v{args.version}-verification.zip") as archive:
         proof = json.loads(archive.read("verification.json"))
         if proof["source_revision"] != args.revision or proof["version"] != args.version:
             raise ValueError("Artifact source differs from requested publication")
@@ -238,18 +256,7 @@ def main():
     notes += "\n\n验证记录：" + proof["run_url"] + "\n"
     url = Publisher(GitHub(), args.version, args.revision, args.assets, inventory, notes).publish()
     # Check the public update endpoints too; a resumed publication repeats this check.
-    for name in ("latest.json", "server-update.json", "server-update.json.sig"):
-        for attempt in range(3):
-            try:
-                response = requests.get(f"{url.replace('/tag/', '/download/')}/{name}", timeout=(15, 30))
-                response.raise_for_status()
-                if response.content != (args.assets / name).read_bytes():
-                    raise ValueError(f"Public update metadata differs: {name}")
-                break
-            except requests.RequestException:
-                if attempt == 2:
-                    raise
-                time.sleep(2 ** attempt)
+    verify_public_updates(args.assets, args.version)
     write_json(OUTPUT / "publication.json", {"version": args.version, "source_revision": args.revision, "url": url, "published": True})
     print(url)
 

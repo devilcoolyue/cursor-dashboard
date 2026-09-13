@@ -18,7 +18,7 @@
 
 [English](README.md) | **简体中文**
 
-[下载安装](https://github.com/devilcoolyue/cursor-dashboard/releases) · [快速开始](#快速开始) · [使用文档](#使用文档) · [反馈问题](https://github.com/devilcoolyue/cursor-dashboard/issues)
+[下载安装](https://github.com/devilcoolyue/cursor-panel/releases) · [快速开始](#快速开始) · [使用文档](#使用文档) · [反馈问题](https://github.com/devilcoolyue/cursor-panel/issues)
 
 </div>
 
@@ -40,7 +40,7 @@
 - **凭证加密保存。** 账号凭证加密落盘，桌面密钥保存在系统凭证库；使用加密归档迁移账号或恢复原密钥。
 - **界面由你决定。** 六种皮肤、独立明暗模式、自定义卡片内容、可折叠侧栏与响应式 Web 布局，内置新手指引帮助上手。
 
-本文介绍当前 V2 预览源码。最新可下载版本为 [v0.0.4](https://github.com/devilcoolyue/cursor-dashboard/releases/tag/v0.0.4)，具体发布内容见[版本归档](docs/archive/v0.0.4.md)；截图使用模拟预览数据。
+本文介绍当前 V2 预览源码。最新可下载版本为 [v0.0.4](https://github.com/devilcoolyue/cursor-panel/releases/tag/v0.0.4)，具体发布内容见[版本归档](docs/archive/v0.0.4.md)；截图使用模拟预览数据。
 
 ## 选择适合你的使用方式
 
@@ -57,13 +57,13 @@
 
 ### 独立客户端：个人使用
 
-从 **[v0.0.4 Releases](https://github.com/devilcoolyue/cursor-dashboard/releases/tag/v0.0.4)** 下载对应平台的安装包：
+从 **[v0.0.4 Releases](https://github.com/devilcoolyue/cursor-panel/releases/tag/v0.0.4)** 下载对应平台的安装包：
 
 | 平台 | 下载 |
 | --- | --- |
-| macOS · Apple Silicon | [arm64 版 DMG](https://github.com/devilcoolyue/cursor-dashboard/releases/download/v0.0.4/Cursor.Panel_0.0.4_aarch64.dmg) |
-| macOS · Intel | [x64 版 DMG](https://github.com/devilcoolyue/cursor-dashboard/releases/download/v0.0.4/Cursor.Panel_0.0.4_x64.dmg) |
-| Windows · x64 | [x64 版安装程序](https://github.com/devilcoolyue/cursor-dashboard/releases/download/v0.0.4/Cursor.Panel_0.0.4_x64-setup.exe) |
+| macOS · Apple Silicon | [arm64 版 DMG](https://github.com/devilcoolyue/cursor-panel/releases/download/v0.0.4/Cursor.Panel_0.0.4_aarch64.dmg) |
+| macOS · Intel | [x64 版 DMG](https://github.com/devilcoolyue/cursor-panel/releases/download/v0.0.4/Cursor.Panel_0.0.4_x64.dmg) |
+| Windows · x64 | [x64 版安装程序](https://github.com/devilcoolyue/cursor-panel/releases/download/v0.0.4/Cursor.Panel_0.0.4_x64-setup.exe) |
 
 1. 安装并打开 Cursor Panel，自动创建本地用户与个人空间，无需安装 Python、Node.js 或部署服务端。
 2. 点击「添加账号」，使用 Cursor 网页会话材料完成授权，支持的输入方式见[账号使用指南](docs/user-guide.md#accounts)。
@@ -75,7 +75,7 @@
 
 当前 macOS 应用尚未使用 Apple Developer ID 签名，也未完成 Apple 公证。下载后，Gatekeeper 可能提示 **「Cursor Panel 已损坏，无法打开」** 或 **「Apple 无法验证……」**，不一定是文件真的损坏。自动更新包的校验签名与 Apple 应用签名是两回事，不能消除这类提示。
 
-1. 从本项目的 [GitHub Releases](https://github.com/devilcoolyue/cursor-dashboard/releases) 下载对应芯片架构的 DMG，并核对同一版本 `SHA256SUMS` 中的 SHA-256。打开 DMG，先将 **Cursor Panel.app** 拖入**「应用程序」**文件夹，再执行下面的操作。
+1. 从本项目的 [GitHub Releases](https://github.com/devilcoolyue/cursor-panel/releases) 下载对应芯片架构的 DMG，并核对同一版本 `SHA256SUMS` 中的 SHA-256。打开 DMG，先将 **Cursor Panel.app** 拖入**「应用程序」**文件夹，再执行下面的操作。
 2. 如果提示无法验证开发者，先尝试打开一次应用，再前往**「系统设置 → 隐私与安全性 → 仍要打开」**，按系统提示确认。
 3. 如果仍提示**「已损坏」**，确认安装包来源可信且校验一致后，打开**「终端」**，执行：
 
@@ -95,15 +95,15 @@
 
    按提示输入 Mac 的登录密码；终端输入密码时不会显示任何字符，输完按回车即可。**No such file** 表示路径不正确，或尚未把应用复制到「应用程序」；**No such xattr** 表示对应文件已没有该隔离标记。
 
-如果 SHA-256 不一致，请重新下载安装包，不要通过移除隔离标记继续打开。如果校验一致但仍无法启动，请[反馈问题](https://github.com/devilcoolyue/cursor-dashboard/issues)，附上 macOS 版本、芯片架构和完整报错。
+如果 SHA-256 不一致，请重新下载安装包，不要通过移除隔离标记继续打开。如果校验一致但仍无法启动，请[反馈问题](https://github.com/devilcoolyue/cursor-panel/issues)，附上 macOS 版本、芯片架构和完整报错。
 
 ### Docker Compose：团队与自托管
 
 **准备条件：** Docker Engine、Docker Compose v2、指向服务器的域名，以及可达的 **80 / 443** 端口。HTTPS 由 Caddy 自动配置。
 
 ```bash
-git clone https://github.com/devilcoolyue/cursor-dashboard.git
-cd cursor-dashboard
+git clone https://github.com/devilcoolyue/cursor-panel.git
+cd cursor-panel
 cp deploy/v2/.env.example deploy/v2/.env
 ```
 
@@ -193,7 +193,7 @@ uv run --frozen cursor-remote --server https://panel.example.com --login owner@e
 <summary>项目结构</summary>
 
 ```text
-cursor-dashboard/
+cursor-panel/
 ├── cursor_dashboard/       # 共用 Python 核心、API、CLI 与本机集成
 │   ├── api/               # 已认证 HTTP API
 │   ├── application/       # 账号、空间、身份与权限规则
@@ -257,7 +257,7 @@ uv run --frozen python dev/release.py check
 
 ## 参与贡献
 
-欢迎提交问题、改进文档或发起聚焦具体问题的 PR。请先阅读[贡献指南](CONTRIBUTING.md)；[反馈问题](https://github.com/devilcoolyue/cursor-dashboard/issues)时附上版本、平台、复现步骤和脱敏错误。真实凭证、密钥、数据库与生成的切换命令不应出现在提交或截图中。
+欢迎提交问题、改进文档或发起聚焦具体问题的 PR。请先阅读[贡献指南](CONTRIBUTING.md)；[反馈问题](https://github.com/devilcoolyue/cursor-panel/issues)时附上版本、平台、复现步骤和脱敏错误。真实凭证、密钥、数据库与生成的切换命令不应出现在提交或截图中。
 
 ## 许可证
 
@@ -275,10 +275,10 @@ uv run --frozen python dev/release.py check
 
 ## Star 趋势
 
-<a href="https://star-history.com/#devilcoolyue/cursor-dashboard&Date">
+<a href="https://star-history.com/#devilcoolyue/cursor-panel&Date">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=devilcoolyue/cursor-dashboard&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=devilcoolyue/cursor-dashboard&type=Date" />
-    <img alt="Cursor Panel Star 趋势图" src="https://api.star-history.com/svg?repos=devilcoolyue/cursor-dashboard&type=Date" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=devilcoolyue/cursor-panel&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=devilcoolyue/cursor-panel&type=Date" />
+    <img alt="Cursor Panel Star 趋势图" src="https://api.star-history.com/svg?repos=devilcoolyue/cursor-panel&type=Date" />
   </picture>
 </a>

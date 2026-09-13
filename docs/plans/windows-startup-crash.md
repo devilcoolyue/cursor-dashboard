@@ -25,7 +25,7 @@
 
 ## Windows 测试包与验证结果
 
-最终测试包来自提交 `5b782ebea1d4ab8f252cad6f6125c1d7938659e9`，包含启动修复提交 `5130825` 和重试界面修复提交 `5b782eb`。Windows 工作流 [34741403581](https://github.com/devilcoolyue/cursor-dashboard/actions/runs/34741403581) 全部成功。
+最终测试包来自提交 `5b782ebea1d4ab8f252cad6f6125c1d7938659e9`，包含启动修复提交 `5130825` 和重试界面修复提交 `5b782eb`。Windows 工作流 [34741403581](https://github.com/devilcoolyue/cursor-panel/actions/runs/34741403581) 全部成功。
 
 - Python 3.12.10 / PyInstaller 6.22.2，Windows x64 NSIS 完整安装包。
 - 源码后台 8 项、冻结后台 4 项、Rust 5 项通过；完整回归 347 项，339 通过、8 跳过。

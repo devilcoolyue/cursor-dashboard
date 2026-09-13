@@ -2,7 +2,7 @@
 
 日期：2026-09-10。状态：P1 已完成。分支：`feat/v2-p1`。
 
-最终实现与测试提交 `8eb89bde30bbff28ff438639943c55167b3c7eb4` 通过 [三平台 CI](https://github.com/devilcoolyue/cursor-dashboard/actions/runs/34425491053)。后续收尾只更新文档。
+最终实现与测试提交 `8eb89bde30bbff28ff438639943c55167b3c7eb4` 通过 [三平台 CI](https://github.com/devilcoolyue/cursor-panel/actions/runs/34425491053)。后续收尾只更新文档。
 
 ## 交付范围
 
@@ -45,7 +45,7 @@ wheel 在独立临时虚拟环境安装后，`keygen → init → preflight → 
 
 ## 跨平台结果
 
-`.github/workflows/p1-core.yml` 最终运行 [34425491053](https://github.com/devilcoolyue/cursor-dashboard/actions/runs/34425491053) 全部成功：
+`.github/workflows/p1-core.yml` 最终运行 [34425491053](https://github.com/devilcoolyue/cursor-panel/actions/runs/34425491053) 全部成功：
 
 | 环境 | 新核心 | wheel CLI 流程 | 完整回归 |
 | --- | --- | --- | --- |

@@ -35,6 +35,8 @@ uv run --frozen cursor-panel --host 0.0.0.0 --port 8787 --no-open
 
 [cursor-dashboard.service](../deploy/cursor-dashboard.service) 是待按环境调整的样例，当前仍带 `/data/app/cursor-dashboard` 路径、`cursorpanel` 用户和固定内网监听地址。安装前核对以下项目：
 
+这是 legacy 部署兼容名称；仓库统一为 Cursor Panel 后，已有服务名和数据路径继续沿用。新部署应按实际安装位置调整样例，避免仅因仓库更名切换到空数据库。
+
 1. 创建运行用户、部署目录和可写的 `data/`，通过 `uv sync --locked` 生成 `.venv/bin/cursor-panel`。
 2. 调整 `User`、`Group`、`WorkingDirectory`、`ExecStart`、数据库路径及 `ReadWritePaths`。
 3. 设置 `PANEL_TOKEN`；按需设置 `ADMIN_PASSWORD`。不要将实际密码提交回样例。

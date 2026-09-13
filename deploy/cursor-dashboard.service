@@ -1,5 +1,5 @@
 [Unit]
-Description=Cursor quota dashboard
+Description=Cursor Panel
 Wants=network-online.target
 After=network-online.target
 

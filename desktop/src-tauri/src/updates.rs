@@ -9,8 +9,10 @@ use std::time::Duration;
 use tauri::{ipc::Channel, Manager};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
-const RELEASES: &str = "https://github.com/devilcoolyue/cursor-dashboard/releases";
-const LATEST: &str = "https://api.github.com/repos/devilcoolyue/cursor-dashboard/releases/latest";
+const RELEASES: &str = "https://github.com/devilcoolyue/cursor-panel/releases";
+// Published manifests retain this path for clients installed before the rename.
+const LEGACY_RELEASES: &str = "https://github.com/devilcoolyue/cursor-dashboard/releases";
+const LATEST: &str = "https://api.github.com/repos/devilcoolyue/cursor-panel/releases/latest";
 const PUBLIC_KEY: &str = include_str!("../../../cursor_dashboard/updates/public-key.txt");
 
 #[tauri::command]
@@ -52,12 +54,14 @@ pub struct Progress {
 }
 
 fn valid_asset(url: &str, version: &str) -> bool {
-    let prefix = format!("{RELEASES}/download/v{version}/");
-    url.strip_prefix(&prefix).is_some_and(|name| {
-        !name.is_empty()
-            && name
-                .bytes()
-                .all(|c| c.is_ascii_alphanumeric() || b"._+-".contains(&c))
+    [RELEASES, LEGACY_RELEASES].iter().any(|origin| {
+        let prefix = format!("{origin}/download/v{version}/");
+        url.strip_prefix(&prefix).is_some_and(|name| {
+            !name.is_empty()
+                && name
+                    .bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || b"._+-".contains(&c))
+        })
     })
 }
 
@@ -205,18 +209,23 @@ mod tests {
     use super::*;
     #[test]
     fn updates_only_use_assets_from_the_selected_release() {
-        assert!(valid_asset(
-            &format!("{RELEASES}/download/v1.2.3/Cursor.Panel_aarch64.app.tar.gz"),
-            "1.2.3"
-        ));
-        for url in [
-            "https://evil.test/update",
-            "file:///tmp/update",
-            &format!("{RELEASES}/download/v1.2.2/update"),
-            &format!("{RELEASES}/download/v1.2.3/../update"),
-            &format!("{RELEASES}/download/v1.2.3/update?token=x"),
-        ] {
-            assert!(!valid_asset(url, "1.2.3"));
+        for origin in [RELEASES, LEGACY_RELEASES] {
+            assert!(valid_asset(
+                &format!("{origin}/download/v1.2.3/Cursor.Panel_aarch64.app.tar.gz"),
+                "1.2.3"
+            ));
+            for url in [
+                "https://evil.test/update",
+                "file:///tmp/update",
+                "https://github.com/other-owner/cursor-panel/releases/download/v1.2.3/update",
+                &format!("{origin}/download/v1.2.2/update"),
+                &format!("{origin}/download/v1.2.3/../update"),
+                &format!("{origin}/download/v1.2.3/update?token=x"),
+                &format!("{origin}/download/v1.2.3/"),
+                &format!("{origin}/download/v1.2.3/update#fragment"),
+            ] {
+                assert!(!valid_asset(url, "1.2.3"));
+            }
         }
     }
 }

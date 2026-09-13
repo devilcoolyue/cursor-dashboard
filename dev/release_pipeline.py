@@ -154,8 +154,8 @@ def verify_parts(parts, version, revision):
 def expected_assets(version):
     names = {"LICENSE", "SHA256SUMS", "latest.json", "server-update.json", "server-update.json.sig",
              "cursor-panel-linux-amd64.tar", f"cursor_dashboard-{version}-py3-none-any.whl",
-             f"cursor-dashboard-v{version}-source.zip", f"cursor-dashboard-v{version}-source.tar.gz",
-             f"cursor-dashboard-v{version}-verification.zip", f"Cursor.Panel_{version}_aarch64.dmg",
+             f"cursor-panel-v{version}-source.zip", f"cursor-panel-v{version}-source.tar.gz",
+             f"cursor-panel-v{version}-verification.zip", f"Cursor.Panel_{version}_aarch64.dmg",
              f"Cursor.Panel_{version}_x64.dmg", f"Cursor.Panel_{version}_x64-setup.exe"}
     for target in TARGETS[:-1]:
         name = f"Cursor.Panel_{version}_{target}" + ("-setup.exe" if target.startswith("windows") else ".app.tar.gz")
@@ -224,11 +224,11 @@ def assemble(version, revision):
             raise ValueError("Image source, version or architecture differs from release")
     shutil.copy2(ROOT / "LICENSE", destination / "LICENSE")
     for suffix in ("zip", "tar.gz"):
-        run("git", "archive", f"--format={suffix}", f"--prefix=cursor-dashboard-v{version}/",
-            f"--output={destination / f'cursor-dashboard-v{version}-source.{suffix}'}", revision)
+        run("git", "archive", f"--format={suffix}", f"--prefix=cursor-panel-v{version}/",
+            f"--output={destination / f'cursor-panel-v{version}-source.{suffix}'}", revision)
     proof = {"version": version, "source_revision": revision, "parts": records,
              "run_url": f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"}
-    with zipfile.ZipFile(destination / f"cursor-dashboard-v{version}-verification.zip", "w", zipfile.ZIP_DEFLATED) as archive:
+    with zipfile.ZipFile(destination / f"cursor-panel-v{version}-verification.zip", "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("verification.json", json.dumps(proof, ensure_ascii=False, indent=2))
     (destination / "SHA256SUMS").write_text("".join(f"{sha256(p)}  {p.name}\n" for p in sorted(destination.iterdir())), encoding="utf-8")
     manifest = verify_assets(destination, version)

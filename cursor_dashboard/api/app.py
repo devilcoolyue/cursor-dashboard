@@ -155,7 +155,7 @@ def create_app(core, *, public_origin, web_dir=None, manual_switch_preview=False
             with suppress(asyncio.CancelledError):
                 await task
 
-    app = FastAPI(title="Cursor Dashboard V2", version="1", docs_url=None, redoc_url=None, openapi_url=None,
+    app = FastAPI(title="Cursor Panel V2", version="1", docs_url=None, redoc_url=None, openapi_url=None,
                   lifespan=lifespan)
     app.state.core = core
     from cursor_dashboard import __version__

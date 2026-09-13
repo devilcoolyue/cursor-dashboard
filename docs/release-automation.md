@@ -2,6 +2,8 @@
 
 新入口是 `.github/workflows/release.yml`，替代正式发版时同时运行 P4、P5、P6 和更新包四套流水线。历史流水线保留手动运行和 PR 验证入口；推送 `main` 不再自动启动 P5/P6 的重复发布构建。
 
+发布目标为 `devilcoolyue/cursor-panel`。更新清单中的附件 URL 刻意保留旧仓库路径以兼容已安装的旧客户端，不能随展示链接一起替换；规则见[仓库更名与旧版兼容](repository-rename.md)。源码与验证附件使用 `cursor-panel-v版本号-*`，Python wheel 保留原包名。
+
 ## 发布一个版本
 
 先把本次更新说明写到本地文件，再执行：

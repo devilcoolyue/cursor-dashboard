@@ -41,17 +41,40 @@ class ReleaseTest(unittest.TestCase):
         config = Path(__file__).resolve().parents[1] / "desktop/src-tauri/tauri.conf.json"
         self.assertEqual(json.loads(config.read_text())["plugins"]["updater"]["pubkey"], releases.PUBLIC_KEY)
 
-    def test_signed_manifest_rejects_an_untrusted_download_origin(self):
-        manifest = {"format": 1, "api_version": 1, "version": "0.0.2", "target": "linux-amd64",
+    def test_signed_manifest_accepts_both_repository_names_but_rejects_other_assets(self):
+        manifest = {"format": 1, "api_version": 1, "version": "0.0.5", "target": "linux-amd64",
                     "image_id": "sha256:" + "a" * 64, "artifact": {"name": "image.tar", "size": 10,
-                    "sha256": "b" * 64, "url": "https://untrusted.test/image.tar"}}
-        raw = json.dumps(manifest).encode()
-        public, signature = signing_fixture(raw)
+                    "sha256": "b" * 64}}
         verify = releases.verify_signature
-        with patch.object(releases, "download_metadata", side_effect=[raw, signature.encode()]), \
-             patch.object(releases, "verify_signature", side_effect=lambda data, sig: verify(data, sig, public)):
-            with self.assertRaises(releases.UpdateError):
-                releases.server_manifest("0.0.2")
+        old = "https://github.com/devilcoolyue/cursor-dashboard/releases/download/v0.0.5/image.tar"
+        current = "https://github.com/devilcoolyue/cursor-panel/releases/download/v0.0.5/image.tar"
+        for url in (old, current, "https://untrusted.test/image.tar",
+                    current.replace("devilcoolyue", "other-owner"),
+                    *(value for origin in (old, current) for value in (
+                        origin.replace("v0.0.5", "v0.0.4"), origin.replace("image.tar", "other.tar"),
+                        origin + "?token=x", origin + "#fragment", origin.replace("image.tar", "../image.tar")))):
+            with self.subTest(url=url):
+                manifest["artifact"]["url"] = url
+                raw = json.dumps(manifest).encode()
+                public, signature = signing_fixture(raw)
+                with patch.object(releases, "download_metadata", side_effect=[raw, signature.encode()]) as download, \
+                     patch.object(releases, "verify_signature", side_effect=lambda data, sig: verify(data, sig, public)):
+                    if url in (old, current):
+                        self.assertEqual(releases.server_manifest("0.0.5"), manifest)
+                    else:
+                        with self.assertRaises(releases.UpdateError):
+                            releases.server_manifest("0.0.5")
+                    self.assertEqual(download.call_args_list[0].args[0],
+                        "https://github.com/devilcoolyue/cursor-panel/releases/download/v0.0.5/server-update.json")
+
+    def test_generated_update_urls_remain_compatible_when_old_clients_skip_versions(self):
+        for version in ("0.0.5", "0.0.6", "1.0.0"):
+            for filename in (f"Cursor.Panel_{version}_darwin-aarch64.app.tar.gz",
+                             f"Cursor.Panel_{version}_darwin-x86_64.app.tar.gz",
+                             f"Cursor.Panel_{version}_windows-x86_64-setup.exe", "cursor-panel-linux-amd64.tar"):
+                with self.subTest(version=version, filename=filename):
+                    self.assertEqual(releases.release_asset_url(version, filename),
+                        f"https://github.com/devilcoolyue/cursor-dashboard/releases/download/v{version}/{filename}")
 
     def test_signature_rejects_tampering_and_a_different_signer(self):
         data = b'{"version":"1.2.3"}'

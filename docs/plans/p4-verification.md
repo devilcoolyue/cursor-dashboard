@@ -2,7 +2,7 @@
 
 实施日期：2026-09-10。分支：`feat/v2-p4`。状态：P4 开发与三平台自动验证已完成；纯净设备、最低系统版本与真实 Cursor 会话的边界见下文。
 
-最终通过的 CI：[34447243739](https://github.com/devilcoolyue/cursor-dashboard/actions/runs/34447243739)，提交 `bd0664cb359374bf67d1102816d58a0ce6d3aa4d`。macOS arm64、macOS x64、Windows x64 三个 job 全部成功。后续收尾仅更新说明文档。
+最终通过的 CI：[34447243739](https://github.com/devilcoolyue/cursor-panel/actions/runs/34447243739)，提交 `bd0664cb359374bf67d1102816d58a0ce6d3aa4d`。macOS arm64、macOS x64、Windows x64 三个 job 全部成功。后续收尾仅更新说明文档。
 
 ## 交付能力
 

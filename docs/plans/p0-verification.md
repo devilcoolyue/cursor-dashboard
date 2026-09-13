@@ -50,7 +50,7 @@ legacy/main 基线提交为 `52d0a9255b798dce21d97efbc3739bb46d100b96`，包版�
 
 ### GitHub Actions 平台验证
 
-最终通过的运行：[34421962497](https://github.com/devilcoolyue/cursor-dashboard/actions/runs/34421962497)，实现提交 `433fd0fbd53a53a9dccdd6676dcd4089d31fdd2d`。两个 job 的依赖安装、基线、源码契约、打包、冻结契约和安装后探测全部成功；后续收尾仅更新说明文档。
+最终通过的运行：[34421962497](https://github.com/devilcoolyue/cursor-panel/actions/runs/34421962497)，实现提交 `433fd0fbd53a53a9dccdd6676dcd4089d31fdd2d`。两个 job 的依赖安装、基线、源码契约、打包、冻结契约和安装后探测全部成功；后续收尾仅更新说明文档。
 
 | 检查 | macOS runner / arm64 | Windows runner / x64 |
 | --- | --- | --- |

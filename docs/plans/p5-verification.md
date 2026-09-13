@@ -42,7 +42,7 @@ Chromium 使用生产 Vue、实际服务端 API、私有后台 HTTP、浏览器�
 
 启动与体积记录在忽略目录 `desktop/output/p5-install.json`。启动样本是相同临时安装目录的顺序启动，受系统缓存与当时负载影响；不代表严格重启冷启动或性能承诺。该产物探测验证正式应用的打包与本地运行，不替代新增远程功能在每个原生 WebView/浏览器上的平台验收。
 
-提交 `b24e42a0cd57675fc5e43520794ef0ea796e5625` 的独立 [三平台页面 CI 34469364723](https://github.com/devilcoolyue/cursor-dashboard/actions/runs/34469364723) 全部通过；覆盖 macOS arm64、macOS x64、Windows x64 的本地桌面、Web 与远程连接流程。同提交 [服务端 CI 34469364655](https://github.com/devilcoolyue/cursor-dashboard/actions/runs/34469364655) 的 Linux、Windows、macOS 核心、Web、容器持久化/恢复和 wheel/远程 CLI 全部通过。此前服务端 macOS job 已完成 **284 项全部通过、无跳过，72.213 秒**，补齐了本机因缺少 PowerShell 跳过的用例。同提交的完整 [桌面 CI 34469364709](https://github.com/devilcoolyue/cursor-dashboard/actions/runs/34469364709) 三个平台全部通过，覆盖 22 项桌面核心、15 项连接、4 项升级、6 项后台/系统凭证库、2 项冻结后台、原生 GUI 适配、Rust 路由、安装包运行及三套页面流程。最终 macOS arm64 job 完整回归 **284 项全部通过、无跳过，84.944 秒**。
+提交 `b24e42a0cd57675fc5e43520794ef0ea796e5625` 的独立 [三平台页面 CI 34469364723](https://github.com/devilcoolyue/cursor-panel/actions/runs/34469364723) 全部通过；覆盖 macOS arm64、macOS x64、Windows x64 的本地桌面、Web 与远程连接流程。同提交 [服务端 CI 34469364655](https://github.com/devilcoolyue/cursor-panel/actions/runs/34469364655) 的 Linux、Windows、macOS 核心、Web、容器持久化/恢复和 wheel/远程 CLI 全部通过。此前服务端 macOS job 已完成 **284 项全部通过、无跳过，72.213 秒**，补齐了本机因缺少 PowerShell 跳过的用例。同提交的完整 [桌面 CI 34469364709](https://github.com/devilcoolyue/cursor-panel/actions/runs/34469364709) 三个平台全部通过，覆盖 22 项桌面核心、15 项连接、4 项升级、6 项后台/系统凭证库、2 项冻结后台、原生 GUI 适配、Rust 路由、安装包运行及三套页面流程。最终 macOS arm64 job 完整回归 **284 项全部通过、无跳过，84.944 秒**。
 
 最终 CI 安装样本（同一临时目录的首次/随后启动）：
 

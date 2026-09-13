@@ -2,7 +2,7 @@
 
 日期：2026-09-10。分支：`feat/v2-p3`，基于 P2 `9941ad1`。
 
-状态：P3 已完成。实现提交 `a7c477e769bd8d8199ec69e40af9fd8baaa3c878` 通过 [三平台 CI](https://github.com/devilcoolyue/cursor-dashboard/actions/runs/34438061339)。
+状态：P3 已完成。实现提交 `a7c477e769bd8d8199ec69e40af9fd8baaa3c878` 通过 [三平台 CI](https://github.com/devilcoolyue/cursor-panel/actions/runs/34438061339)。
 
 ## 交付内容
 
