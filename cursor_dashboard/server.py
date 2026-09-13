@@ -72,22 +72,19 @@ _next_slot = 0.0
 async def _pace() -> None:
     """给出站任务分配相隔 REQUEST_MIN_INTERVAL 的时槽，内部重试不重新排队。
 
-    信号量限的是并发，不是速率——接口够快时 3 个并发照样能打出几十 QPS，而边缘
-    防护看的就是速率。所以真正的闸门在这里。锁内只算时槽、锁外再睡，避免把等待
-    时间叠加到锁的持有上。
+    信号量限的是并发，不是速率。锁内等待实际放行时间，防止 Windows 粗粒度时钟
+    提前唤醒或事件循环延迟后把多个过期时槽同时放行；网络请求不占用这把锁。
     """
     global _next_slot
     if REQUEST_MIN_INTERVAL <= 0:
         return
     async with _pacer_lock():
-        now = time.monotonic()
-        slot = max(now, _next_slot)
-        _next_slot = slot + REQUEST_MIN_INTERVAL + random.uniform(
+        resolution = time.get_clock_info("monotonic").resolution
+        while (delay := _next_slot - time.monotonic()) > 0:
+            await asyncio.sleep(max(delay, resolution))
+        _next_slot = time.monotonic() + REQUEST_MIN_INTERVAL + random.uniform(
             0, REQUEST_MIN_INTERVAL * 0.2
         )
-    delay = slot - time.monotonic()
-    if delay > 0:
-        await asyncio.sleep(delay)
 
 
 def _pacer_lock() -> asyncio.Lock:

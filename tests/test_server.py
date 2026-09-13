@@ -157,6 +157,31 @@ class RequestConcurrencyTest(unittest.IsolatedAsyncioTestCase):
 class PacingTest(unittest.IsolatedAsyncioTestCase):
     """限并发不够，还得限速率——边缘防护看的是单位时间的请求数。"""
 
+    async def test_early_timer_wakeup_does_not_release_before_deadline(self) -> None:
+        server._pace_lock = None
+        server._next_slot = 10.05
+        now = 10.0
+        waits = []
+
+        async def early_sleep(delay):
+            nonlocal now
+            waits.append(delay)
+            # Model a coarse timer waking early once, then at its deadline.
+            now = 10.03 if len(waits) == 1 else 10.05
+
+        try:
+            with patch.object(server, "REQUEST_MIN_INTERVAL", 0.05), \
+                 patch.object(server.time, "monotonic", side_effect=lambda: now), \
+                 patch.object(server.asyncio, "sleep", side_effect=early_sleep), \
+                 patch.object(server.random, "uniform", return_value=0):
+                await server._pace()
+                self.assertEqual(len(waits), 2)
+                self.assertGreaterEqual(now, 10.05)
+                self.assertAlmostEqual(server._next_slot, 10.10)
+        finally:
+            server._pace_lock = None
+            server._next_slot = 0.0
+
     async def test_requests_are_spaced_out_in_time(self) -> None:
         server._pace_lock = None
         server._next_slot = 0.0
