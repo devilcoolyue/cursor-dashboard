@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -59,6 +60,26 @@ class PrepareTest(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             prepare("99.0.0", self.notes, self.root)
         self.assertEqual((self.root / "pyproject.toml").read_bytes(), before)
+
+
+class CheckoutTest(unittest.TestCase):
+    def test_windows_checkout_preserves_release_lock_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in (".gitattributes", *LOCKS):
+                destination = root / name
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(ROOT / name, destination)
+            def git(*args):
+                subprocess.run(["git", "-c", "core.autocrlf=true", "-c", "core.eol=crlf", *args],
+                               cwd=root, check=True, capture_output=True)
+            git("init", "--quiet")
+            git("add", "--", ".gitattributes", *LOCKS)
+            checkout = root / "checkout"
+            git("checkout-index", "--all", f"--prefix={checkout.as_posix()}/")
+            for name in LOCKS:
+                with self.subTest(lock=name):
+                    self.assertEqual(sha256(checkout / name), sha256(ROOT / name))
 
 
 class PartsTest(unittest.TestCase):
