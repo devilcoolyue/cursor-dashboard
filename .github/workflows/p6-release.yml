@@ -3,7 +3,8 @@ name: P6 preview delivery and recovery
 on:
   workflow_dispatch:
   push:
-    branches: [main, feat/v2-p6]
+    # Formal releases use release.yml; ordinary main pushes no longer build every package.
+    branches: [feat/v2-p6]
   pull_request:
     paths: ['LICENSE', 'dev/release.py', 'tests/test_release*.py', 'Dockerfile', '.dockerignore', 'deploy/v2/**', 'pyproject.toml', 'uv.lock', 'frontend/package*.json', 'desktop/**', '.github/workflows/p6-release.yml']
 

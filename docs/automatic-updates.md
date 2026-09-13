@@ -44,6 +44,8 @@ docker compose --env-file deploy/v2/.env \
 
 ## 发布可自动安装的版本
 
+常规发版使用[固定发布流程](release-automation.md)：`dev/release_cli.py start --publish` 只启动 `release.yml` 一套流水线，同一份构建产物完成安装验证和更新签名，上传中断可恢复。`prepare` 更新版本与文档，`status` 返回简短进度。不要再把 P4/P5/P6 和旧更新包工作流一起启动。
+
 `.github/workflows/update-packages.yml` 从指定版本 tag 构建签名更新产物，仅上传 CI artifact。维护者完成校验后，将 `signed-update-release` 的所有文件添加到相同版本 GitHub Release，最后发布该 Release。不要覆盖已经发布的版本或复用旧版本号。
 
 更新验证公钥位于 `cursor_dashboard/updates/public-key.txt`，与 `desktop/src-tauri/tauri.conf.json` 的 updater 公钥一致。私钥必须保存在仓库外；CI 使用 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets。首次配置所生成的本机私钥位于 `~/.local/share/cursor-panel-release/update.key`，权限为 `0600`；请按维护者密钥管理方式备份，禁止提交到源码。没有匹配私钥时，工作流拒绝生成更新包。

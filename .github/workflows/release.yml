@@ -1,0 +1,208 @@
+name: Release
+run-name: Release v${{ inputs.version }} @ ${{ github.sha }}
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Package version already committed (X.Y.Z)
+        type: string
+        required: true
+      expected_sha:
+        description: Full source commit to release
+        type: string
+        required: true
+      publish:
+        description: Publish after all checks pass (false produces verified artifacts only)
+        type: boolean
+        default: false
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+permissions:
+  contents: read
+env:
+  PYTHONUTF8: '1'
+  RELEASE_VERSION: ${{ inputs.version }}
+  RELEASE_REVISION: ${{ inputs.expected_sha }}
+defaults:
+  run:
+    shell: bash
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.11.3'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: uv sync --locked --python 3.12
+      - name: Reject published versions and source conflicts before building
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uv run --frozen python dev/release_publish.py --version "$RELEASE_VERSION" --revision "$RELEASE_REVISION" --check-available
+      - name: Source, version, notes and complete Linux regression
+        run: |
+          uv run --frozen python dev/release_pipeline.py check --version "$RELEASE_VERSION" --revision "$RELEASE_REVISION"
+          uv run --frozen python -m unittest discover -s tests -v
+      - name: Frontend types, help and API contract
+        run: |
+          npm --prefix frontend ci --no-audit --no-fund
+          npm --prefix frontend run docs:check
+          uv run --frozen python dev/export-openapi.py
+          npm --prefix frontend run api:generate
+          git diff --exit-code -- frontend/openapi.json frontend/src/api.generated.ts
+          npm --prefix frontend run build
+
+  desktop:
+    needs: preflight
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: darwin-aarch64
+          - os: macos-15-intel
+            target: darwin-x86_64
+          - os: windows-latest
+            target: windows-x86_64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.11.3'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+          cache-on-failure: 'true'
+      - name: Locked dependencies
+        run: |
+          uv sync --locked --python 3.12
+          uv sync --project desktop/sidecar --frozen
+          npm --prefix frontend ci --no-audit --no-fund
+          npm --prefix desktop ci --no-audit --no-fund
+      - name: Complete platform regression before packaging
+        timeout-minutes: 10
+        run: |
+          uv run --frozen python -m unittest discover -s tests -v
+          npm --prefix desktop test
+          uv run --project desktop/sidecar --frozen python desktop/scripts/verify-native.py
+      - name: Production frontend and browser flows
+        timeout-minutes: 10
+        run: |
+          npm --prefix frontend run build
+          npm --prefix frontend exec -- playwright install chromium webkit
+          npm --prefix frontend run test:desktop
+          npm --prefix frontend run test:e2e
+          npm --prefix frontend run test:connected
+          npm --prefix frontend run test:startup-cards
+          npm --prefix frontend run test:updates
+      - name: Build once, verify frozen runtime and installation, sign tested package
+        env:
+          DELIVERY_TARGET: ${{ matrix.target }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: uv run --frozen python dev/release_pipeline.py desktop --target "$DELIVERY_TARGET" --version "$RELEASE_VERSION" --revision "$RELEASE_REVISION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-part-${{ matrix.target }}
+          path: output/release/parts/${{ matrix.target }}/
+          if-no-files-found: error
+          overwrite: true
+
+  server:
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.11.3'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: |
+          uv sync --locked --python 3.12
+          npm --prefix frontend ci --no-audit --no-fund
+          npm --prefix desktop ci --no-audit --no-fund
+      - name: Build wheel and server image once, verify recovery and sign manifest
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: uv run --frozen python dev/release_pipeline.py server --version "$RELEASE_VERSION" --revision "$RELEASE_REVISION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-part-server
+          path: output/release/parts/server/
+          if-no-files-found: error
+          overwrite: true
+
+  assemble:
+    needs: [desktop, server]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.11.3'
+      - run: uv sync --locked --python 3.12
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-part-*
+          path: output/release/downloads
+      - name: Arrange verified parts
+        run: |
+          mkdir -p output/release/parts
+          for target in darwin-aarch64 darwin-x86_64 windows-x86_64 server; do
+            mv "output/release/downloads/release-part-$target" "output/release/parts/$target"
+          done
+      - name: Assemble and verify all release assets
+        run: uv run --frozen python dev/release_pipeline.py assemble --version "$RELEASE_VERSION" --revision "$RELEASE_REVISION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-v${{ inputs.version }}
+          path: output/release/assets/
+          if-no-files-found: error
+          overwrite: true
+
+  publish:
+    if: inputs.publish
+    needs: assemble
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.11.3'
+      - run: uv sync --locked --python 3.12
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-v${{ inputs.version }}
+          path: output/release/assets
+      - name: Create immutable tag, upload resumably, publish and verify latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uv run --frozen python dev/release_publish.py --version "$RELEASE_VERSION" --revision "$RELEASE_REVISION" --publish
+      - name: Release link
+        run: |
+          python - <<'PY'
+          import json, os, pathlib
+          result = json.loads(pathlib.Path('output/release/publication.json').read_text())
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as stream:
+              stream.write('Published: ' + result['url'] + '\n')
+          PY
