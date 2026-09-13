@@ -21,7 +21,8 @@ const tag = computed({ get: () => sidebarAccounts.tag, set: value => { sidebarAc
 const rowBusy = ref(''), selected = ref<Account>(), modal = ref(''), removeBusy = ref(false), modalError = ref('')
 const refreshErrors = ref<Record<string, string>>({})
 let listController: AbortController | undefined
-let listLoading = false, pollTimer: ReturnType<typeof setTimeout> | undefined
+const listLoading = ref(false)
+let pollTimer: ReturnType<typeof setTimeout> | undefined
 const lifetime = new AbortController()
 const detailGroup = ref('overall')
 const searchInput = ref<HTMLInputElement>(), order = ref('default'), now = ref(Date.now())
@@ -53,11 +54,11 @@ let sequence = 0
 onBeforeUnmount(() => { listController?.abort(); lifetime.abort(); page.value = undefined; selected.value = undefined })
 async function load({ silent = false } = {}) {
   if (!activeSpace.value || lifetime.signal.aborted) return
-  if (silent && (listLoading || document.hidden)) return
+  if (silent && (listLoading.value || document.hidden)) return
   clearTimeout(pollTimer)
   listController?.abort(); listController = new AbortController()
   const current = ++sequence, signal = listController.signal
-  listLoading = true
+  listLoading.value = true
   if (!silent) { busy.value = true; error.value = '' }
   const params = new URLSearchParams({ q: query.value, offset: '0', limit: '200' })
   if (tag.value) params.set('tag', tag.value)
@@ -85,7 +86,7 @@ async function load({ silent = false } = {}) {
     if (isDesktop) { await nextTick(); void reportReady(document.querySelectorAll('[data-account]').length).catch(() => {}) }
   }
   catch (reason) { if (sequence === current && !isAbort(reason)) { if (!silent) error.value = message(reason); if (reason instanceof ApiError && [401, 403, 404, 426].includes(reason.status)) { page.value = undefined; clearSidebarAccounts() } } }
-  finally { if (sequence === current) { busy.value = false; listLoading = false; schedulePoll() } }
+  finally { if (sequence === current) { busy.value = false; listLoading.value = false; schedulePoll() } }
 }
 watch([query, tag, () => activeSpace.value?.id], ([, , spaceId], previous) => {
   page.value = undefined
@@ -139,7 +140,7 @@ async function remove() {
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <p v-if="busy && !page" class="empty-state" role="status">正在载入账号…</p>
     <div v-else-if="page && !page.total" class="empty-state"><span class="empty-symbol" aria-hidden="true">＋</span><h2>{{ query || tag ? '没有匹配的账号' : '这里还没有可见账号' }}</h2><p>{{ query || tag ? '试试其他关键词或标签。' : activeSpace.capabilities.manage_accounts ? '添加第一个 Cursor 账号，开始查看额度。' : '请联系空间管理员，为你分配账号权限。' }}</p></div>
-    <div v-if="page?.items.length" class="account-grid" :aria-busy="busy">
+    <div v-if="page?.items.length" class="account-grid" :aria-busy="listLoading">
       <AccountCard v-for="account in sortedAccounts" :key="account.id" :account="account" :space-name="activeSpace.name" :now="now" :refreshing="rowBusy === account.id" :refresh-error="refreshErrors[account.id]" @detail="openDetail(account, $event)">
         <template #quick-actions><AccountActions :account="account" :busy="!!rowBusy" :refreshing="rowBusy === account.id" :can-switch="!!(account.capabilities.switch && (bootstrap?.capabilities.manual_switch || bootstrap?.capabilities.native_switch))" :can-grant="account.capabilities.grant && activeSpace.capabilities.manage_members" @open="$event === 'detail' ? openDetail(account) : open($event, account)" @refresh="refresh(account)" /></template>
       </AccountCard>

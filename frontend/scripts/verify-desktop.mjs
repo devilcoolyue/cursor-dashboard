@@ -66,6 +66,7 @@ try {
   let publishedSnapshot
   let manualRefreshRequests = 0, listReads = 0
   let delayEditedList = false
+  let listReadDelay = 0
   // Synthetic Windows discovery responses exercise the UI without reading a real editor.
   let discoveryFixture = null
   const pathRequests = []
@@ -105,6 +106,7 @@ try {
     if (args.operation === 'list') {
       listReads++
       if (delayEditedList) { delayEditedList = false; await delay(250) }
+      if (listReadDelay) await delay(listReadDelay)
     }
     const base = `/api/v1/workspaces/${args.workspace}`
     const account = `${base}/accounts/${args.account}`
@@ -181,7 +183,14 @@ try {
   await visible(autoCard.getByText('剩 41%', { exact: true }))
   assert.notEqual(await autoCard.locator('.card-meta dd').first().getAttribute('title'), oldStatTime)
   assert.equal(manualRefreshRequests, refreshCount, 'Snapshot synchronization must not issue provider refreshes')
+  // The card can receive this snapshot through its timer before the next status poll.
+  // Initialize a new page with the fixed published status before counting timer-only reads,
+  // so a pending background-completion notification cannot enter that measurement.
+  await page.reload()
+  await waitRows(page, 2)
+  listReadDelay = 300
   await verifyListRefresh(page, () => listReads)
+  listReadDelay = 0
   assert.equal(manualRefreshRequests, refreshCount)
   publishedSnapshot = undefined
   await verifyQuotaReferences(page)
