@@ -15,6 +15,13 @@ export async function verifyQuotaReferences(page) {
     await card.getByRole('button', { name: '编辑资料与标签', exact: true }).click()
     await page.getByText('额度上限参考值（可选）', { exact: true }).click()
   }
+  async function saveEdit() {
+    await page.getByRole('button', { name: '保存', exact: true }).click()
+    await page.getByRole('dialog', { name: '编辑账号', exact: true }).waitFor({ state: 'detached' })
+    // Saving closes the dialog before the follow-up list request finishes.
+    // Wait for that request and its Vue render before inspecting saved card values.
+    await page.locator('.account-grid[aria-busy="false"]').waitFor()
+  }
   await edit()
   await page.getByLabel('Cursor Models 参考上限', { exact: true }).fill('450')
   await page.getByLabel('Other Models 参考上限', { exact: true }).fill('45')
@@ -24,8 +31,7 @@ export async function verifyQuotaReferences(page) {
   await page.getByLabel('综合 参考上限', { exact: true }).fill('495')
   const platform = await page.evaluate(() => window.isTauri ? 'desktop' : 'web')
   await page.screenshot({ path: fileURLToPath(new URL(`../../output/playwright/${platform}-quota-reference-edit.png`, import.meta.url)), animations: 'disabled' })
-  await page.getByRole('button', { name: '保存', exact: true }).click()
-  await page.getByRole('dialog', { name: '编辑账号', exact: true }).waitFor({ state: 'detached' })
+  await saveEdit()
   assert.equal(await card.locator('.card-meta dd').first().getAttribute('title'), statsBefore)
   await card.getByRole('button', { name: '刷新', exact: true }).click()
   await card.locator('.card-refresh-skeleton').waitFor({ state: 'detached' })
@@ -39,8 +45,7 @@ export async function verifyQuotaReferences(page) {
   await edit()
   assert.equal(await page.getByLabel('综合 参考上限', { exact: true }).inputValue(), '495')
   for (const field of ['Cursor Models', 'Other Models', '综合']) await page.getByLabel(`${field} 参考上限`, { exact: true }).fill('')
-  await page.getByRole('button', { name: '保存', exact: true }).click()
-  await page.getByRole('dialog', { name: '编辑账号', exact: true }).waitFor({ state: 'detached' })
+  await saveEdit()
   assert.ok(!(await card.locator('.quota-limit').last().getAttribute('title')).includes('手动填写'))
   await card.getByRole('button', { name: '更多账号操作', exact: true }).click()
   await card.getByRole('button', { name: '删除账号', exact: true }).click()

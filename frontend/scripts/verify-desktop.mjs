@@ -65,6 +65,7 @@ try {
   let refreshGate
   let publishedSnapshot
   let manualRefreshRequests = 0, listReads = 0
+  let delayEditedList = false
   // Synthetic Windows discovery responses exercise the UI without reading a real editor.
   let discoveryFixture = null
   const pathRequests = []
@@ -101,7 +102,10 @@ try {
       return response
     }
     assert.equal(command, 'account_request')
-    if (args.operation === 'list') listReads++
+    if (args.operation === 'list') {
+      listReads++
+      if (delayEditedList) { delayEditedList = false; await delay(250) }
+    }
     const base = `/api/v1/workspaces/${args.workspace}`
     const account = `${base}/accounts/${args.account}`
     const routes = { bootstrap: ['/api/v1/bootstrap'], me: ['/api/v1/me'], list: [`${base}/accounts`], get: [account], add: [`${base}/accounts`, 'POST'], reauthorize: [`${account}/authorization`, 'POST'], edit: [account, 'PATCH'], delete: [account, 'DELETE'], refresh: [`${account}/refresh`, 'POST'], detail: [`${account}/detail`], audit: [`${base}/audit`] }
@@ -111,6 +115,7 @@ try {
       if (refreshGate) await refreshGate
     }
     const response = await request(path + (Object.keys(args.query || {}).length ? '?' + new URLSearchParams(args.query) : ''), method, args.body)
+    if (args.operation === 'edit' && response.status === 200) delayEditedList = true
     if (args.operation === 'list' && publishedSnapshot && response.status === 200) {
       response.body.items = response.body.items.map(account => account.id === publishedSnapshot.id ? publishedSnapshot : account)
     }
