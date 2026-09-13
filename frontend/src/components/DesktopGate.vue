@@ -25,8 +25,10 @@ async function retry() {
   try {
     const state = await native<DesktopStatus>('unlock')
     if (!alive) return
-    desktopStatus.value = state
-    await poll()
+    // A ready status unmounts this gate. Start identity loading before that
+    // happens, instead of awaiting another poll that will see alive=false.
+    if (state.phase === 'ready') await initialize()
+    else { desktopStatus.value = state; await poll() }
   } catch (reason) { if (alive) error.value = message(reason) }
   finally { busy.value = false }
 }
